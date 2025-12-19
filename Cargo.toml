@@ -45,9 +45,6 @@ full = [
   "phf",
 ]
 
-# Almost all features excluding "parallel"
-full-async = ["full", "futures"]
-
 # Enable support for Either type
 either = ["rquickjs-core/either", "either-rs"]
 
@@ -70,9 +67,6 @@ macro = ["rquickjs-macro"]
 # Allows transferring objects between different contexts of the same runtime.
 # Disabled for now as it can be used to create unsound code.
 # multi-ctx = ["rquickjs-core/multi-ctx"]
-
-# Enable interop between Rust futures and JS Promises
-futures = ["rquickjs-core/futures"]
 
 # Enable QuickJS dumps for debug
 dump-bytecode = ["rquickjs-core/dump-bytecode"]
