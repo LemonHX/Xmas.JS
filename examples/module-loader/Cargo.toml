@@ -8,7 +8,6 @@ publish = false
 [dependencies.rquickjs]
 path = "../.."
 default-features = false
-features = ["futures"]
 
 [features]
 default = ["macro"]

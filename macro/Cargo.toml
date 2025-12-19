@@ -27,7 +27,7 @@ phf_shared = { version = "0.13", optional = true }
 phf_generator = { version = "0.13", optional = true }
 
 [dev-dependencies]
-rquickjs = { path = "../", features = ["macro", "futures", "phf"] }
+rquickjs = { path = "../", features = ["macro", "phf"] }
 difference = "2"
 
 
