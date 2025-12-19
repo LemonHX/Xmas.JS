@@ -644,11 +644,11 @@ impl PredefinedAtom {
 
 #[cfg(test)]
 mod test {
-    use crate::{Atom, Context, IntoAtom, Runtime};
+    use crate::{Atom, AsyncContext, IntoAtom, AsyncRuntime};
 
     use super::PredefinedAtom;
-    #[test]
-    fn string_correct() {
+    #[tokio::test]
+    async fn string_correct() {
         static ALL_PREDEFS: &[PredefinedAtom] = &[
             PredefinedAtom::Null,
             PredefinedAtom::False,
@@ -853,8 +853,8 @@ mod test {
             PredefinedAtom::SymbolUnscopables,
         ];
 
-        let rt = Runtime::new().unwrap();
-        let context = Context::full(&rt).unwrap();
+        let rt = AsyncRuntime::new().unwrap();
+        let context = AsyncContext::full(&rt).await.unwrap();
         context.with(|ctx| {
             for predef in ALL_PREDEFS {
                 let atom = predef.into_atom(&ctx).unwrap();
@@ -873,6 +873,6 @@ mod test {
                     predef.to_str()
                 )
             }
-        })
+        }).await
     }
 }

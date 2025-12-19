@@ -6,8 +6,8 @@ use crate::{
     value::Constructor,
     Ctx, Error, FromJs, IntoJs, JsLifetime, Object, Result, Value,
 };
-use alloc::boxed::Box;
-use core::{hash::Hash, marker::PhantomData, mem, ops::Deref, ptr::NonNull};
+use std::boxed::Box;
+use std::{hash::Hash, marker::PhantomData, mem, ops::Deref, ptr::NonNull};
 
 mod cell;
 mod trace;
@@ -70,7 +70,7 @@ impl<'js, C: JsClass<'js>> PartialEq for Class<'js, C> {
 impl<'js, C: JsClass<'js>> Eq for Class<'js, C> {}
 
 impl<'js, C: JsClass<'js>> Hash for Class<'js, C> {
-    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.hash(state)
     }
 }
@@ -302,7 +302,7 @@ impl<'js> Object<'js> {
         // duplicated, which is possible when compilation with multiple code-gen units.
         //
         // Doing check avoids a lookup and an dynamic function call in some cases.
-        if core::ptr::eq(v_table, VTable::get::<C>()) {
+        if std::ptr::eq(v_table, VTable::get::<C>()) {
             return true;
         }
 
@@ -310,7 +310,7 @@ impl<'js> Object<'js> {
     }
 
     /// Turn the object into the class if it is an instance of that class.
-    pub fn into_class<C: JsClass<'js>>(&self) -> core::result::Result<Class<'js, C>, &Self> {
+    pub fn into_class<C: JsClass<'js>>(&self) -> std::result::Result<Class<'js, C>, &Self> {
         if self.instance_of::<C>() {
             Ok(Class(self.clone(), PhantomData))
         } else {
@@ -354,12 +354,12 @@ mod test {
         function::This,
         test_with,
         value::Constructor,
-        CatchResultExt, Class, Context, FromJs, Function, IntoJs, JsLifetime, Object, Runtime,
+        CatchResultExt, Class, AsyncContext, FromJs, Function, IntoJs, JsLifetime, Object, AsyncRuntime,
     };
 
     /// Test circular references.
-    #[test]
-    fn trace() {
+    #[tokio::test]
+    async fn trace() {
         pub struct Container<'js> {
             inner: Vec<Class<'js, Container<'js>>>,
             test: Arc<AtomicBool>,
@@ -397,8 +397,8 @@ mod test {
             }
         }
 
-        let rt = Runtime::new().unwrap();
-        let ctx = Context::full(&rt).unwrap();
+        let rt = AsyncRuntime::new().unwrap();
+        let ctx = AsyncContext::full(&rt).await.unwrap();
 
         let drop_test = Arc::new(AtomicBool::new(false));
 
@@ -416,8 +416,8 @@ mod test {
 
             let cls_clone = cls.clone();
             cls.borrow_mut().inner.push(cls_clone);
-        });
-        rt.run_gc();
+        }).await;
+        rt.run_gc().await;
         assert!(drop_test.load(Ordering::SeqCst));
         ctx.with(|ctx| {
             let cls = Class::instance(
@@ -431,7 +431,7 @@ mod test {
             let cls_clone = cls.clone();
             cls.borrow_mut().inner.push(cls_clone);
             ctx.globals().set("t", cls).unwrap();
-        });
+        }).await;
     }
 
     #[derive(Clone, Copy)]
@@ -501,8 +501,8 @@ mod test {
         }
     }
 
-    #[test]
-    fn constructor() {
+    #[tokio::test]
+    async fn constructor() {
         test_with(|ctx| {
             Class::<Vec3>::define(&ctx.globals()).unwrap();
 
@@ -523,11 +523,11 @@ mod test {
 
             let name: String = ctx.eval("new Vec3(1,2,3).constructor.name").unwrap();
             assert_eq!(name, Vec3::NAME);
-        })
+        }).await;
     }
 
-    #[test]
-    fn extend_class() {
+    #[tokio::test]
+    async fn extend_class() {
         test_with(|ctx| {
             Class::<Vec3>::define(&ctx.globals()).unwrap();
 
@@ -551,11 +551,11 @@ mod test {
             approx::assert_abs_diff_eq!(v.x, 1.0);
             approx::assert_abs_diff_eq!(v.y, 2.0);
             approx::assert_abs_diff_eq!(v.z, 3.0);
-        })
+        }).await;
     }
 
-    #[test]
-    fn get_prototype() {
+    #[tokio::test]
+    async fn get_prototype() {
         pub struct X;
 
         impl<'js> Trace<'js> for X {
@@ -585,11 +585,11 @@ mod test {
         test_with(|ctx| {
             let proto = Class::<X>::prototype(&ctx).unwrap().unwrap();
             assert_eq!(proto.get::<_, String>("foo").unwrap(), "bar")
-        })
+        }).await;
     }
 
-    #[test]
-    fn generic_types() {
+    #[tokio::test]
+    async fn generic_types() {
         pub struct DebugPrinter<D: std::fmt::Debug> {
             d: D,
         }
@@ -672,6 +672,6 @@ mod test {
             ctx.globals()
                 .get::<_, Class<DebugPrinter<String>>>("b")
                 .unwrap();
-        })
+        }).await;
     }
 }

@@ -3,7 +3,7 @@ use std::{env, path::Path};
 use crate::common::crate_ident;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
-use rquickjs_core::{Context, Module, Result as JsResult, Runtime, WriteOptions};
+use rquickjs_core::{AsyncContext, Module, Result as JsResult, AsyncRuntime, WriteOptions};
 use syn::{
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
@@ -39,88 +39,6 @@ impl Parse for EmbedModules {
         let res = input.parse_terminated(EmbedModule::parse, Token![,])?;
         Ok(EmbedModules(res))
     }
-}
-
-/// Implementation of the macro
-pub fn embed(modules: EmbedModules) -> Result<TokenStream> {
-    let mut files = Vec::new();
-    for f in modules.0.into_iter() {
-        let path = f
-            .path
-            .as_ref()
-            .map(|x| x.1.value())
-            .unwrap_or_else(|| f.name.value());
-
-        let path = Path::new(&path);
-
-        let path = if path.is_relative() {
-            let full_path = Path::new(
-                &env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR should be set"),
-            )
-            .join(path);
-            match full_path.canonicalize() {
-                Ok(x) => x,
-                Err(e) => {
-                    return Err(Error::new(
-                        f.name.span(),
-                        format_args!(
-                            "Error loading embedded js module from path `{}`: {}",
-                            full_path.display(),
-                            e
-                        ),
-                    ));
-                }
-            }
-        } else {
-            path.to_owned()
-        };
-
-        let source = match std::fs::read_to_string(&path) {
-            Ok(x) => x,
-            Err(e) => {
-                return Err(Error::new(
-                    f.name.span(),
-                    format_args!(
-                        "Error loading embedded js module from path `{}`: {}",
-                        path.display(),
-                        e
-                    ),
-                ));
-            }
-        };
-        files.push((f.name.value(), source));
-    }
-
-    let res = (|| -> JsResult<Vec<(String, Vec<u8>)>> {
-        let rt = Runtime::new()?;
-        let ctx = Context::full(&rt)?;
-
-        let mut modules = Vec::new();
-
-        ctx.with(|ctx| -> JsResult<()> {
-            for f in files.into_iter() {
-                let bc = Module::declare(ctx.clone(), f.0.clone(), f.1)?
-                    .write(WriteOptions::default())?;
-                modules.push((f.0, bc));
-            }
-            Ok(())
-        })?;
-        Ok(modules)
-    })();
-
-    let res = match res {
-        Ok(x) => x,
-        Err(e) => {
-            return Err(Error::new(
-                Span::call_site(),
-                format_args!("Error compiling embedded js module: {}", e),
-            ));
-        }
-    };
-
-    let res = to_entries(res.into_iter());
-
-    expand(&res)
 }
 
 fn to_entries(modules: impl Iterator<Item = (String, Vec<u8>)>) -> Vec<(String, TokenStream)> {

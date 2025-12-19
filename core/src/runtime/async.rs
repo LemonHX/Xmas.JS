@@ -1,24 +1,24 @@
-use alloc::{ffi::CString, vec::Vec};
-use core::{ptr::NonNull, result::Result as StdResult, task::Poll};
+use std::{ffi::CString, vec::Vec};
+use std::{ptr::NonNull, result::Result as StdResult, task::Poll};
 
 #[cfg(feature = "parallel")]
-use alloc::sync::Arc;
+use std::sync::Arc;
 #[cfg(feature = "parallel")]
 use async_lock::Mutex;
 #[cfg(feature = "parallel")]
 use std::sync::mpsc::{self, Receiver, Sender};
 
 #[cfg(not(feature = "parallel"))]
-use alloc::rc::Rc;
+use std::rc::Rc;
 #[cfg(not(feature = "parallel"))]
-use core::cell::RefCell;
+use std::cell::RefCell;
 
 use super::{
     opaque::Opaque, raw::RawRuntime, spawner::DriveFuture, task_queue::TaskPoll, InterruptHandler,
     MemoryUsage, PromiseHook, RejectionTracker,
 };
 use crate::allocator::Allocator;
-#[cfg(feature = "loader")]
+
 use crate::loader::{Loader, Resolver};
 #[cfg(feature = "parallel")]
 use crate::qjs;
@@ -36,15 +36,15 @@ pub(crate) type RuntimeRef<T> = Arc<T>;
 pub(crate) type RuntimeRef<T> = Rc<T>;
 
 #[cfg(feature = "parallel")]
-pub(crate) type RuntimeWeak<T> = alloc::sync::Weak<T>;
+pub(crate) type RuntimeWeak<T> = std::sync::Weak<T>;
 #[cfg(not(feature = "parallel"))]
-pub(crate) type RuntimeWeak<T> = alloc::rc::Weak<T>;
+pub(crate) type RuntimeWeak<T> = std::rc::Weak<T>;
 
 // Guard type aliases
 #[cfg(feature = "parallel")]
 pub(crate) type RuntimeGuard<'a, T> = async_lock::MutexGuard<'a, T>;
 #[cfg(not(feature = "parallel"))]
-pub(crate) type RuntimeGuard<'a, T> = core::cell::RefMut<'a, T>;
+pub(crate) type RuntimeGuard<'a, T> = std::cell::RefMut<'a, T>;
 
 #[derive(Debug)]
 pub(crate) struct InnerRuntime {
@@ -205,7 +205,7 @@ impl AsyncRuntime {
     }
 
     /// Set the module loader.
-    #[cfg(feature = "loader")]
+    
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "loader")))]
     pub async fn set_loader<R: Resolver + 'static, L: Loader + 'static>(
         &self,
@@ -288,7 +288,7 @@ impl AsyncRuntime {
 
     /// Run all futures and jobs until finished.
     pub async fn idle(&self) {
-        core::future::poll_fn(|cx| {
+        std::future::poll_fn(|cx| {
             let Some(mut lock) = self.try_lock() else {
                 cx.waker().wake_by_ref();
                 return Poll::Pending;
@@ -305,7 +305,7 @@ impl AsyncRuntime {
                     Err(e) => {
                         let ctx = unsafe { Ctx::from_ptr(e) };
                         let err = ctx.catch();
-                        #[cfg(feature = "std")]
+                        
                         {
                             use std::println;
                             if let Some(ex) = err
@@ -520,7 +520,7 @@ mod test {
 
             match res.catch(&ctx) {
                 Ok(promise) => { let _ = promise.into_future::<Value>().await.catch(&ctx); },
-                Err(err) => { #[cfg(feature = "std")] std::println!("{}", err); },
+                Err(err) => { println!("{}", err); },
             };
         }).await;
 

@@ -9,16 +9,9 @@
 #![allow(mismatched_lifetime_syntaxes)]
 #![cfg_attr(feature = "doc-cfg", feature(doc_cfg))]
 #![allow(clippy::doc_lazy_continuation)]
-#![cfg_attr(not(test), no_std)]
 
-#[doc(hidden)]
-pub extern crate alloc;
-
-#[cfg(any(feature = "std", test))]
-extern crate std;
-
-pub(crate) use alloc::string::String as StdString;
-pub(crate) use core::result::Result as StdResult;
+pub(crate) use std::string::String as StdString;
+pub(crate) use std::result::Result as StdResult;
 
 mod js_lifetime;
 pub mod markers;
@@ -29,9 +22,9 @@ mod util;
 mod value;
 pub(crate) use safe_ref::*;
 pub mod runtime;
-pub use runtime::Runtime;
+pub use runtime::AsyncRuntime;
 pub mod context;
-pub use context::{Context, Ctx};
+pub use context::Ctx;
 pub mod class;
 pub use class::Class;
 pub use js_lifetime::JsLifetime;
@@ -45,18 +38,11 @@ pub use value::{
 };
 
 pub mod allocator;
-#[cfg(feature = "loader")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "loader")))]
 pub mod loader;
 
-#[cfg(feature = "futures")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
 pub use context::AsyncContext;
 #[cfg(feature = "multi-ctx")]
 pub use context::MultiWith;
-#[cfg(feature = "futures")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
-pub use runtime::AsyncRuntime;
 pub use value::{ArrayBuffer, Iterable, JsIterator, TypedArray};
 
 //#[doc(hidden)]
@@ -84,8 +70,6 @@ pub mod prelude {
         result::{CatchResultExt, ThrowResultExt},
         JsLifetime,
     };
-    #[cfg(feature = "futures")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
     pub use crate::{
         function::Async,
         promise::{Promise, Promised},
@@ -93,53 +77,11 @@ pub mod prelude {
 }
 
 #[cfg(test)]
-pub(crate) fn test_with<F, R>(func: F) -> R
+pub(crate) async fn test_with<F, R>(func: F) -> R
 where
     F: FnOnce(Ctx) -> R,
 {
-    let rt = Runtime::new().unwrap();
-    let ctx = Context::full(&rt).unwrap();
-    ctx.with(func)
-}
-
-mod deprecated_features {
-    #[cfg(feature = "properties")]
-    #[allow(unused_imports)]
-    use properties as _;
-    #[cfg(feature = "properties")]
-    #[deprecated(
-        note = "The rquickjs crate feature `properties` is deprecated, the functionality it provided is now enabled by default.
-To remove this warning remove the use of the feature when specifying the dependency."
-    )]
-    mod properties {}
-
-    #[cfg(feature = "array-buffer")]
-    #[allow(unused_imports)]
-    use array_buffer as _;
-    #[cfg(feature = "array-buffer")]
-    #[deprecated(
-        note = "The rquickjs crate feature `array-buffer` is deprecated, the functionality it provided is now enabled by default.
-To remove this warning remove the use of the feature when specifying the dependency."
-    )]
-    mod array_buffer {}
-
-    #[cfg(feature = "classes")]
-    #[allow(unused_imports)]
-    use classes as _;
-    #[cfg(feature = "classes")]
-    #[deprecated(
-        note = "The rquickjs crate feature `classes` is deprecated, the functionality it provided is now enabled by default.
-To remove this warning remove the use of the feature when specifying the dependency."
-    )]
-    mod classes {}
-
-    #[cfg(feature = "allocator")]
-    #[allow(unused_imports)]
-    use allocator as _;
-    #[cfg(feature = "allocator")]
-    #[deprecated(
-        note = "The rquickjs crate feature `allocator` is deprecated, the functionality it provided is now enabled by default.
-To remove this warning remove the use of the feature when specifying the dependency."
-    )]
-    mod allocator {}
+    let rt = AsyncRuntime::new().unwrap();
+    let ctx = AsyncContext::full(&rt).await.unwrap();
+    ctx.with(func).await
 }

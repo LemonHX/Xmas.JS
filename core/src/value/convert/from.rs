@@ -2,7 +2,7 @@ use crate::{
     convert::List, Array, CString, Ctx, Error, FromAtom, FromJs, Object, Result, StdString, String,
     Type, Value,
 };
-use alloc::{
+use std::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet, LinkedList, VecDeque},
     rc::Rc,
@@ -10,14 +10,14 @@ use alloc::{
     vec::Vec,
 };
 #[allow(unused_imports)]
-use core::{
+use std::{
     cell::{Cell, RefCell},
     hash::{BuildHasher, Hash},
     time::Duration,
 };
 use hashbrown::{HashMap as HashbrownMap, HashSet as HashbrownSet};
 
-#[cfg(feature = "std")]
+
 use std::{
     collections::{HashMap, HashSet},
     sync::{Mutex, RwLock},
@@ -300,9 +300,9 @@ from_js_impls! {
     Arc,
     Cell,
     RefCell,
-    #[cfg(feature = "std")]
+    
     Mutex,
-    #[cfg(feature = "std")]
+    
     RwLock,
 }
 
@@ -335,7 +335,7 @@ from_js_impls! {
     /// Convert from JS array to Rust linked list
     LinkedList,
     /// Convert from JS array to Rust hash set
-    #[cfg(feature = "std")]
+    
     HashSet {S: Default + BuildHasher} (Eq + Hash),
     /// Convert from JS array to hashbrown hash set
     HashbrownSet {S: Default + BuildHasher} (Eq + Hash),
@@ -350,7 +350,7 @@ from_js_impls! {
 from_js_impls! {
     map:
     /// Convert from JS object to Rust hash map
-    #[cfg(feature = "std")]
+    
     HashMap {S: Default + BuildHasher} (Eq + Hash),
     /// Convert from JS object to hashbrown hash map
     HashbrownMap {S: Default + BuildHasher} (Eq + Hash),
@@ -384,7 +384,7 @@ fn date_to_millis<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> Result<i64> {
     get_time_fn.call((crate::function::This(value),))
 }
 
-#[cfg(feature = "std")]
+
 impl<'js> FromJs<'js> for SystemTime {
     fn from_js(ctx: &Ctx<'js>, value: Value<'js>) -> Result<SystemTime> {
         let millis = date_to_millis(ctx, value)?;
@@ -410,7 +410,6 @@ impl<'js> FromJs<'js> for SystemTime {
 macro_rules! chrono_from_js_impls {
     ($($type:ident;)+) => {
         $(
-            #[cfg(feature = "chrono")]
             impl<'js> FromJs<'js> for chrono::DateTime<chrono::$type> {
                 fn from_js(ctx: &Ctx<'js>, value: Value<'js>) -> Result<chrono::DateTime<chrono::$type>> {
                     use chrono::TimeZone;
@@ -437,13 +436,13 @@ mod test {
     #[cfg(target_arch = "wasm32")]
     use super::Error;
 
-    #[test]
-    fn js_to_system_time() {
-        use crate::{Context, Runtime};
+    #[tokio::test]
+    async fn js_to_system_time() {
+        use crate::{AsyncContext, AsyncRuntime};
         use std::time::{Duration, SystemTime};
 
-        let runtime = Runtime::new().unwrap();
-        let ctx = Context::full(&runtime).unwrap();
+        let runtime = AsyncRuntime::new().unwrap();
+        let ctx = AsyncContext::full(&runtime).await.unwrap();
 
         ctx.with(|ctx| {
             let res: SystemTime = ctx.eval("new Date(123456789)").unwrap();
@@ -472,35 +471,34 @@ mod test {
                     res.to_string()
                 );
             }
-        });
+        }).await;
     }
 
-    #[cfg(feature = "chrono")]
-    #[test]
-    fn js_to_chrono() {
-        use crate::{Context, Runtime};
+    #[tokio::test]
+    async fn js_to_chrono() {
+        use crate::{AsyncContext, AsyncRuntime};
         use chrono::{DateTime, Utc};
 
-        let runtime = Runtime::new().unwrap();
-        let ctx = Context::full(&runtime).unwrap();
+        let runtime = AsyncRuntime::new().unwrap();
+        let ctx = AsyncContext::full(&runtime).await.unwrap();
 
         ctx.with(|ctx| {
             let res: DateTime<Utc> = ctx.eval("new Date(123456789)").unwrap();
             assert_eq!(123456789, res.timestamp_millis());
-        });
+        }).await;
 
         ctx.with(|ctx| {
             let res: DateTime<Utc> = ctx
                 .eval("new Date('Fri Jun 03 2022 23:16:50 GMT+0300')")
                 .unwrap();
             assert_eq!(1654287410000, res.timestamp_millis());
-        });
+        }).await;
 
         ctx.with(|ctx| {
             let res: DateTime<Utc> = ctx
                 .eval("new Date('Fri Jun 03 2022 23:16:50 GMT-0300')")
                 .unwrap();
             assert_eq!(1654309010000, res.timestamp_millis());
-        });
+        }).await;
     }
 }

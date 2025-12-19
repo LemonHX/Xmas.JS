@@ -5,10 +5,10 @@ use crate::{
     IntoJs, Result, Value,
 };
 
-#[cfg(feature = "futures")]
+
 use crate::{function::types::Async, promise::Promised};
-#[cfg(feature = "futures")]
-use core::future::Future;
+
+use std::future::Future;
 
 macro_rules! impl_to_js_function {
     ($($t:ident),*$(,)?) => {
@@ -32,7 +32,7 @@ macro_rules! impl_to_js_function {
             }
         }
 
-        #[cfg(feature = "futures")]
+        
         impl<'js, R, Fun, Fut $(,$t)*> IntoJsFunc<'js, ($($t,)*)> for Async<Fun>
         where
             Fun: Fn($($t),*) -> Fut + 'js,
@@ -76,7 +76,7 @@ macro_rules! impl_to_js_function {
             }
         }
 
-        #[cfg(feature = "futures")]
+        
         impl<'js, R, Fun, Fut $(,$t)*> IntoJsFunc<'js, ($($t,)*)> for Async<MutFn<Fun>>
         where
             Fun: FnMut($($t),*) -> Fut + 'js,
@@ -120,7 +120,7 @@ macro_rules! impl_to_js_function {
             }
         }
 
-        #[cfg(feature = "futures")]
+        
         impl<'js, R, Fun, Fut $(,$t)*> IntoJsFunc<'js, ($($t,)*)> for Async<OnceFn<Fun>>
         where
             Fun: FnOnce($($t),*) -> Fut + 'js,

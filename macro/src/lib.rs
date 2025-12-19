@@ -30,7 +30,7 @@ mod methods;
 mod module;
 mod trace;
 
-/// An attribute for implementing [`JsClass`](rquickjs_core::class::JsClass`) for a Rust type.
+/// An attribute for implementing [`JsClass`](rquickjs_std::class::JsClass`) for a Rust type.
 ///
 /// # Attribute options
 ///
@@ -152,7 +152,7 @@ pub fn function(attr: TokenStream1, item: TokenStream1) -> TokenStream1 {
 /// A attribute for implementing methods for a class.
 ///
 /// This attribute can be added to a impl block which implements methods for a type which uses the
-/// [`macro@class`] attribute to derive [`JsClass`](rquickjs_core::class::JsClass).
+/// [`macro@class`] attribute to derive [`JsClass`](rquickjs_std::class::JsClass).
 ///
 /// # Limitations
 /// Due to limitations in the Rust type system this attribute can be used on only one impl block
@@ -184,7 +184,7 @@ pub fn function(attr: TokenStream1, item: TokenStream1) -> TokenStream1 {
 /// | `set`          | Flag                                                              | Makes this method a setter for a field of the same name.                                        |
 /// | `enumerable`   | Flag                                                              | Makes the method, if it is a getter or setter, enumerable in JavaScript.                        |
 /// | `configurable` | Flag                                                              | Makes the method, if it is a getter or setter, configurable in JavaScript.                      |
-/// | `rename`       | String or [`PredefinedAtom`](rquickjs_core::atom::PredefinedAtom) | Changes the name of the field getter and/or setter to the specified name in JavaScript.         |
+/// | `rename`       | String or [`PredefinedAtom`](rquickjs_std::atom::PredefinedAtom) | Changes the name of the field getter and/or setter to the specified name in JavaScript.         |
 /// | `static`       | Flag                                                              | Makes the method a static method i.e. defined on the type constructor instead of the prototype. |
 /// | `constructor`  | Flag                                                              | Marks this method a the constructor for this type.                                              |
 /// | `skip`         | Flag                                                              | Skips defining this method on the JavaScript class.                                             |
@@ -493,55 +493,6 @@ pub fn module(attr: TokenStream1, item: TokenStream1) -> TokenStream1 {
 pub fn trace(stream: TokenStream1) -> TokenStream1 {
     let derive_input = parse_macro_input!(stream as DeriveInput);
     match trace::expand(derive_input) {
-        Ok(x) => x.into(),
-        Err(e) => e.into_compile_error().into(),
-    }
-}
-
-/// A macro for embedding JavaScript code into a binary.
-///
-/// Compiles a JavaScript module to bytecode and then compiles the resulting bytecode into the
-/// binary. Each file loaded is turned into its own module. The macro takes a list of paths to
-/// files to be compiled into a module with an option name. Module paths are relative to the crate
-/// manifest file.
-///
-/// # Usage
-///
-/// ```
-/// use rquickjs::{embed, loader::Bundle, CatchResultExt, Context, Module, Runtime};
-///
-/// /// load the `my_module.js` file and name it myModule
-/// static BUNDLE: Bundle = embed! {
-///     "myModule": "my_module.js",
-/// };
-///
-/// fn main() {
-///     let rt = Runtime::new().unwrap();
-///     let ctx = Context::full(&rt).unwrap();
-///
-///     rt.set_loader(BUNDLE, BUNDLE);
-///     ctx.with(|ctx| {
-///         Module::evaluate(
-///             ctx.clone(),
-///             "testModule",
-///             r#"
-///             import { foo } from 'myModule';
-///             if(foo() !== 2){
-///                 throw new Error("Function didn't return the correct value");
-///             }
-///         "#,
-///         )
-///         .unwrap()
-///         .finish::<()>()
-///         .catch(&ctx)
-///         .unwrap();
-///     })
-/// }
-/// ```
-#[proc_macro]
-pub fn embed(item: TokenStream1) -> TokenStream1 {
-    let embed_modules: embed::EmbedModules = parse_macro_input!(item);
-    match embed::embed(embed_modules) {
         Ok(x) => x.into(),
         Err(e) => e.into_compile_error().into(),
     }

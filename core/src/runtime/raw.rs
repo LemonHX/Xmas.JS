@@ -1,11 +1,11 @@
 #![allow(dead_code, unused_imports)]
-use alloc::{boxed::Box, ffi::CString};
-use core::{mem, panic::AssertUnwindSafe, ptr::NonNull, result::Result as StdResult};
+use std::{boxed::Box, ffi::CString};
+use std::{mem, panic::AssertUnwindSafe, ptr::NonNull, result::Result as StdResult};
 
 use rquickjs_sys::JSPromiseHookType;
 
 use crate::allocator::{Allocator, AllocatorHolder};
-#[cfg(feature = "loader")]
+
 use crate::loader::{Loader, LoaderHolder, Resolver};
 use crate::{
     qjs::{self, size_t},
@@ -112,7 +112,7 @@ pub(crate) struct RawRuntime {
 
     #[allow(dead_code)]
     pub allocator: Option<AllocatorHolder>,
-    #[cfg(feature = "loader")]
+    
     #[allow(dead_code)]
     pub loader: Option<LoaderHolder>,
 }
@@ -134,10 +134,6 @@ impl Drop for RawRuntime {
 
 impl RawRuntime {
     pub unsafe fn new(opaque: Opaque<'static>) -> Result<Self> {
-        #[cfg(not(feature = "rust-alloc"))]
-        return Self::new_base(opaque);
-
-        #[cfg(feature = "rust-alloc")]
         Self::new_with_allocator(opaque, crate::allocator::RustAllocator)
     }
 
@@ -158,7 +154,7 @@ impl RawRuntime {
             rt,
             info: None,
             allocator: None,
-            #[cfg(feature = "loader")]
+            
             loader: None,
         })
     }
@@ -186,7 +182,7 @@ impl RawRuntime {
             rt,
             info: None,
             allocator: Some(allocator),
-            #[cfg(feature = "loader")]
+            
             loader: None,
         })
     }
@@ -220,7 +216,7 @@ impl RawRuntime {
         Err(unsafe { ctx_ptr.assume_init() })
     }
 
-    #[cfg(feature = "loader")]
+    
     pub unsafe fn set_loader<R, L>(&mut self, resolver: R, loader: L)
     where
         R: Resolver + 'static,
@@ -290,7 +286,7 @@ impl RawRuntime {
             type_: JSPromiseHookType,
             promise: rquickjs_sys::JSValue,
             parent: rquickjs_sys::JSValue,
-            opaque: *mut ::core::ffi::c_void,
+            opaque: *mut ::std::ffi::c_void,
         ) {
             let opaque = NonNull::new_unchecked(opaque).cast::<Opaque>();
 
@@ -334,7 +330,7 @@ impl RawRuntime {
                         JSPromiseHookType,
                         rquickjs_sys::JSValue,
                         rquickjs_sys::JSValue,
-                        *mut core::ffi::c_void,
+                        *mut std::ffi::c_void,
                     )
             }),
             qjs::JS_GetRuntimeOpaque(self.rt.as_ptr()),
@@ -348,7 +344,7 @@ impl RawRuntime {
             promise: rquickjs_sys::JSValue,
             reason: rquickjs_sys::JSValue,
             is_handled: bool,
-            opaque: *mut ::core::ffi::c_void,
+            opaque: *mut ::std::ffi::c_void,
         ) {
             let opaque = NonNull::new_unchecked(opaque).cast::<Opaque>();
 
@@ -383,8 +379,8 @@ impl RawRuntime {
     pub unsafe fn set_interrupt_handler(&mut self, handler: Option<InterruptHandler>) {
         unsafe extern "C" fn interrupt_handler_trampoline(
             _rt: *mut qjs::JSRuntime,
-            opaque: *mut ::core::ffi::c_void,
-        ) -> ::core::ffi::c_int {
+            opaque: *mut ::std::ffi::c_void,
+        ) -> ::std::ffi::c_int {
             // This should be safe as the value is set below to a non-null pointer.
             let opaque = NonNull::new_unchecked(opaque).cast::<Opaque>();
 
@@ -426,12 +422,12 @@ impl RawRuntime {
 mod test {
     use std::sync::{Arc, Mutex};
 
-    use crate::{Context, Runtime};
+    use crate::{AsyncContext, AsyncRuntime};
 
-    #[test]
-    fn promise_rejection_handler() {
+    #[tokio::test]
+    async fn promise_rejection_handler() {
         let counter = Arc::new(Mutex::new(0));
-        let rt = Runtime::new().unwrap();
+        let rt = AsyncRuntime::new().unwrap();
         {
             let counter = counter.clone();
             rt.set_host_promise_rejection_tracker(Some(Box::new(move |_, _, _, is_handled| {
@@ -441,7 +437,7 @@ mod test {
                 }
             })));
         }
-        let context = Context::full(&rt).unwrap();
+        let context = AsyncContext::full(&rt).await.unwrap();
         context.with(|ctx| {
             let _: Result<(), _> = ctx.eval(
                 r#"

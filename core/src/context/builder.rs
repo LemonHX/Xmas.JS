@@ -1,8 +1,7 @@
-use core::{marker::PhantomData, ptr::NonNull};
+use std::{marker::PhantomData, ptr::NonNull};
 
-#[cfg(feature = "futures")]
 use crate::{context::AsyncContext, runtime::AsyncRuntime};
-use crate::{qjs, util::Sealed, Context, Result, Runtime};
+use crate::{qjs, util::Sealed, Result};
 
 /// The internal trait to add JS builtins
 pub trait Intrinsic: Sealed {
@@ -132,12 +131,7 @@ impl<I: Intrinsic> ContextBuilder<I> {
         ContextBuilder(PhantomData)
     }
 
-    pub fn build(self, runtime: &Runtime) -> Result<Context> {
-        Context::custom::<I>(runtime)
-    }
-
-    #[cfg(feature = "futures")]
-    pub async fn build_async(self, runtime: &AsyncRuntime) -> Result<AsyncContext> {
+    pub async fn build(self, runtime: &AsyncRuntime) -> Result<AsyncContext> {
         AsyncContext::custom::<I>(runtime).await
     }
 }
@@ -146,14 +140,15 @@ impl<I: Intrinsic> ContextBuilder<I> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn all_intrinsinces() {
-        let rt = crate::Runtime::new().unwrap();
-        let ctx = Context::builder()
+    #[tokio::test]
+    async fn all_intrinsinces() {
+        let rt = crate::AsyncRuntime::new().unwrap();
+        let ctx = AsyncContext::builder()
             .with::<intrinsic::All>()
             .build(&rt)
+            .await
             .unwrap();
-        let result: usize = ctx.with(|ctx| ctx.eval("1+1")).unwrap();
+        let result: usize = ctx.with(|ctx| ctx.eval("1+1")).await.unwrap();
         assert_eq!(result, 2);
     }
 }

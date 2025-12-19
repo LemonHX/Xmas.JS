@@ -1,4 +1,4 @@
-use core::ptr::NonNull;
+use std::ptr::NonNull;
 
 use crate::qjs;
 

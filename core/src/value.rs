@@ -1,5 +1,5 @@
 use crate::{qjs, Ctx, Error, Result};
-use core::{fmt, hash::Hash, mem, ops::Deref, result::Result as StdResult, str};
+use std::{fmt, hash::Hash, mem, ops::Deref, result::Result as StdResult, str};
 
 pub mod array;
 pub mod atom;
@@ -56,7 +56,7 @@ impl<'js> PartialEq for Value<'js> {
 impl<'js> Eq for Value<'js> {}
 
 impl<'js> Hash for Value<'js> {
-    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         let tag = unsafe { qjs::JS_VALUE_GET_TAG(self.value) };
         let bits = unsafe { qjs::JS_VALUE_GET_FLOAT64(self.value).to_bits() };
         state.write_i32(tag);
@@ -652,7 +652,7 @@ macro_rules! sub_types {
                 }
 
                 #[doc = concat!("Try convert into [`",stringify!($head),"`] returning self if the conversion fails.")]
-                pub fn $try_into(self) -> core::result::Result<$head<'js>, Value<'js>> {
+                pub fn $try_into(self) -> std::result::Result<$head<'js>, Value<'js>> {
                     if self.type_of().interpretable_as(Type::$head) {
                         Ok(sub_types!(@wrap $head$(->$sub_type)* self))
                     } else {

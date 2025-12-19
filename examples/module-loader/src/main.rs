@@ -1,8 +1,7 @@
 use rquickjs::{
-    loader::{
+    AsyncContext, AsyncRuntime,  Function, Module, loader::{
         BuiltinLoader, BuiltinResolver, FileResolver, ModuleLoader, NativeLoader, ScriptLoader,
-    },
-    Context, Function, Module, Runtime,
+    }
 };
 
 mod bundle;
@@ -12,7 +11,8 @@ fn print(msg: String) {
     println!("{msg}");
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let resolver = (
         BuiltinResolver::default()
             .with_module("bundle/script_module")
@@ -29,10 +29,10 @@ fn main() {
         NativeLoader::default(),
     );
 
-    let rt = Runtime::new().unwrap();
-    let ctx = Context::full(&rt).unwrap();
+    let rt = AsyncRuntime::new().unwrap();
+    let ctx = AsyncContext::full(&rt).await.unwrap();
 
-    rt.set_loader(resolver, loader);
+    rt.set_loader(resolver, loader).await;
     ctx.with(|ctx| {
         let global = ctx.globals();
         global
@@ -104,5 +104,5 @@ print(`f(2, 4) = ${f(2, 4)}`);
         .unwrap()
         .finish::<()>()
         .unwrap();
-    });
+    }).await;
 }

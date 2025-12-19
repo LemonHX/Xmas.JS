@@ -1,9 +1,6 @@
 use crate::{module::ModuleDef, Ctx, Error, Module, Result};
-use alloc::{string::String, vec::Vec};
-use core::fmt::Debug;
-#[cfg(not(feature = "std"))]
-use hashbrown::HashMap;
-#[cfg(feature = "std")]
+use std::{string::String, vec::Vec};
+use std::fmt::Debug;
 use std::collections::HashMap;
 
 use super::Loader;

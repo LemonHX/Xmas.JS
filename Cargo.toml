@@ -35,34 +35,18 @@ rquickjs-macro = { workspace = true, optional = true }
 
 
 [features]
-default = ["std"]
+default = []
 
 # Almost all features excluding "parallel" and support for async runtimes
 full = [
-  "std",
-  "chrono",
-  "loader",
-  "dyn-load",
   "either",
   "indexmap",
   "macro",
   "phf",
 ]
 
-# A version of full designed for wasm32-wasip1 and wasm32-wasip2 (simply excludes dyn-load)
-full-wasi = ["std", "chrono", "loader", "either", "indexmap", "macro", "phf"]
-
 # Almost all features excluding "parallel"
 full-async = ["full", "futures"]
-
-# A version of full-async designed for wasm32-wasip1 and wasm32-wasip2
-full-async-wasi = ["full-wasi", "futures"]
-
-# Enable use of the rust standard library
-std = ["rquickjs-core/std"]
-
-# Chrono support.
-chrono = ["rquickjs-core/chrono"]
 
 # Enable support for Either type
 either = ["rquickjs-core/either", "either-rs"]
@@ -79,17 +63,6 @@ bindgen = ["rquickjs-core/bindgen", "rquickjs-macro?/bindgen"]
 
 # Enable support of parallel execution
 parallel = ["rquickjs-core/parallel"]
-
-# Enable user-defined module loader support
-loader = ["rquickjs-core/loader"]
-
-# Enable native module loading support
-dyn-load = ["rquickjs-core/dyn-load"]
-
-# Use Rust global allocator by default
-# otherwise libc allocator will be used
-rust-alloc = ["rquickjs-core/rust-alloc"]
-
 
 # Enable helper macros
 macro = ["rquickjs-macro"]
@@ -124,12 +97,6 @@ compile-tests = ["rquickjs-core/compile-tests"]
 
 # Enable unstable doc-cfg feature (for docs.rs)
 doc-cfg = ["rquickjs-core/doc-cfg"]
-
-# Deprecated features
-classes = ["rquickjs-core/classes"]
-array-buffer = ["rquickjs-core/array-buffer"]
-allocator = ["rquickjs-core/allocator"]
-properties = ["rquickjs-core/properties"]
 
 
 [dev-dependencies]

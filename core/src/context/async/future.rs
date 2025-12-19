@@ -1,5 +1,5 @@
-use alloc::boxed::Box;
-use core::{
+use std::boxed::Box;
+use std::{
     future::Future,
     mem,
     pin::Pin,
@@ -57,7 +57,7 @@ where
         // Create or get the future
         let mut future = match mem::replace(&mut this.state, WithFutureState::Done) {
             WithFutureState::Initial { closure } => {
-                let ctx = unsafe { Ctx::new_async(this.context) };
+                let ctx = unsafe { Ctx::new(this.context) };
                 Box::pin(closure(ctx))
             }
             WithFutureState::Running { future } => future,

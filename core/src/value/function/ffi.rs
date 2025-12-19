@@ -5,7 +5,7 @@ use crate::{
     Ctx, Function, JsLifetime, Object, Result, Value,
 };
 
-use alloc::boxed::Box;
+use std::boxed::Box;
 
 use super::Constructor;
 

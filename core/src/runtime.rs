@@ -5,20 +5,18 @@ pub(crate) mod opaque;
 pub(crate) mod raw;
 mod userdata;
 
-#[cfg(feature = "futures")]
+
 mod r#async;
-#[cfg(feature = "futures")]
+
 mod spawner;
-#[cfg(feature = "futures")]
+
 pub(crate) mod task_queue;
-#[cfg(feature = "futures")]
+
 pub use spawner::DriveFuture;
 
-use alloc::boxed::Box;
-pub use base::{Runtime, WeakRuntime};
+use std::boxed::Box;
+// pub use base::{Runtime, WeakRuntime};
 pub use userdata::{UserDataError, UserDataGuard};
-
-#[cfg(feature = "futures")]
 pub use r#async::{AsyncRuntime, AsyncWeakRuntime};
 
 use crate::value::promise::PromiseHookType;

@@ -1,11 +1,8 @@
 //! JS Contexts related types.
 
-mod base;
 mod builder;
 mod ctx;
 mod owner;
-
-#[cfg(feature = "futures")]
 mod r#async;
 #[cfg(feature = "multi-ctx")]
 mod multi_with_impl;
@@ -22,9 +19,8 @@ pub trait MultiWith<'js> {
     fn with<R, F: FnOnce(Self::Arg) -> R>(self, f: F) -> R;
 }
 
-pub use base::Context;
+// pub use base::Context;
 pub use builder::{intrinsic, ContextBuilder, Intrinsic};
 pub use ctx::{Ctx, EvalOptions};
 
-#[cfg(feature = "futures")]
 pub use r#async::AsyncContext;

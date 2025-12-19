@@ -1,5 +1,4 @@
-use alloc::alloc;
-use core::{alloc::Layout, mem, ptr};
+use std::{alloc::Layout, mem, ptr};
 
 use super::Allocator;
 
@@ -49,7 +48,7 @@ unsafe impl Allocator for RustAllocator {
             return ptr::null_mut();
         };
 
-        let ptr = unsafe { alloc::alloc_zeroed(layout) };
+        let ptr = unsafe { std::alloc::alloc_zeroed(layout) };
 
         if ptr.is_null() {
             return ptr::null_mut();
@@ -71,7 +70,7 @@ unsafe impl Allocator for RustAllocator {
             return ptr::null_mut();
         };
 
-        let ptr = unsafe { alloc::alloc(layout) };
+        let ptr = unsafe { std::alloc::alloc(layout) };
 
         if ptr.is_null() {
             return ptr::null_mut();
@@ -88,7 +87,7 @@ unsafe impl Allocator for RustAllocator {
         let alloc_size = ptr.cast::<Header>().read().size + HEADER_SIZE;
         let layout = Layout::from_size_align_unchecked(alloc_size, ALLOC_ALIGN);
 
-        alloc::dealloc(ptr, layout);
+        std::alloc::dealloc(ptr, layout);
     }
 
     unsafe fn realloc(&mut self, ptr: *mut u8, new_size: usize) -> *mut u8 {
@@ -101,7 +100,7 @@ unsafe impl Allocator for RustAllocator {
 
         let new_alloc_size = new_size + HEADER_SIZE;
 
-        let ptr = alloc::realloc(ptr, layout, new_alloc_size);
+        let ptr = std::alloc::realloc(ptr, layout, new_alloc_size);
 
         if ptr.is_null() {
             return ptr::null_mut();
@@ -117,21 +116,37 @@ unsafe impl Allocator for RustAllocator {
     }
 }
 
-#[cfg(all(test, feature = "rust-alloc"))]
+#[cfg(test)]
 mod test {
     use super::RustAllocator;
-    use crate::{allocator::Allocator, Context, Runtime};
+    use crate::{allocator::Allocator, AsyncContext, AsyncRuntime};
     use std::sync::atomic::{AtomicUsize, Ordering};
-
+    #[allow(dead_code)]
     static ALLOC_SIZE: AtomicUsize = AtomicUsize::new(0);
-
+    #[allow(dead_code)]
     struct TestAllocator;
+    impl Drop for TestAllocator {
+        fn drop(&mut self) {
+            let size = ALLOC_SIZE.load(Ordering::Acquire);
+            assert_eq!(
+                size, 0,
+                "Memory leak detected: {} bytes still allocated",
+                size
+            );
+        }
+    }
 
     unsafe impl Allocator for TestAllocator {
         fn alloc(&mut self, size: usize) -> *mut u8 {
             unsafe {
                 let res = RustAllocator.alloc(size);
-                ALLOC_SIZE.fetch_add(RustAllocator::usable_size(res), Ordering::AcqRel);
+                let old = ALLOC_SIZE.fetch_add(RustAllocator::usable_size(res), Ordering::AcqRel);
+                println!(
+                    "ALLOC: requested {}, got {}, total allocated: {}",
+                    size,
+                    RustAllocator::usable_size(res),
+                    old + RustAllocator::usable_size(res)
+                );
                 res
             }
         }
@@ -139,24 +154,45 @@ mod test {
         fn calloc(&mut self, count: usize, size: usize) -> *mut u8 {
             unsafe {
                 let res = RustAllocator.calloc(count, size);
-                ALLOC_SIZE.fetch_add(RustAllocator::usable_size(res), Ordering::AcqRel);
+                let old = ALLOC_SIZE.fetch_add(RustAllocator::usable_size(res), Ordering::AcqRel);
+                println!(
+                    "CALLOC: requested {}, got {}, total allocated: {}",
+                    count * size,
+                    RustAllocator::usable_size(res),
+                    old + RustAllocator::usable_size(res)
+                );
                 res
             }
         }
 
         unsafe fn dealloc(&mut self, ptr: *mut u8) {
-            ALLOC_SIZE.fetch_sub(RustAllocator::usable_size(ptr), Ordering::AcqRel);
+            let old = ALLOC_SIZE.fetch_sub(RustAllocator::usable_size(ptr), Ordering::AcqRel);
+            println!(
+                "DEALLOC: freed {}, total allocated: {}",
+                RustAllocator::usable_size(ptr),
+                old - RustAllocator::usable_size(ptr)
+            );
             RustAllocator.dealloc(ptr);
         }
 
         unsafe fn realloc(&mut self, ptr: *mut u8, new_size: usize) -> *mut u8 {
             if !ptr.is_null() {
-                ALLOC_SIZE.fetch_sub(RustAllocator::usable_size(ptr), Ordering::AcqRel);
+                let old = ALLOC_SIZE.fetch_sub(RustAllocator::usable_size(ptr), Ordering::AcqRel);
+                println!(
+                    "REALLOC: freed {}, total allocated: {}",
+                    RustAllocator::usable_size(ptr),
+                    old - RustAllocator::usable_size(ptr)
+                );
             }
 
             let res = RustAllocator.realloc(ptr, new_size);
             if !res.is_null() {
-                ALLOC_SIZE.fetch_add(RustAllocator::usable_size(res), Ordering::AcqRel);
+                let old = ALLOC_SIZE.fetch_add(RustAllocator::usable_size(res), Ordering::AcqRel);
+                println!(
+                    "REALLOC: allocated {}, total allocated: {}",
+                    RustAllocator::usable_size(res),
+                    old + RustAllocator::usable_size(res)
+                );
             }
             res
         }
@@ -169,10 +205,10 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_gc_working_correctly() {
-        let rt = Runtime::new_with_alloc(TestAllocator).unwrap();
-        let context = Context::full(&rt).unwrap();
+    #[tokio::test]
+    async fn test_gc_working_correctly() {
+        let rt = AsyncRuntime::new_with_alloc(TestAllocator).unwrap();
+        let context = AsyncContext::full(&rt).await.unwrap();
 
         let before = ALLOC_SIZE.load(Ordering::Acquire);
 
