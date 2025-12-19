@@ -14,7 +14,6 @@ repository = "https://github.com/DelSkayn/rquickjs.git"
 
 [workspace]
 members = [
-  "sys",
   "core",
   "macro",
   "examples/native-module",
@@ -25,7 +24,7 @@ members = [
 [workspace.dependencies]
 rquickjs-core = { version = "0.10.0", path = "core", default-features = false }
 rquickjs-macro = { version = "0.10.0", path = "macro", default-features = false }
-rquickjs-sys = { version = "0.10.0", path = "sys", default-features = false }
+rquickjs-sys = { version = "0.10.0", git = "https://github.com/DelSkayn/rquickjs", rev = "111951b1a31075bdff46684e0ff29f37ff2a04b2", default-features = false }
 rquickjs = { version = "0.10.0", path = "./", default-features = false }
 
 [dependencies]
