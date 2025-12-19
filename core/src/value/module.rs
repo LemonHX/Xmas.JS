@@ -1,7 +1,7 @@
 //! Types for loading and handling JS modules.
 
-use alloc::{ffi::CString, vec::Vec};
-use core::{
+use std::{ffi::CString, vec::Vec};
+use std::{
     ffi::CStr,
     marker::PhantomData,
     mem::MaybeUninit,
@@ -543,22 +543,24 @@ mod test {
         }
     }
 
-    #[test]
-    fn from_rust_def() {
+    #[tokio::test]
+    async fn from_rust_def() {
         test_with(|ctx| {
             Module::declare_def::<RustModule, _>(ctx, "rust_mod").unwrap();
         })
+        .await
     }
 
-    #[test]
-    fn from_rust_def_eval() {
+    #[tokio::test]
+    async fn from_rust_def_eval() {
         test_with(|ctx| {
             let _ = Module::evaluate_def::<RustModule, _>(ctx, "rust_mod").unwrap();
         })
+        .await
     }
 
-    #[test]
-    fn import_native() {
+    #[tokio::test]
+    async fn import_native() {
         test_with(|ctx| {
             Module::declare_def::<RustModule, _>(ctx.clone(), "rust_mod").unwrap();
             Module::evaluate(
@@ -580,11 +582,11 @@ mod test {
                 .to_string()
                 .unwrap();
             assert_eq!(text.as_str(), "world");
-        })
+        }).await
     }
 
-    #[test]
-    fn import_async() {
+    #[tokio::test]
+    async fn import_async() {
         test_with(|ctx| {
             Module::declare(
                 ctx.clone(),
@@ -615,27 +617,27 @@ mod test {
                 .to_string()
                 .unwrap();
             assert_eq!(text.as_str(), "world");
-        })
+        }).await
     }
 
-    #[test]
-    fn import() {
+    #[tokio::test]
+    async fn import() {
         test_with(|ctx| {
             Module::declare_def::<RustModule, _>(ctx.clone(), "rust_mod").unwrap();
             let val: Object = Module::import(&ctx, "rust_mod").unwrap().finish().unwrap();
             let hello: StdString = val.get("hello").unwrap();
 
             assert_eq!(&hello, "world");
-        })
+        }).await
     }
 
-    #[test]
+    #[tokio::test]
     #[should_panic(expected = "kaboom")]
-    fn import_crashing() {
-        use crate::{CatchResultExt, Context, Runtime};
+    async fn import_crashing() {
+        use crate::{CatchResultExt, AsyncContext, AsyncRuntime};
 
-        let runtime = Runtime::new().unwrap();
-        let ctx = Context::full(&runtime).unwrap();
+        let runtime = AsyncRuntime::new().unwrap();
+        let ctx = AsyncContext::full(&runtime).await.unwrap();
         ctx.with(|ctx| {
             Module::declare_def::<CrashingRustModule, _>(ctx.clone(), "bad_rust_mod").unwrap();
             let _: Value = Module::import(&ctx, "bad_rust_mod")
@@ -644,13 +646,13 @@ mod test {
                 .finish()
                 .catch(&ctx)
                 .unwrap();
-        });
+        }).await;
     }
 
-    #[test]
-    fn eval_crashing_module_inside_module() {
-        let runtime = Runtime::new().unwrap();
-        let ctx = Context::full(&runtime).unwrap();
+    #[tokio::test]
+    async fn eval_crashing_module_inside_module() {
+        let runtime = AsyncRuntime::new().unwrap();
+        let ctx = AsyncContext::full(&runtime).await.unwrap();
 
         ctx.with(|ctx| {
             let globals = ctx.globals();
@@ -664,13 +666,13 @@ mod test {
                 .unwrap()
                 .finish::<()>();
             assert!(res.is_err())
-        });
+        }).await
     }
 
-    #[test]
-    fn access_before_fully_evaluating_module() {
-        let runtime = Runtime::new().unwrap();
-        let ctx = Context::full(&runtime).unwrap();
+    #[tokio::test]
+    async fn access_before_fully_evaluating_module() {
+        let runtime = AsyncRuntime::new().unwrap();
+        let ctx = AsyncContext::full(&runtime).await.unwrap();
 
         ctx.with(|ctx| {
             let decl = Module::declare(
@@ -696,7 +698,7 @@ mod test {
             promise.finish::<()>().unwrap();
 
             assert_eq!(ns.get::<_, std::string::String>("res").unwrap(), "OK");
-        });
+        }).await
     }
 
     #[test]

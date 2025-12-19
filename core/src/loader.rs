@@ -1,8 +1,8 @@
 //! Loaders and resolvers for loading JS modules.
 
-use alloc::boxed::Box;
-use alloc::string::String;
-use core::{ffi::CStr, ptr};
+use std::boxed::Box;
+use std::string::String;
+use std::{ffi::CStr, ptr};
 
 use crate::{module::Declared, qjs, Ctx, Module, Result};
 
@@ -10,25 +10,19 @@ mod builtin_loader;
 mod builtin_resolver;
 pub mod bundle;
 mod compile;
-#[cfg(feature = "std")]
 mod file_resolver;
 mod module_loader;
 mod script_loader;
 mod util;
 
-#[cfg(feature = "dyn-load")]
 mod native_loader;
 
 pub use builtin_loader::BuiltinLoader;
 pub use builtin_resolver::BuiltinResolver;
 pub use compile::Compile;
-#[cfg(feature = "std")]
 pub use file_resolver::FileResolver;
 pub use module_loader::ModuleLoader;
 pub use script_loader::ScriptLoader;
-
-#[cfg(feature = "dyn-load")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "dyn-load")))]
 pub use native_loader::NativeLoader;
 
 #[cfg(feature = "phf")]
@@ -188,7 +182,7 @@ macro_rules! loader_impls {
                 #[allow(non_snake_case)]
                 #[allow(unused_mut)]
                 fn resolve<'js>(&mut self, _ctx: &Ctx<'js>, base: &str, name: &str) -> Result<String> {
-                    let mut messages = alloc::vec::Vec::<alloc::string::String>::new();
+                    let mut messages = std::vec::Vec::<std::string::String>::new();
                     let ($($t,)*) = self;
                     $(
                         match $t.resolve(_ctx, base, name) {
@@ -215,7 +209,7 @@ macro_rules! loader_impls {
                 #[allow(non_snake_case)]
                 #[allow(unused_mut)]
                 fn load<'js>(&mut self, _ctx: &Ctx<'js>, name: &str) -> Result<Module<'js, Declared>> {
-                    let mut messages = alloc::vec::Vec::<alloc::string::String>::new();
+                    let mut messages = std::vec::Vec::<std::string::String>::new();
                     let ($($t,)*) = self;
                     $(
                         match $t.load(_ctx, name) {
@@ -240,7 +234,7 @@ loader_impls!(A B C D E F G H);
 
 #[cfg(test)]
 mod test {
-    use crate::{CatchResultExt, Context, Ctx, Error, Module, Result, Runtime};
+    use crate::{CatchResultExt, AsyncContext, Ctx, Error, Module, Result, AsyncRuntime};
 
     use super::{Loader, Resolver};
 
@@ -279,11 +273,11 @@ mod test {
         }
     }
 
-    #[test]
-    fn custom_loader() {
-        let rt = Runtime::new().unwrap();
-        let ctx = Context::full(&rt).unwrap();
-        rt.set_loader(TestResolver, TestLoader);
+    #[tokio::test]
+    async fn custom_loader() {
+        let rt = AsyncRuntime::new().unwrap();
+        let ctx = AsyncContext::full(&rt).await.unwrap();
+        rt.set_loader(TestResolver, TestLoader).await;
         ctx.with(|ctx| {
             Module::evaluate(
                 ctx,
@@ -296,15 +290,15 @@ mod test {
             .unwrap()
             .finish::<()>()
             .unwrap();
-        })
+        }).await;
     }
 
-    #[test]
+    #[tokio::test]
     #[should_panic(expected = "Error resolving module")]
-    fn resolving_error() {
-        let rt = Runtime::new().unwrap();
-        let ctx = Context::full(&rt).unwrap();
-        rt.set_loader(TestResolver, TestLoader);
+    async fn resolving_error() {
+        let rt = AsyncRuntime::new().unwrap();
+        let ctx = AsyncContext::full(&rt).await.unwrap();
+        rt.set_loader(TestResolver, TestLoader).await;
         ctx.with(|ctx| {
             Module::evaluate(
                 ctx.clone(),
@@ -318,6 +312,6 @@ mod test {
             .finish::<()>()
             .catch(&ctx)
             .expect("Unable to resolve");
-        })
+        }).await;
     }
 }

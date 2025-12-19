@@ -34,16 +34,16 @@ impl<'js> BigInt<'js> {
 #[cfg(test)]
 mod test {
     use crate::*;
-    #[test]
-    fn from_javascript() {
+    #[tokio::test]
+    async fn from_javascript() {
         test_with(|ctx| {
             let s: BigInt = ctx.eval(format!("{}n", i64::MAX)).unwrap();
             assert_eq!(s.to_i64().unwrap(), i64::MAX);
-        })
+        }).await;
     }
 
-    #[test]
-    fn to_javascript() {
+    #[tokio::test]
+    async fn to_javascript() {
         test_with(|ctx| {
             let bigint = BigInt::from_i64(ctx.clone(), i64::MAX).unwrap();
             let func: Function = ctx
@@ -57,6 +57,6 @@ mod test {
                 ))
                 .unwrap();
             func.call::<_, ()>((bigint,)).unwrap();
-        })
+        }).await;
     }
 }

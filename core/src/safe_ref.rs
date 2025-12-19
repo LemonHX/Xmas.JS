@@ -1,14 +1,14 @@
 #[cfg(not(feature = "parallel"))]
-use core::cell::RefCell as Cell;
+use std::cell::RefCell as Cell;
 
 #[cfg(feature = "parallel")]
 use std::sync::Mutex as Cell;
 
 #[cfg(not(feature = "parallel"))]
-pub use core::cell::RefMut as Lock;
+pub use std::cell::RefMut as Lock;
 
 #[cfg(not(feature = "parallel"))]
-pub use alloc::rc::{Rc as Ref, Weak};
+pub use std::rc::{Rc as Ref, Weak};
 
 #[cfg(feature = "parallel")]
 pub use std::sync::{Arc as Ref, MutexGuard as Lock, Weak};

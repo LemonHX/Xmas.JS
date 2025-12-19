@@ -2,20 +2,18 @@
 use crate::{
     atom::PredefinedAtom, qjs, Ctx, Error, FromJs, Function, IntoJs, Object, Result, Value,
 };
-#[cfg(feature = "futures")]
+
 use crate::{function::This, CatchResultExt, CaughtError};
-#[cfg(feature = "futures")]
-use alloc::rc::Rc;
-#[cfg(feature = "futures")]
-use core::{
+
+use std::rc::Rc;
+
+use std::{
     cell::RefCell,
     future::Future,
     marker::PhantomData,
     pin::Pin,
     task::{Context as TaskContext, Poll, Waker},
 };
-#[cfg(all(feature = "std", feature = "futures"))]
-use std::println;
 
 /// The execution state of a promise.
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
@@ -44,7 +42,7 @@ pub struct Promise<'js>(pub(crate) Object<'js>);
 
 impl<'js> Promise<'js> {
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
-    #[cfg(feature = "futures")]
+    
     pub fn wrap_future<F, R>(ctx: &Ctx<'js>, future: F) -> Result<Self>
     where
         F: Future<Output = R> + 'js,
@@ -70,7 +68,7 @@ impl<'js> Promise<'js> {
             };
             // TODO figure out something better to do here.
             if let Err(_e) = err {
-                #[cfg(feature = "std")]
+                
                 println!("promise handle function returned error:{}", _e);
             }
         };
@@ -148,7 +146,7 @@ impl<'js> Promise<'js> {
 
     /// Wrap the promise into a struct which can be polled as a rust future.
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
-    #[cfg(feature = "futures")]
+    
     pub fn into_future<T>(self) -> PromiseFuture<'js, T>
     where
         T: FromJs<'js>,
@@ -163,7 +161,7 @@ impl<'js> Promise<'js> {
 
 /// Future-aware promise
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
-#[cfg(feature = "futures")]
+
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 #[derive(Debug)]
 pub struct PromiseFuture<'js, T> {
@@ -173,10 +171,10 @@ pub struct PromiseFuture<'js, T> {
 }
 
 // Nothing is actually pinned so promise future is unpin.
-#[cfg(feature = "futures")]
+
 impl<'js, T> Unpin for PromiseFuture<'js, T> {}
 
-#[cfg(feature = "futures")]
+
 impl<'js, T> Future for PromiseFuture<'js, T>
 where
     T: FromJs<'js>,
@@ -219,17 +217,17 @@ where
 /// Wrapper for futures to convert to JS promises
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
 #[repr(transparent)]
-#[cfg(feature = "futures")]
+
 pub struct Promised<T>(pub T);
 
-#[cfg(feature = "futures")]
+
 impl<T> From<T> for Promised<T> {
     fn from(future: T) -> Self {
         Self(future)
     }
 }
 
-#[cfg(feature = "futures")]
+
 impl<'js, T, R> IntoJs<'js> for Promised<T>
 where
     T: Future<Output = R> + 'js,
@@ -314,7 +312,7 @@ impl<'js> MaybePromise<'js> {
     /// otherwise it will handle the promise like the future returned from
     /// [`Promise::into_future`].
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
-    #[cfg(feature = "futures")]
+    
     pub fn into_future<T: FromJs<'js>>(self) -> MaybePromiseFuture<'js, T> {
         if self.0.is_promise() {
             let fut = self.0.into_promise().unwrap().into_future();
@@ -327,20 +325,20 @@ impl<'js> MaybePromise<'js> {
 
 /// Future-aware maybe promise
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
-#[cfg(feature = "futures")]
+
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 #[derive(Debug)]
 pub struct MaybePromiseFuture<'js, T>(MaybePromiseFutureInner<'js, T>);
 
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
-#[cfg(feature = "futures")]
+
 #[derive(Debug)]
 enum MaybePromiseFutureInner<'js, T> {
     Ready(Value<'js>),
     Future(PromiseFuture<'js, T>),
 }
 
-#[cfg(feature = "futures")]
+
 impl<'js, T> Future for MaybePromiseFuture<'js, T>
 where
     T: FromJs<'js>,
@@ -358,27 +356,26 @@ where
 #[cfg(test)]
 mod test {
     use std::sync::atomic::{AtomicBool, Ordering};
-    #[cfg(feature = "futures")]
+    
     use std::time::Duration;
 
     use super::Promise;
-    #[cfg(feature = "futures")]
+    
     use crate::{
         async_with, function::Async, promise::Promised, AsyncContext, AsyncRuntime, CaughtError,
         Result,
     };
     use crate::{
-        function::Func, prelude::This, promise::PromiseState, CatchResultExt, Context, Function,
-        Runtime,
+        function::Func, prelude::This, promise::PromiseState, CatchResultExt,Function,
     };
 
-    #[cfg(feature = "futures")]
+    
     async fn set_timeout<'js>(cb: Function<'js>, number: f64) -> Result<()> {
         tokio::time::sleep(Duration::from_secs_f64(number / 1000.0)).await;
         cb.call::<_, ()>(())
     }
 
-    #[cfg(feature = "futures")]
+    
     #[tokio::test]
     async fn promise() {
         let rt = AsyncRuntime::new().unwrap();
@@ -430,7 +427,7 @@ mod test {
         .await
     }
 
-    #[cfg(feature = "futures")]
+    
     #[tokio::test]
     async fn promised() {
         use crate::Exception;
@@ -483,12 +480,12 @@ mod test {
         .await
     }
 
-    #[test]
-    fn promise_then() {
+    #[tokio::test]
+    async fn promise_then() {
         static DID_EXECUTE: AtomicBool = AtomicBool::new(false);
 
-        let rt = Runtime::new().unwrap();
-        let ctx = Context::full(&rt).unwrap();
+        let rt = AsyncRuntime::new().unwrap();
+        let ctx = AsyncContext::full(&rt).await.unwrap();
 
         ctx.with(|ctx| {
             let (promise, resolve, _) = Promise::new(&ctx).unwrap();
@@ -514,6 +511,6 @@ mod test {
             while ctx.execute_pending_job() {}
 
             assert!(DID_EXECUTE.load(Ordering::SeqCst));
-        })
+        }).await
     }
 }

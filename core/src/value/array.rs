@@ -1,7 +1,7 @@
 //! JavaScript array types.
 
 use crate::{atom::PredefinedAtom, qjs, Ctx, FromJs, IntoJs, Object, Result, Value};
-use core::{iter::FusedIterator, marker::PhantomData};
+use std::{iter::FusedIterator, marker::PhantomData};
 
 use super::convert::FromIteratorJs;
 
@@ -201,8 +201,8 @@ mod test {
         });
     }
 
-    #[test]
-    fn into_object() {
+    #[tokio::test]
+    async fn into_object() {
         test_with(|ctx| {
             let val: Array = ctx
                 .eval(
@@ -214,11 +214,11 @@ mod test {
                 .unwrap();
             let object = val.into_object();
             assert_eq!(object.get::<_, i32>(0).unwrap(), 1);
-        })
+        }).await;
     }
 
-    #[test]
-    fn into_iter() {
+    #[tokio::test]
+    async fn into_iter() {
         test_with(|ctx| {
             let val: Array = ctx
                 .eval(
@@ -232,11 +232,11 @@ mod test {
             assert_eq!(i8::from_js(&ctx, elems[0].clone()).unwrap(), 1);
             assert_eq!(StdString::from_js(&ctx, elems[1].clone()).unwrap(), "abcd");
             assert!(bool::from_js(&ctx, elems[2].clone()).unwrap());
-        })
+        }).await
     }
 
-    #[test]
-    fn iter() {
+    #[tokio::test]
+    async fn iter() {
         test_with(|ctx| {
             let val: Array = ctx
                 .eval(
@@ -251,11 +251,11 @@ mod test {
             assert_eq!(elems[1], "b");
             assert_eq!(elems[2], "");
             assert_eq!(elems[3], "cdef");
-        })
+        }).await
     }
 
-    #[test]
-    fn collect_js() {
+    #[tokio::test]
+    async fn collect_js() {
         test_with(|ctx| {
             let array = [1i32, 2, 3]
                 .iter()
@@ -266,6 +266,6 @@ mod test {
             assert_eq!(i32::from_js(&ctx, array.get(0).unwrap()).unwrap(), 1);
             assert_eq!(i32::from_js(&ctx, array.get(1).unwrap()).unwrap(), 2);
             assert_eq!(i32::from_js(&ctx, array.get(2).unwrap()).unwrap(), 3);
-        })
+        }).await
     }
 }

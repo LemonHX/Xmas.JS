@@ -1,5 +1,5 @@
 use crate::{qjs, Ctx, Error, Result, StdString, Value};
-use core::{ffi::c_char, mem, ptr::NonNull, slice, str};
+use std::{ffi::c_char, mem, ptr::NonNull, slice, str};
 
 /// Rust representation of a JavaScript string.
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -105,20 +105,20 @@ impl<'js> AsRef<str> for CString<'js> {
         self.as_str()
     }
 }
-#[cfg(feature = "std")]
+
 impl<'js> AsRef<std::path::Path> for CString<'js> {
     fn as_ref(&self) -> &std::path::Path {
         std::path::Path::new(self.as_str())
     }
 }
-impl<'js> core::ops::Deref for CString<'js> {
+impl<'js> std::ops::Deref for CString<'js> {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
         self.as_str()
     }
 }
-#[cfg(feature = "std")]
+
 impl<'js> AsRef<std::ffi::OsStr> for CString<'js> {
     fn as_ref(&self) -> &std::ffi::OsStr {
         self.as_str().as_ref()
@@ -135,9 +135,9 @@ impl<'js> PartialEq for CString<'js> {
     }
 }
 impl<'js> Eq for CString<'js> {}
-impl<'js> core::hash::Hash for CString<'js> {
-    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-        core::hash::Hash::hash(self.as_str(), state)
+impl<'js> std::hash::Hash for CString<'js> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::hash::Hash::hash(self.as_str(), state)
     }
 }
 

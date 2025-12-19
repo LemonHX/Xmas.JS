@@ -1,14 +1,15 @@
 use std::io::Write;
 
-use rquickjs::{CatchResultExt, Context, Function, Object, Result, Runtime, Value};
+use rquickjs::{CatchResultExt, AsyncContext, Function, Object, Result, AsyncRuntime, Value};
 
 fn print(s: String) {
     println!("{s}");
 }
 
-fn main() -> Result<()> {
-    let rt = Runtime::new()?;
-    let ctx = Context::full(&rt)?;
+#[tokio::main]
+async fn main() -> Result<()> {
+    let rt = AsyncRuntime::new()?;
+    let ctx = AsyncContext::full(&rt).await?;
 
     ctx.with(|ctx| -> Result<()> {
         let global = ctx.globals();
@@ -38,7 +39,7 @@ globalThis.console = {
                 .catch(&ctx)
                 .unwrap_or_else(|err| println!("{err}"));
         }
-    })?;
+    }).await?;
 
     Ok(())
 }

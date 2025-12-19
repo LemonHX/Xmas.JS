@@ -8,8 +8,11 @@ publish = false
 [dependencies.rquickjs]
 path = "../.."
 default-features = false
-features = ["futures", "rust-alloc", "loader", "dyn-load"]
+features = ["futures"]
 
 [features]
 default = ["macro"]
 macro = ["rquickjs/macro"]
+
+[dependencies]
+tokio = { version = "1", default-features = false, features = ["full"] }

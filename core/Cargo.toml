@@ -21,11 +21,9 @@ indexmap = { version = "2", optional = true }
 either = { version = "1", optional = true }
 async-lock = { version = "3", optional = true, default-features = false }
 parking_lot = { version = "0.12", optional = true }
-chrono = { version = "0.4", optional = true }
-dlopen2 = { version = "0.8", optional = true }
-relative-path = { version = "2.0", optional = true, default-features = false, features = [
-  "alloc",
-] }
+chrono = { version = "0.4" }
+dlopen2 = { version = "0.8" }
+relative-path = { version = "2.0" }
 
 [dev-dependencies]
 futures-rs = { package = "futures", version = "0.3" }
@@ -40,44 +38,34 @@ approx = "0.5"
 trybuild = "1"
 
 [features]
-default = ["std"]
-
-std = ["relative-path?/std"]
+default = []
 
 # Almost all features excluding "parallel" and support for async runtimes
-full = ["std", "chrono", "loader", "dyn-load", "either", "indexmap"]
+full = [ "either", "indexmap"]
 
 # Almost all features excluding "parallel"
 full-async = ["full", "futures"]
-
-# Enable conversion of chrono types to/from JS
-chrono = ["dep:chrono"]
 
 # Use bindgen to generate bindings at compile-type
 # otherwise bundled bindings will be used
 bindgen = ["rquickjs-sys/bindgen"]
 
 # Enable support of parallel execution
-parallel = ["std", "tokio/rt-multi-thread", "parking_lot"]
-
-# Enable user-defined module loader support
-loader = ["relative-path"]
-
-# Enable native module loading support
-dyn-load = ["loader", "dlopen2"]
-
-# Use Rust global allocator by default
-# otherwise libc allocator will be used
-rust-alloc = []
-
-# Enable user-defined classes support
-
+parallel = ["tokio/rt-multi-thread", "parking_lot"]
 
 # Enable interop between Rust futures and JS Promises
 futures = ["dep:async-lock"]
 
 # Allows transferring objects between different contexts of the same runtime.
 multi-ctx = []
+
+# Enable compilation tests
+compile-tests = []
+
+# Enable unstable doc-cfg feature (for docs.rs)
+doc-cfg = []
+
+
 
 # Enable QuickJS dumps for debug
 dump-bytecode = ["rquickjs-sys/dump-bytecode"]
@@ -96,15 +84,3 @@ dump-read-object = ["rquickjs-sys/dump-read-object"]
 
 # Disable QuickJS for faster performance
 disable-assertions = ["rquickjs-sys/disable-assertions"]
-
-# Enable compilation tests
-compile-tests = []
-
-# Enable unstable doc-cfg feature (for docs.rs)
-doc-cfg = []
-
-# Deprecated features
-properties = []
-classes = []
-array-buffer = []
-allocator = []

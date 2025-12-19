@@ -1,10 +1,10 @@
-use alloc::vec::Vec;
+use std::vec::Vec;
 
 use crate::{
     atom::PredefinedAtom, qjs, ArrayBuffer, Ctx, Error, FromJs, IntoJs, JsLifetime, Object, Result,
     Value,
 };
-use core::{
+use std::{
     assert, debug_assert_eq, fmt,
     marker::PhantomData,
     mem::{self, MaybeUninit},
@@ -369,8 +369,8 @@ mod test {
         });
     }
 
-    #[test]
-    fn into_javascript_i8() {
+    #[tokio::test]
+    async fn into_javascript_i8() {
         test_with(|ctx| {
             let val = TypedArray::<i8>::new(ctx.clone(), [-1i8, 0, 22, 5]).unwrap();
             ctx.globals().set("v", val).unwrap();
@@ -388,11 +388,11 @@ mod test {
                 )
                 .unwrap();
             assert_eq!(res, 0);
-        })
+        }).await
     }
 
-    #[test]
-    fn from_javascript_f32() {
+    #[tokio::test]
+    async fn from_javascript_f32() {
         test_with(|ctx| {
             let val: TypedArray<f32> = ctx
                 .eval(
@@ -403,11 +403,11 @@ mod test {
                 .unwrap();
             assert_eq!(val.len(), 3);
             assert_eq!(val.as_ref() as &[f32], &[0.5, -5.25, 123.125]);
-        });
+        }).await;
     }
 
-    #[test]
-    fn into_javascript_f32() {
+    #[tokio::test]
+    async fn into_javascript_f32() {
         test_with(|ctx| {
             let val = TypedArray::<f32>::new(ctx.clone(), [-1.5, 0.0, 2.25]).unwrap();
             ctx.globals().set("v", val).unwrap();
@@ -423,11 +423,11 @@ mod test {
                 )
                 .unwrap();
             assert_eq!(res, 0);
-        })
+        }).await
     }
 
-    #[test]
-    fn as_bytes() {
+    #[tokio::test]
+    async fn as_bytes() {
         test_with(|ctx| {
             let val: TypedArray<u32> = ctx
                 .eval(
@@ -443,11 +443,11 @@ mod test {
             res[4..].copy_from_slice(&bytes_1);
 
             assert_eq!(val.as_bytes().unwrap(), &res)
-        });
+        }).await;
     }
 
-    #[test]
-    fn is_typed_array() {
+    #[tokio::test]
+    async fn is_typed_array() {
         test_with(|ctx| {
             let val: Value = ctx
                 .eval(
@@ -462,6 +462,6 @@ mod test {
 
             let obj = Object::new(ctx).unwrap();
             assert!(!obj.is_typed_array::<u8>());
-        });
+        }).await;
     }
 }

@@ -4,7 +4,7 @@ use crate::{
     convert::FromIteratorJs, qjs, Array, Atom, Ctx, FromAtom, FromJs, IntoAtom, IntoJs, Result,
     Value,
 };
-use core::{iter::FusedIterator, marker::PhantomData, mem};
+use std::{iter::FusedIterator, marker::PhantomData, mem};
 
 mod property;
 pub use property::{Accessor, AsProperty, Property, PropertyFlags};
@@ -609,8 +609,8 @@ where
 mod test {
     use crate::*;
 
-    #[test]
-    fn from_javascript() {
+    #[tokio::test]
+    async fn from_javascript() {
         test_with(|ctx| {
             let val: Object = ctx
                 .eval(
@@ -635,11 +635,11 @@ mod test {
             val.remove("hallo").unwrap();
             let text: Option<StdString> = val.get("hallo").unwrap();
             assert_eq!(text, None);
-        });
+        }).await;
     }
 
-    #[test]
-    fn types() {
+    #[tokio::test]
+    async fn types() {
         test_with(|ctx| {
             let val: Object = ctx
                 .eval(
@@ -668,11 +668,11 @@ mod test {
             assert!(val.get::<_, Object>("func_2").unwrap().is_function());
             assert!(!val.get::<_, Object>("obj_1").unwrap().is_function());
             assert!(!val.get::<_, Object>("obj_1").unwrap().is_array());
-        })
+        }).await
     }
 
-    #[test]
-    fn own_keys_iter() {
+    #[tokio::test]
+    async fn own_keys_iter() {
         test_with(|ctx| {
             let val: Object = ctx
                 .eval(
@@ -692,11 +692,11 @@ mod test {
             assert_eq!(keys[1], "str");
             assert_eq!(keys[2], "arr");
             assert_eq!(keys[3], "");
-        })
+        }).await
     }
 
-    #[test]
-    fn own_props_iter() {
+    #[tokio::test]
+    async fn own_props_iter() {
         test_with(|ctx| {
             let val: Object = ctx
                 .eval(
@@ -720,11 +720,11 @@ mod test {
             assert_eq!(pairs[1].1, "abc");
             assert_eq!(pairs[2].0, "");
             assert_eq!(pairs[2].1, "def");
-        })
+        }).await
     }
 
-    #[test]
-    fn into_iter() {
+    #[tokio::test]
+    async fn into_iter() {
         test_with(|ctx| {
             let val: Object = ctx
                 .eval(
@@ -751,11 +751,11 @@ mod test {
                 Undefined::from_js(&ctx, pairs[3].1.clone()).unwrap(),
                 Undefined
             );
-        })
+        }).await
     }
 
-    #[test]
-    fn iter_take() {
+    #[tokio::test]
+    async fn iter_take() {
         test_with(|ctx| {
             let val: Object = ctx
                 .eval(
@@ -776,11 +776,11 @@ mod test {
                 .unwrap();
             assert_eq!(keys.len(), 1);
             assert_eq!(keys[0], "123");
-        })
+        }).await
     }
 
-    #[test]
-    fn collect_js() {
+    #[tokio::test]
+    async fn collect_js() {
         test_with(|ctx| {
             let object = [("a", "bc"), ("$_", ""), ("", "xyz")]
                 .iter()
@@ -799,6 +799,6 @@ mod test {
                 StdString::from_js(&ctx, object.get("").unwrap()).unwrap(),
                 "xyz"
             );
-        })
+        }).await
     }
 }

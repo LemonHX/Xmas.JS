@@ -22,6 +22,7 @@ mod macro_tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn macros() {
+        todo!("not fixed yet");
         let t = trybuild::TestCases::new();
         t.pass("tests/macros/pass_*.rs");
         #[cfg(feature = "compile-tests")]

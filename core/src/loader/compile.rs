@@ -2,14 +2,12 @@ use crate::{
     loader::{util::resolve_simple, Loader, Resolver},
     Ctx, Lock, Module, Mut, Ref, Result, WriteOptions,
 };
-use alloc::{string::String, vec::Vec};
-use core::{
+use std::{string::String, vec::Vec};
+use std::{
     iter::FusedIterator,
     ops::{Deref, DerefMut},
 };
-#[cfg(not(feature = "std"))]
-use hashbrown::{hash_map::Iter as HashMapIter, HashMap};
-#[cfg(feature = "std")]
+
 use std::collections::{hash_map::Iter as HashMapIter, HashMap};
 
 /// Modules compiling data

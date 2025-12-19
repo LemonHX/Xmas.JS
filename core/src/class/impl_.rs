@@ -1,7 +1,7 @@
 //! Helper classes and functions for use inside the macros.
 
 use crate::{value::Constructor, Ctx, Object, Result};
-use core::marker::PhantomData;
+use std::marker::PhantomData;
 
 /// Trait used for borrow specialization for implementing methods without access to the class.
 pub trait MethodImplementor<T>: Sized {

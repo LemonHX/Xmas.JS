@@ -1,4 +1,4 @@
-use alloc::string::String as StdString;
+use std::string::String as StdString;
 
 use crate::{atom::PredefinedAtom, Ctx, Error, FromJs, Function, IntoJs, Object, Result, Value};
 

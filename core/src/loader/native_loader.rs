@@ -1,12 +1,11 @@
 use crate::{loader::util::check_extensions, module::ModuleLoadFn, Ctx, Error, Module, Result};
-use alloc::{string::String, vec::Vec};
+use std::{string::String, vec::Vec};
 
 use super::Loader;
 
 /// The native module loader
 ///
 /// This loader can be used as the nested backing loader in user-defined loaders.
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "dyn-load")))]
 #[derive(Debug)]
 pub struct NativeLoader {
     extensions: Vec<String>,

@@ -1,15 +1,12 @@
-use alloc::boxed::Box;
-use core::fmt;
-use core::{
+use std::boxed::Box;
+use std::fmt;
+use std::{
     any::{Any, TypeId},
     cell::{Cell, UnsafeCell},
     hash::{BuildHasherDefault, Hasher},
     mem::ManuallyDrop,
     ops::Deref,
 };
-#[cfg(not(feature = "std"))]
-use hashbrown::HashMap;
-#[cfg(feature = "std")]
 use std::collections::HashMap;
 
 use crate::JsLifetime;
@@ -19,13 +16,13 @@ where
     T: JsLifetime<'js> + Sized,
 {
     assert_eq!(
-        core::mem::size_of::<T>(),
-        core::mem::size_of::<T::Changed<'static>>(),
+        std::mem::size_of::<T>(),
+        std::mem::size_of::<T::Changed<'static>>(),
         "Invalid implementation of JsLifetime, size_of::<T>() != size_of::<T::Changed<'static>>()"
     );
     assert_eq!(
-        core::mem::align_of::<T>(),
-        core::mem::align_of::<T::Changed<'static>>(),
+        std::mem::align_of::<T>(),
+        std::mem::align_of::<T::Changed<'static>>(),
         "Invalid implementation of JsLifetime, align_of::<T>() != align_of::<T::Changed<'static>>()"
     );
 
@@ -49,13 +46,13 @@ where
     T: JsLifetime<'js> + Sized,
 {
     assert_eq!(
-        core::mem::size_of::<T>(),
-        core::mem::size_of::<T::Changed<'static>>(),
+        std::mem::size_of::<T>(),
+        std::mem::size_of::<T::Changed<'static>>(),
         "Invalid implementation of JsLifetime, size_of::<T>() != size_of::<T::Changed<'static>>()"
     );
     assert_eq!(
-        core::mem::align_of::<T>(),
-        core::mem::align_of::<T::Changed<'static>>(),
+        std::mem::align_of::<T>(),
+        std::mem::align_of::<T::Changed<'static>>(),
         "Invalid implementation of JsLifetime, align_of::<T>() != align_of::<T::Changed<'static>>()"
     );
 
@@ -66,13 +63,13 @@ unsafe fn from_static_ref<'a, 'js, T>(this: &'a T::Changed<'static>) -> &'a T
 where
     T: JsLifetime<'js> + Sized,
 {
-    core::mem::transmute(this)
+    std::mem::transmute(this)
 }
 
 pub struct UserDataError<T>(pub T);
 
 impl<T> fmt::Display for UserDataError<T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "tried to mutate the user data store while it was being referenced"
@@ -81,7 +78,7 @@ impl<T> fmt::Display for UserDataError<T> {
 }
 
 impl<T> fmt::Debug for UserDataError<T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fmt::Display::fmt(self, f)
     }
 }

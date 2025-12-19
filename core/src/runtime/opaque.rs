@@ -7,25 +7,22 @@ use super::{
     userdata::{UserDataGuard, UserDataMap},
     InterruptHandler, PromiseHook, PromiseHookType, RejectionTracker, UserDataError,
 };
-use alloc::boxed::Box;
-use core::{
+use std::boxed::Box;
+use std::{
     any::{Any, TypeId},
     cell::{Cell, UnsafeCell},
     marker::PhantomData,
     ptr,
 };
 
-#[cfg(feature = "std")]
+
 use std::collections::{hash_map::Entry, HashMap};
 
-#[cfg(not(feature = "std"))]
-use hashbrown::{hash_map::Entry, HashMap};
 
-#[cfg(feature = "futures")]
 use super::task_queue::{TaskPoll, TaskQueue};
 
-#[cfg(feature = "futures")]
-use core::{
+
+use std::{
     future::Future,
     task::{Context, Waker},
 };
@@ -53,7 +50,7 @@ pub(crate) struct Opaque<'js> {
 
     userdata: UserDataMap,
 
-    #[cfg(feature = "futures")]
+    
     queue: Option<UnsafeCell<TaskQueue>>,
 
     _marker: PhantomData<&'js ()>,
@@ -79,12 +76,12 @@ impl<'js> Opaque<'js> {
 
             _marker: PhantomData,
 
-            #[cfg(feature = "futures")]
+            
             queue: None,
         }
     }
 
-    #[cfg(feature = "futures")]
+    
     pub fn with_spawner() -> Self {
         let mut this = Opaque::new();
         this.queue = Some(UnsafeCell::new(TaskQueue::new()));
@@ -126,14 +123,14 @@ impl<'js> Opaque<'js> {
         &*(qjs::JS_GetRuntimeOpaque(rt).cast::<Self>())
     }
 
-    #[cfg(feature = "futures")]
+    
     fn queue(&self) -> &UnsafeCell<TaskQueue> {
         self.queue
             .as_ref()
             .expect("tried to use async function in non async runtime")
     }
 
-    #[cfg(feature = "futures")]
+    
     pub unsafe fn push<F>(&self, f: F)
     where
         F: Future<Output = ()>,
@@ -141,17 +138,17 @@ impl<'js> Opaque<'js> {
         (*self.queue().get()).push(f)
     }
 
-    #[cfg(feature = "futures")]
+    
     pub fn listen(&self, wake: Waker) {
         unsafe { (*self.queue().get()).listen(wake) };
     }
 
-    #[cfg(feature = "futures")]
+    
     pub fn spawner_is_empty(&self) -> bool {
         unsafe { (*self.queue().get()).is_empty() }
     }
 
-    #[cfg(feature = "futures")]
+    
     pub fn poll(&self, cx: &mut Context) -> TaskPoll {
         unsafe { (*self.queue().get()).poll(cx) }
     }
@@ -261,7 +258,7 @@ impl<'js> Opaque<'js> {
         self.interrupt_handler.get_mut().take();
         self.panic.take();
         self.prototypes.get_mut().clear();
-        #[cfg(feature = "futures")]
+        
         self.queue.take();
         self.userdata.clear()
     }

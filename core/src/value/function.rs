@@ -13,11 +13,11 @@ mod into_func;
 mod params;
 mod types;
 
-use alloc::{borrow::ToOwned as _, boxed::Box};
+use std::{borrow::ToOwned as _, boxed::Box};
 pub use args::{Args, IntoArg, IntoArgs};
 pub use ffi::RustFunction;
 pub use params::{FromParam, FromParams, ParamRequirement, Params, ParamsAccessor};
-#[cfg(feature = "futures")]
+
 pub use types::Async;
 pub use types::{Exhaustive, Flat, Func, FuncArg, MutFn, Null, OnceFn, Opt, Rest, This};
 
@@ -298,18 +298,18 @@ mod test {
     use crate::{prelude::*, *};
     use approx::assert_abs_diff_eq as assert_approx_eq;
 
-    #[test]
-    fn call_js_fn_with_no_args_and_no_return() {
+    #[tokio::test]
+    async fn call_js_fn_with_no_args_and_no_return() {
         test_with(|ctx| {
             let f: Function = ctx.eval("() => {}").unwrap();
 
             let _: () = ().apply(&f).unwrap();
             let _: () = f.call(()).unwrap();
-        })
+        }).await
     }
 
-    #[test]
-    fn call_js_fn_with_no_args_and_return() {
+    #[tokio::test]
+    async fn call_js_fn_with_no_args_and_return() {
         test_with(|ctx| {
             let f: Function = ctx.eval("() => 42").unwrap();
 
@@ -318,11 +318,11 @@ mod test {
 
             let res: i32 = f.call(()).unwrap();
             assert_eq!(res, 42);
-        })
+        }).await
     }
 
-    #[test]
-    fn call_js_fn_with_1_arg_and_return() {
+    #[tokio::test]
+    async fn call_js_fn_with_1_arg_and_return() {
         test_with(|ctx| {
             let f: Function = ctx.eval("a => a + 4").unwrap();
 
@@ -331,11 +331,11 @@ mod test {
 
             let res: i32 = f.call((1,)).unwrap();
             assert_eq!(res, 5);
-        })
+        }).await
     }
 
-    #[test]
-    fn call_js_fn_with_2_args_and_return() {
+    #[tokio::test]
+    async fn call_js_fn_with_2_args_and_return() {
         test_with(|ctx| {
             let f: Function = ctx.eval("(a, b) => a * b + 4").unwrap();
 
@@ -344,11 +344,11 @@ mod test {
 
             let res: i32 = f.call((5, 1)).unwrap();
             assert_eq!(res, 9);
-        })
+        }).await
     }
 
-    #[test]
-    fn call_js_fn_with_var_args_and_return() {
+    #[tokio::test]
+    async fn call_js_fn_with_var_args_and_return() {
         let res: Vec<i8> = test_with(|ctx| {
             let func: Function = ctx
                 .eval(
@@ -358,7 +358,7 @@ mod test {
                 )
                 .unwrap();
             func.call((Rest(vec![1, 2, 3]),)).unwrap()
-        });
+        }).await;
         assert_eq!(res.len(), 4);
         assert_eq!(res[0], 3);
         assert_eq!(res[1], 1);
@@ -366,8 +366,8 @@ mod test {
         assert_eq!(res[3], 3);
     }
 
-    #[test]
-    fn call_js_fn_with_rest_args_and_return() {
+    #[tokio::test]
+    async fn call_js_fn_with_rest_args_and_return() {
         let res: Vec<i8> = test_with(|ctx| {
             let func: Function = ctx
                 .eval(
@@ -377,7 +377,7 @@ mod test {
                 )
                 .unwrap();
             func.call((-2, -1, Rest(vec![1, 2]))).unwrap()
-        });
+        }).await;
         assert_eq!(res.len(), 5);
         assert_eq!(res[0], -2);
         assert_eq!(res[1], -1);
@@ -386,8 +386,8 @@ mod test {
         assert_eq!(res[4], 2);
     }
 
-    #[test]
-    fn call_js_fn_with_no_args_and_throw() {
+    #[tokio::test]
+    async fn call_js_fn_with_no_args_and_throw() {
         test_with(|ctx| {
             let f: Function = ctx
                 .eval("() => { throw new Error('unimplemented'); }")
@@ -399,11 +399,11 @@ mod test {
             } else {
                 panic!("Should throws");
             }
-        })
+        }).await
     }
 
-    #[test]
-    fn call_js_fn_with_this_and_no_args_and_return() {
+    #[tokio::test]
+    async fn call_js_fn_with_this_and_no_args_and_return() {
         test_with(|ctx| {
             let f: Function = ctx.eval("function f() { return this.val; } f").unwrap();
             let obj = Object::new(ctx).unwrap();
@@ -413,11 +413,11 @@ mod test {
             assert_eq!(res, 42);
             let res: i32 = f.call((This(obj),)).unwrap();
             assert_eq!(res, 42);
-        })
+        }).await
     }
 
-    #[test]
-    fn call_js_fn_with_this_and_1_arg_and_return() {
+    #[tokio::test]
+    async fn call_js_fn_with_this_and_1_arg_and_return() {
         test_with(|ctx| {
             let f: Function = ctx
                 .eval("function f(a) { return this.val * a; } f")
@@ -429,36 +429,36 @@ mod test {
             assert_eq!(res, 6);
             let res: i32 = f.call((This(obj), 3)).unwrap();
             assert_eq!(res, 9);
-        })
+        }).await
     }
 
-    #[test]
-    fn call_js_fn_with_1_arg_deferred() {
-        let rt = Runtime::new().unwrap();
-        let ctx = Context::full(&rt).unwrap();
-        assert!(!rt.is_job_pending());
+    #[tokio::test]
+    async fn call_js_fn_with_1_arg_deferred() {
+        let rt = AsyncRuntime::new().unwrap();
+        let ctx = AsyncContext::full(&rt).await.unwrap();
+        assert!(!rt.is_job_pending().await);
         ctx.with(|ctx| {
             let g = ctx.globals();
             let f: Function = ctx.eval("(obj) => { obj.called = true; }").unwrap();
             f.defer((g.clone(),)).unwrap();
             let c: Value = g.get("called").unwrap();
             assert_eq!(c.type_of(), Type::Undefined);
-        });
-        assert!(rt.is_job_pending());
-        rt.execute_pending_job().unwrap();
+        }).await;
+        assert!(rt.is_job_pending().await);
+        rt.execute_pending_job().await.unwrap();
         ctx.with(|ctx| {
             let g = ctx.globals();
             let c: Value = g.get("called").unwrap();
             assert_eq!(c.type_of(), Type::Bool);
-        });
+        }).await
     }
 
     fn test() {
         println!("test");
     }
 
-    #[test]
-    fn static_callback() {
+    #[tokio::test]
+    async fn static_callback() {
         test_with(|ctx| {
             let f = Function::new(ctx.clone(), test).unwrap();
             f.set_name("test").unwrap();
@@ -472,11 +472,11 @@ mod test {
             let get_name: Function = ctx.eval("a => a.name").unwrap();
             let name: StdString = get_name.call((f.clone(),)).unwrap();
             assert_eq!(name, "test");
-        })
+        }).await
     }
 
-    #[test]
-    fn const_callback() {
+    #[tokio::test]
+    async fn const_callback() {
         use std::sync::{Arc, Mutex};
         test_with(|ctx| {
             #[allow(clippy::mutex_atomic)]
@@ -499,11 +499,11 @@ mod test {
             let get_name: Function = ctx.eval("a => a.name").unwrap();
             let name: StdString = get_name.call((f.clone(),)).unwrap();
             assert_eq!(name, "test");
-        })
+        }).await
     }
 
-    #[test]
-    fn mutable_callback() {
+    #[tokio::test]
+    async fn mutable_callback() {
         test_with(|ctx| {
             let mut v = 0;
             let f = Function::new(
@@ -527,14 +527,14 @@ mod test {
             let get_name: Function = ctx.eval("a => a.name").unwrap();
             let name: StdString = get_name.call((f.clone(),)).unwrap();
             assert_eq!(name, "test");
-        })
+        }).await
     }
 
-    #[test]
+    #[tokio::test]
     #[should_panic(
         expected = "Error borrowing function: can't borrow a value as it is already borrowed"
     )]
-    fn recursively_called_mutable_callback() {
+    async fn recursively_called_mutable_callback() {
         test_with(|ctx| {
             let mut v = 0;
             let f = Function::new(
@@ -553,14 +553,14 @@ mod test {
             .unwrap();
             ctx.globals().set("foo", f.clone()).unwrap();
             f.call::<_, ()>(()).unwrap();
-        })
+        }).await
     }
 
-    #[test]
+    #[tokio::test]
     #[should_panic(
         expected = "Error borrowing function: tried to use a value, which can only be used once, again."
     )]
-    fn repeatedly_called_once_callback() {
+    async fn repeatedly_called_once_callback() {
         test_with(|ctx| {
             let mut v = 0;
             let f = Function::new(
@@ -574,11 +574,11 @@ mod test {
             ctx.globals().set("foo", f.clone()).unwrap();
             f.call::<_, ()>(()).catch(&ctx).unwrap();
             f.call::<_, ()>(()).catch(&ctx).unwrap();
-        })
+        }).await
     }
 
-    #[test]
-    fn multiple_const_callbacks() {
+    #[tokio::test]
+    async fn multiple_const_callbacks() {
         test_with(|ctx| {
             let globals = ctx.globals();
             globals.set("one", Func::new(|| 1f64)).unwrap();
@@ -589,11 +589,11 @@ mod test {
 
             let r: f64 = ctx.eval("neg(add(one(), 2))").unwrap();
             assert_approx_eq!(r, -3.0);
-        })
+        }).await
     }
 
-    #[test]
-    fn mutable_callback_which_can_fail() {
+    #[tokio::test]
+    async fn mutable_callback_which_can_fail() {
         test_with(|ctx| {
             let globals = ctx.globals();
             let mut id_alloc = 0;
@@ -618,11 +618,11 @@ mod test {
             let id: u32 = ctx.eval("new_id()").unwrap();
             assert_eq!(id, 3);
             let _err = ctx.eval::<u32, _>("new_id()").unwrap_err();
-        })
+        }).await
     }
 
-    #[test]
-    fn mutable_callback_with_ctx_which_reads_globals() {
+    #[tokio::test]
+    async fn mutable_callback_with_ctx_which_reads_globals() {
         test_with(|ctx| {
             let globals = ctx.globals();
             let mut id_alloc = 0;
@@ -650,11 +650,11 @@ mod test {
             assert_eq!(id, 12);
             let id: u32 = ctx.eval("new_id()").unwrap();
             assert_eq!(id, 13);
-        })
+        }).await
     }
 
-    #[test]
-    fn call_rust_fn_with_ctx_and_value() {
+    #[tokio::test]
+    async fn call_rust_fn_with_ctx_and_value() {
         test_with(|ctx| {
             let func = Func::from(|ctx, val| {
                 struct Args<'js>(Ctx<'js>, Value<'js>);
@@ -670,11 +670,11 @@ mod test {
             .unwrap();
             let val: StdString = ctx.globals().get("test_str").unwrap();
             assert_eq!(val, "test_str");
-        });
+        }).await
     }
 
-    #[test]
-    fn call_rust_fn_with_this_and_args() {
+    #[tokio::test]
+    async fn call_rust_fn_with_this_and_args() {
         let res: f64 = test_with(|ctx| {
             let func = Function::new(ctx.clone(), |this: This<Object>, a: f64, b: f64| {
                 let x: f64 = this.get("x").unwrap();
@@ -691,12 +691,12 @@ mod test {
                 "#,
             )
             .unwrap()
-        });
+        }).await;
         assert_eq!(res, 11.0);
     }
 
-    #[test]
-    fn apply_rust_fn_with_this_and_args() {
+    #[tokio::test]
+    async fn apply_rust_fn_with_this_and_args() {
         let res: f32 = test_with(|ctx| {
             let func = Function::new(ctx.clone(), |this: This<Object>, x: f32, y: f32| {
                 let a: f32 = this.get("a").unwrap();
@@ -712,12 +712,12 @@ mod test {
                 "#,
             )
             .unwrap()
-        });
+        }).await;
         assert_eq!(res, 11.0);
     }
 
-    #[test]
-    fn bind_rust_fn_with_this_and_call_with_args() {
+    #[tokio::test]
+    async fn bind_rust_fn_with_this_and_call_with_args() {
         let res: f32 = test_with(|ctx| {
             let func = Function::new(ctx.clone(), |this: This<Object>, x: f32, y: f32| {
                 let a: f32 = this.get("a").unwrap();
@@ -733,12 +733,12 @@ mod test {
                 "#,
             )
             .unwrap()
-        });
+        }).await;
         assert_eq!(res, 11.0);
     }
 
-    #[test]
-    fn call_rust_fn_with_var_args() {
+    #[tokio::test]
+    async fn call_rust_fn_with_var_args() {
         let res: Vec<i8> = test_with(|ctx| {
             let func = Function::new(ctx.clone(), |args: Rest<i8>| {
                 use std::iter::once;
@@ -754,7 +754,7 @@ mod test {
                 "#,
             )
             .unwrap()
-        });
+        }).await;
         assert_eq!(res.len(), 4);
         assert_eq!(res[0], 3);
         assert_eq!(res[1], 1);
@@ -762,8 +762,8 @@ mod test {
         assert_eq!(res[3], 3);
     }
 
-    #[test]
-    fn call_rust_fn_with_rest_args() {
+    #[tokio::test]
+    async fn call_rust_fn_with_rest_args() {
         let res: Vec<i8> = test_with(|ctx| {
             let func = Function::new(ctx.clone(), |arg1: i8, arg2: i8, args: Rest<i8>| {
                 use std::iter::once;
@@ -781,7 +781,7 @@ mod test {
                 "#,
             )
             .unwrap()
-        });
+        }).await;
         assert_eq!(res.len(), 5);
         assert_eq!(res[0], -2);
         assert_eq!(res[1], -1);
@@ -790,8 +790,8 @@ mod test {
         assert_eq!(res[4], 2);
     }
 
-    #[test]
-    fn js_fn_wrappers() {
+    #[tokio::test]
+    async fn js_fn_wrappers() {
         test_with(|ctx| {
             let global = ctx.globals();
             global
@@ -815,6 +815,6 @@ mod test {
                 .unwrap();
             let n: u32 = ctx.eval("log(\"foo\") + log(\"bar\")").unwrap();
             assert_eq!(n, 3);
-        });
+        }).await;
     }
 }

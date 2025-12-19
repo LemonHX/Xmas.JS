@@ -4,20 +4,16 @@ use crate::{
     Array, CString, Ctx, Error, IntoAtom, IntoJs, Object, Result, StdResult, StdString, String,
     Value,
 };
-use alloc::{
-    boxed::Box,
-    collections::{BTreeMap, BTreeSet, LinkedList, VecDeque},
-    string::ToString as _,
-    vec::Vec,
+use std::{
+    boxed::Box, collections::{BTreeMap, BTreeSet, LinkedList, VecDeque}, string::ToString as _, time::SystemTime, vec::Vec
 };
-use core::cell::{Cell, RefCell};
+use std::cell::{Cell, RefCell};
 use hashbrown::{HashMap as HashbrownMap, HashSet as HashbrownSet};
 
-#[cfg(feature = "std")]
+
 use std::{
     collections::{HashMap, HashSet},
     sync::{Mutex, RwLock},
-    time::SystemTime,
 };
 
 #[cfg(feature = "either")]
@@ -212,7 +208,7 @@ where
     }
 }
 
-#[cfg(feature = "std")]
+
 impl<'js, T> IntoJs<'js> for Mutex<T>
 where
     T: IntoJs<'js>,
@@ -223,7 +219,7 @@ where
     }
 }
 
-#[cfg(feature = "std")]
+
 impl<'js, T> IntoJs<'js> for &Mutex<T>
 where
     for<'r> &'r T: IntoJs<'js>,
@@ -234,7 +230,7 @@ where
     }
 }
 
-#[cfg(feature = "std")]
+
 impl<'js, T> IntoJs<'js> for RwLock<T>
 where
     T: IntoJs<'js>,
@@ -245,7 +241,7 @@ where
     }
 }
 
-#[cfg(feature = "std")]
+
 impl<'js, T> IntoJs<'js> for &RwLock<T>
 where
     for<'r> &'r T: IntoJs<'js>,
@@ -446,7 +442,7 @@ into_js_impls! {
     /// Convert from Rust linked list to JS array
     LinkedList,
     /// Convert from Rust hash set to JS array
-    #[cfg(feature = "std")]
+    
     HashSet {S},
     /// Convert from hashbrown hash set to JS array
     HashbrownSet {S},
@@ -461,7 +457,7 @@ into_js_impls! {
 into_js_impls! {
     map:
     /// Convert from Rust hash map to JS object
-    #[cfg(feature = "std")]
+    
     HashMap {S},
     /// Convert from hashbrown hash map to JS object
     HashbrownMap {S},
@@ -492,7 +488,6 @@ fn millis_to_date<'js>(ctx: &Ctx<'js>, millis: i64) -> Result<Value<'js>> {
     date_ctor.construct((millis,))
 }
 
-#[cfg(feature = "std")]
 impl<'js> IntoJs<'js> for SystemTime {
     fn into_js(self, ctx: &Ctx<'js>) -> Result<Value<'js>> {
         let millis = match self.duration_since(SystemTime::UNIX_EPOCH) {
@@ -530,7 +525,6 @@ impl<'js> IntoJs<'js> for SystemTime {
     }
 }
 
-#[cfg(feature = "chrono")]
 impl<'js, Tz: chrono::TimeZone> IntoJs<'js> for chrono::DateTime<Tz> {
     fn into_js(self, ctx: &Ctx<'js>) -> Result<Value<'js>> {
         millis_to_date(ctx, self.timestamp_millis())
@@ -540,11 +534,11 @@ impl<'js, Tz: chrono::TimeZone> IntoJs<'js> for chrono::DateTime<Tz> {
 #[cfg(test)]
 mod test {
 
-    #[test]
-    fn char_to_js() {
-        use crate::{Context, IntoJs, Runtime};
-        let runtime = Runtime::new().unwrap();
-        let ctx = Context::full(&runtime).unwrap();
+    #[tokio::test]
+    async fn char_to_js() {
+        use crate::{AsyncContext, IntoJs, AsyncRuntime};
+        let runtime = AsyncRuntime::new().unwrap();
+        let ctx = AsyncContext::full(&runtime).await.unwrap();
 
         let c = 'a';
 
@@ -560,18 +554,18 @@ mod test {
             assert!(rt.is_ok());
             let rt = ctx.eval::<char, _>("'ab'");
             assert!(rt.is_err());
-        });
+        }).await;
     }
 
-    #[test]
-    fn system_time_to_js() {
-        use crate::{Context, IntoJs, Runtime};
+    #[tokio::test]
+    async fn system_time_to_js() {
+        use crate::{AsyncContext, IntoJs, AsyncRuntime};
         #[cfg(not(target_arch = "wasm32"))]
         use std::time::Duration;
         use std::time::SystemTime;
 
-        let runtime = Runtime::new().unwrap();
-        let ctx = Context::full(&runtime).unwrap();
+        let runtime = AsyncRuntime::new().unwrap();
+        let ctx = AsyncContext::full(&runtime).await.unwrap();
 
         let ts = SystemTime::now();
         let millis = ts
@@ -584,12 +578,10 @@ mod test {
             globs.set("ts", ts.into_js(&ctx).unwrap()).unwrap();
             let res: i64 = ctx.eval("ts.getTime()").unwrap();
             assert_eq!(millis, res as _);
-        });
+        }).await;
 
         // wasm32-wasip1 and wasm32-wasip2 do not support SystemTime before the Unix epoch.
         // The subtraction from the Unix epoch would panic with: overflow when subtracting duration from instant
-        #[cfg(not(target_arch = "wasm32"))]
-        {
             let ts = SystemTime::UNIX_EPOCH - Duration::from_millis(123456);
             let millis = SystemTime::UNIX_EPOCH
                 .duration_since(ts)
@@ -601,18 +593,16 @@ mod test {
                 globs.set("ts", ts.into_js(&ctx).unwrap()).unwrap();
                 let res: i64 = ctx.eval("ts.getTime()").unwrap();
                 assert_eq!(-(millis as i64), res as _);
-            });
-        }
+            }).await;
     }
 
-    #[cfg(feature = "chrono")]
-    #[test]
-    fn chrono_to_js() {
-        use crate::{Context, IntoJs, Runtime};
+    #[tokio::test]
+    async fn chrono_to_js() {
+        use crate::{AsyncContext, IntoJs, AsyncRuntime};
         use chrono::Utc;
 
-        let runtime = Runtime::new().unwrap();
-        let ctx = Context::full(&runtime).unwrap();
+        let runtime = AsyncRuntime::new().unwrap();
+        let ctx = AsyncContext::full(&runtime).await.unwrap();
 
         let ts = Utc::now();
         let millis = ts.timestamp_millis();
@@ -622,6 +612,6 @@ mod test {
             globs.set("ts", ts.into_js(&ctx).unwrap()).unwrap();
             let res: i64 = ctx.eval("ts.getTime()").unwrap();
             assert_eq!(millis, res);
-        });
+        }).await;
     }
 }

@@ -1,6 +1,6 @@
 use super::JsClass;
 use crate::{markers::Invariant, qjs, Atom, Class, Ctx, Module, Value};
-use core::marker::PhantomData;
+use std::marker::PhantomData;
 
 #[cfg(feature = "either")]
 use either::{Either, Left, Right};
@@ -215,7 +215,7 @@ trace_impls! {
     i8,i16,i32,i64,isize,
     f32,f64,
     bool,char,
-    alloc::string::String,
+    std::string::String,
 }
 
 trace_impls! {
@@ -231,9 +231,9 @@ trace_impls! {
 
 trace_impls! {
     ref:
-    alloc::boxed::Box,
-    alloc::rc::Rc,
-    alloc::sync::Arc,
+    std::boxed::Box,
+    std::rc::Rc,
+    std::sync::Arc,
 }
 
 trace_impls! {
@@ -259,12 +259,11 @@ trace_impls! {
 
 trace_impls! {
     list:
-    alloc::vec::Vec,
-    alloc::collections::VecDeque,
-    alloc::collections::LinkedList,
-    #[cfg(feature = "std")]
+    std::vec::Vec,
+    std::collections::VecDeque,
+    std::collections::LinkedList,
     std::collections::HashSet {S},
-    alloc::collections::BTreeSet,
+    std::collections::BTreeSet,
     #[cfg(feature = "indexmap")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(all(feature = "indexmap"))))]
     indexmap::IndexSet {S},
@@ -272,9 +271,8 @@ trace_impls! {
 
 trace_impls! {
     map:
-    #[cfg(feature = "std")]
     std::collections::HashMap {S},
-    alloc::collections::BTreeMap,
+    std::collections::BTreeMap,
     #[cfg(feature = "indexmap")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(all(feature = "indexmap"))))]
     indexmap::IndexMap {S},

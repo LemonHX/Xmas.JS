@@ -1,10 +1,10 @@
 //! Task queue for spawned futures - optimized for both parallel and non-parallel modes
 
 #[cfg(not(feature = "parallel"))]
-use alloc::{boxed::Box, collections::VecDeque};
+use std::{boxed::Box, collections::VecDeque};
 #[cfg(feature = "parallel")]
-use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
-use core::{
+use std::{boxed::Box, collections::VecDeque, vec::Vec};
+use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll, Waker},
@@ -14,7 +14,7 @@ use core::{
 use parking_lot::Mutex;
 
 #[cfg(not(feature = "parallel"))]
-use core::cell::UnsafeCell;
+use std::cell::UnsafeCell;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskPoll {
@@ -67,7 +67,7 @@ impl TaskQueue {
     /// Caller must ensure future lifetime is valid
     pub unsafe fn push<F: Future<Output = ()>>(&self, future: F) {
         let future: BoxedTask =
-            core::mem::transmute(Box::pin(future) as Pin<Box<dyn Future<Output = ()> + '_>>);
+            std::mem::transmute(Box::pin(future) as Pin<Box<dyn Future<Output = ()> + '_>>);
         let mut inner = self.inner.lock();
         inner.tasks.push_back(future);
         if let Some(w) = inner.waker.take() {
@@ -151,7 +151,7 @@ impl TaskQueue {
     /// Caller must ensure future lifetime is valid
     pub unsafe fn push<F: Future<Output = ()>>(&self, future: F) {
         let future: BoxedTask =
-            core::mem::transmute(Box::pin(future) as Pin<Box<dyn Future<Output = ()> + '_>>);
+            std::mem::transmute(Box::pin(future) as Pin<Box<dyn Future<Output = ()> + '_>>);
         let inner = self.inner();
         inner.tasks.push_back(future);
         if let Some(w) = inner.waker.take() {

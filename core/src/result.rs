@@ -1,4 +1,4 @@
-use core::{
+use std::{
     error::Error as StdError,
     ffi::FromBytesWithNulError,
     fmt::{self, Display, Formatter, Result as FmtResult},
@@ -6,19 +6,17 @@ use core::{
     str::{FromStr, Utf8Error},
 };
 
-use alloc::{
+use std::{
     ffi::{CString, NulError},
     string::{FromUtf8Error, ToString as _},
 };
 
-#[cfg(feature = "std")]
 use std::io::Error as IoError;
 
-#[cfg(feature = "futures")]
 use crate::context::AsyncContext;
 use crate::value::array_buffer::AsSliceError;
 use crate::{
-    atom::PredefinedAtom, qjs, runtime::UserDataError, value::exception::ERROR_FORMAT_STR, Context,
+    atom::PredefinedAtom, qjs, runtime::UserDataError, value::exception::ERROR_FORMAT_STR,
     Ctx, Exception, Object, StdResult, StdString, Type, Value,
 };
 
@@ -55,7 +53,7 @@ impl fmt::Display for BorrowError {
     }
 }
 
-impl core::error::Error for BorrowError {}
+impl std::error::Error for BorrowError {}
 
 /// Error type of the library.
 #[derive(Debug)]
@@ -77,7 +75,6 @@ pub enum Error {
     /// String from rquickjs was not UTF-8
     Utf8(Utf8Error),
     /// An io error
-    #[cfg(feature = "std")]
     Io(IoError),
     /// An error happened while trying to borrow a Rust class object.
     ClassBorrow(BorrowError),
@@ -110,14 +107,14 @@ pub enum Error {
         expected: usize,
         given: usize,
     },
-    #[cfg(feature = "loader")]
+    
     /// Error when resolving js module
     Resolving {
         base: StdString,
         name: StdString,
         message: Option<StdString>,
     },
-    #[cfg(feature = "loader")]
+    
     /// Error when loading js module
     Loading {
         name: StdString,
@@ -137,7 +134,7 @@ pub enum Error {
 }
 
 impl Error {
-    #[cfg(feature = "loader")]
+    
     /// Create resolving error
     pub fn new_resolving<B, N>(base: B, name: N) -> Self
     where
@@ -150,7 +147,7 @@ impl Error {
         }
     }
 
-    #[cfg(feature = "loader")]
+    
     /// Create resolving error with message
     pub fn new_resolving_message<B, N, M>(base: B, name: N, msg: M) -> Self
     where
@@ -163,13 +160,13 @@ impl Error {
         }
     }
 
-    #[cfg(feature = "loader")]
+    
     /// Returns whether the error is a resolving error
     pub fn is_resolving(&self) -> bool {
         matches!(self, Error::Resolving { .. })
     }
 
-    #[cfg(feature = "loader")]
+    
     /// Create loading error
     pub fn new_loading<N>(name: N) -> Self
     where
@@ -181,7 +178,7 @@ impl Error {
         }
     }
 
-    #[cfg(feature = "loader")]
+    
     /// Create loading error
     pub fn new_loading_message<N, M>(name: N, msg: M) -> Self
     where
@@ -193,7 +190,7 @@ impl Error {
         }
     }
 
-    #[cfg(feature = "loader")]
+    
     /// Returns whether the error is a loading error
     pub fn is_loading(&self) -> bool {
         matches!(self, Error::Loading { .. })
@@ -269,7 +266,7 @@ impl Error {
     /// Optimized conversion to [`CString`]
     pub(crate) fn to_cstring(&self) -> CString {
         // stringify error with NUL at end
-        let mut message = alloc::format!("{self}\0").into_bytes();
+        let mut message = std::format!("{self}\0").into_bytes();
 
         message.pop(); // pop last NUL because CString add this later
 
@@ -308,7 +305,7 @@ impl Error {
                     )
                 }
             }
-            #[cfg(feature = "loader")]
+            
             Resolving { .. } | Loading { .. } => {
                 let message = self.to_cstring();
                 unsafe {
@@ -420,7 +417,7 @@ impl Display for Error {
                 expected.fmt(f)?;
                 " arguments".fmt(f)?;
             }
-            #[cfg(feature = "loader")]
+            
             Error::Resolving {
                 base,
                 name,
@@ -438,7 +435,7 @@ impl Display for Error {
                     }
                 }
             }
-            #[cfg(feature = "loader")]
+            
             Error::Loading { name, message } => {
                 "Error loading module '".fmt(f)?;
                 name.fmt(f)?;
@@ -450,7 +447,6 @@ impl Display for Error {
                     }
                 }
             }
-            #[cfg(feature = "std")]
             Error::Io(error) => {
                 "IO Error: ".fmt(f)?;
                 error.fmt(f)?;
@@ -493,7 +489,6 @@ from_impls! {
     Utf8Error => Utf8,
 }
 
-#[cfg(feature = "std")]
 from_impls! {
     IoError => Io,
 }
@@ -631,7 +626,7 @@ impl<'js, T> ThrowResultExt<'js, T> for CaughtResult<'js, T> {
 ///
 /// Use `Ctx::catch` to retrieve the error.
 #[derive(Clone)]
-pub struct JobException(pub Context);
+pub struct JobException(pub AsyncContext);
 
 impl fmt::Debug for JobException {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
@@ -653,11 +648,11 @@ impl Display for JobException {
 /// Contains the context from which the error was raised.
 ///
 /// Use `Ctx::catch` to retrieve the error.
-#[cfg(feature = "futures")]
+
 #[derive(Clone)]
 pub struct AsyncJobException(pub AsyncContext);
 
-#[cfg(feature = "futures")]
+
 impl fmt::Debug for AsyncJobException {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_tuple("AsyncJobException")
@@ -666,7 +661,7 @@ impl fmt::Debug for AsyncJobException {
     }
 }
 
-#[cfg(feature = "futures")]
+
 impl Display for AsyncJobException {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "Async job raised an exception")?;

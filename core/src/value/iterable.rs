@@ -6,7 +6,7 @@ use crate::{
     function::{MutFn, This},
     Ctx, Error, FromJs, Function, IntoJs, Object, Result, Value,
 };
-use core::{iter::FusedIterator, marker::PhantomData};
+use std::{iter::FusedIterator, marker::PhantomData};
 
 /// Converts a Rust iterator into a JavaScript iterable object.
 ///
@@ -228,7 +228,7 @@ mod test {
         test_with(|ctx| {
             let iter = Iterable::from(vec!["a", "b", "c"]);
             ctx.globals().set("myIter", iter).unwrap();
-            let result: alloc::string::String = ctx
+            let result: std::string::String = ctx
                 .eval(
                     r#"
                 let s = "";
@@ -342,9 +342,9 @@ mod test {
     #[test]
     fn js_iter_strings() {
         test_with(|ctx| {
-            let iter: JsIterator<alloc::string::String> =
+            let iter: JsIterator<std::string::String> =
                 ctx.eval("['hello', 'world', 'rust']").unwrap();
-            let values: Vec<alloc::string::String> = iter.filter_map(|r| r.ok()).collect();
+            let values: Vec<std::string::String> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec!["hello", "world", "rust"]);
         });
     }
@@ -386,7 +386,7 @@ mod test {
                 ctx.eval("new Map([['a', 1], ['b', 2]]).entries()").unwrap();
             let entries: Vec<Array> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(entries.len(), 2);
-            assert_eq!(entries[0].get::<alloc::string::String>(0).unwrap(), "a");
+            assert_eq!(entries[0].get::<std::string::String>(0).unwrap(), "a");
             assert_eq!(entries[0].get::<i32>(1).unwrap(), 1);
         });
     }

@@ -1,6 +1,6 @@
 use crate::{qjs, Ctx, Error, FromJs, IntoJs, JsLifetime, Object, Result, Value};
-use alloc::vec::Vec;
-use core::{
+use std::vec::Vec;
+use std::{
     ffi::c_void,
     fmt,
     mem::{self, size_of, ManuallyDrop, MaybeUninit},
@@ -81,7 +81,7 @@ impl<'js> ArrayBuffer<'js> {
     pub fn new_copy<T: Copy>(ctx: Ctx<'js>, src: impl AsRef<[T]>) -> Result<Self> {
         let src = src.as_ref();
         let ptr = src.as_ptr();
-        let size = core::mem::size_of_val(src);
+        let size = std::mem::size_of_val(src);
 
         Ok(Self(Object(unsafe {
             let val = qjs::JS_NewArrayBufferCopy(ctx.as_ptr(), ptr as _, size as _);
@@ -269,8 +269,8 @@ mod test {
         });
     }
 
-    #[test]
-    fn into_javascript_i8() {
+    #[tokio::test]
+    async fn into_javascript_i8() {
         test_with(|ctx| {
             let val = ArrayBuffer::new(ctx.clone(), [-1i8, 0, 22, 5]).unwrap();
             ctx.globals().set("a", val).unwrap();
@@ -288,7 +288,7 @@ mod test {
                 )
                 .unwrap();
             assert_eq!(res, 0);
-        })
+        }).await;
     }
 
     #[test]
@@ -306,8 +306,8 @@ mod test {
         });
     }
 
-    #[test]
-    fn into_javascript_f32() {
+    #[tokio::test]
+    async fn into_javascript_f32() {
         test_with(|ctx| {
             let val = ArrayBuffer::new(ctx.clone(), [-1.5f32, 0.0, 2.25]).unwrap();
             ctx.globals().set("a", val).unwrap();
@@ -325,11 +325,11 @@ mod test {
                 )
                 .unwrap();
             assert_eq!(res, 0);
-        })
+        }).await;
     }
 
-    #[test]
-    fn as_bytes() {
+    #[tokio::test]
+    async fn as_bytes() {
         test_with(|ctx| {
             let val: ArrayBuffer = ctx
                 .eval(
@@ -345,6 +345,6 @@ mod test {
             res[4..].copy_from_slice(&bytes_1);
 
             assert_eq!(val.as_bytes().unwrap(), &res)
-        });
+        }).await;
     }
 }

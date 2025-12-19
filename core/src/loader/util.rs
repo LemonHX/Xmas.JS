@@ -1,4 +1,4 @@
-use alloc::string::{String, ToString as _};
+use std::string::{String, ToString as _};
 use relative_path::RelativePath;
 
 pub fn resolve_simple(base: &str, name: &str) -> String {
