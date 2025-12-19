@@ -1,0 +1,15 @@
+[package]
+name = "module-loader"
+version = "0.10.0"
+authors = ["K. <kayo@illumium.org>"]
+edition = "2018"
+publish = false
+
+[dependencies.rquickjs]
+path = "../.."
+default-features = false
+features = ["futures", "rust-alloc", "loader", "dyn-load"]
+
+[features]
+default = ["macro"]
+macro = ["rquickjs/macro"]
