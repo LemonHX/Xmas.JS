@@ -8,22 +8,22 @@ use std::{
 /// The wrapper for JS values to keep it from GC
 ///
 /// For example you can store JS functions for later use.
-/// ```
-/// # use rquickjs::{Runtime, Context, Persistent, Function};
-/// # let rt = Runtime::new().unwrap();
-/// # let ctx = Context::full(&rt).unwrap();
+/// ```rust,ignore
+/// # use rquickjs::{AsyncRuntime, AsyncContext, Persistent, Function};
+/// # let rt = AsyncRuntime::new().unwrap();
+/// # let ctx = AsyncContext::full(&rt).await.unwrap();
 /// let func = ctx.with(|ctx| {
 ///     Persistent::save(&ctx, ctx.eval::<Function, _>("a => a + 1").unwrap())
-/// });
+/// }).await;
 /// let res: i32 = ctx.with(|ctx| {
 ///     let func = func.clone().restore(&ctx).unwrap();
 ///     func.call((2,)).unwrap()
-/// });
+/// }).await;
 /// assert_eq!(res, 3);
 /// let res: i32 = ctx.with(|ctx| {
 ///     let func = func.restore(&ctx).unwrap();
 ///     func.call((0,)).unwrap()
-/// });
+/// }).await;
 /// assert_eq!(res, 1);
 /// ```
 ///
@@ -38,6 +38,9 @@ pub struct Persistent<T> {
     pub(crate) rt: *mut qjs::JSRuntime,
     pub(crate) value: T,
 }
+
+unsafe impl<T: Send> Send for Persistent<T> {}
+unsafe impl<T: Sync> Sync for Persistent<T> {}
 
 impl<T: Clone> Clone for Persistent<T> {
     fn clone(&self) -> Self {

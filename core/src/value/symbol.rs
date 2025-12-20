@@ -71,8 +71,8 @@ impl_symbols! {
 mod test {
     use crate::*;
 
-    #[test]
-    fn description() {
+    #[tokio::test]
+    async fn description() {
         test_with(|ctx| {
             let s: Symbol<'_> = ctx.eval("Symbol('foo bar baz')").unwrap();
             assert_eq!(
@@ -87,6 +87,6 @@ mod test {
 
             let s: Symbol<'_> = ctx.eval("Symbol()").unwrap();
             assert!(s.description().unwrap().is_undefined());
-        });
+        }).await;
     }
 }

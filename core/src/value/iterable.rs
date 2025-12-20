@@ -16,10 +16,10 @@ use std::{iter::FusedIterator, marker::PhantomData};
 /// Note: The iterator can only be consumed once. Subsequent iterations will yield no values.
 ///
 /// # Example
-/// ```
-/// # use rquickjs::{Runtime, Context, Result, Iterable};
-/// # let rt = Runtime::new().unwrap();
-/// # let ctx = Context::full(&rt).unwrap();
+/// ```rust,ignore
+/// # use rquickjs::{AsyncRuntime, AsyncContext, Result, Iterable};
+/// # let rt = AsyncRuntime::new().unwrap();
+/// # let ctx = AsyncContext::full(&rt).await.unwrap();
 /// # ctx.with(|ctx| -> Result<()> {
 /// // Create an iterable from a Vec
 /// let iter = Iterable::from(vec![1, 2, 3]);
@@ -29,7 +29,7 @@ use std::{iter::FusedIterator, marker::PhantomData};
 /// let result: Vec<i32> = ctx.eval("[...myIterable]")?;
 /// assert_eq!(result, vec![1, 2, 3]);
 /// # Ok(())
-/// # }).unwrap();
+/// # }).await.unwrap();
 /// ```
 pub struct Iterable<I>(pub I);
 
@@ -96,10 +96,10 @@ where
 /// Use `Value<'js>` to get raw JS values without conversion.
 ///
 /// # Example
-/// ```
-/// # use rquickjs::{Runtime, Context, Result, JsIterator, Value};
-/// # let rt = Runtime::new().unwrap();
-/// # let ctx = Context::full(&rt).unwrap();
+/// ```rust,ignore
+/// # use rquickjs::{AsyncRuntime, AsyncContext, Result, JsIterator, Value};
+/// # let rt = AsyncRuntime::new().unwrap();
+/// # let ctx = AsyncContext::full(&rt).await.unwrap();
 /// # ctx.with(|ctx| -> Result<()> {
 /// // Get an iterator with automatic conversion to i32
 /// let iter: JsIterator<i32> = ctx.eval("[1, 2, 3]")?;
@@ -112,7 +112,7 @@ where
 ///     println!("{:?}", value?);
 /// }
 /// # Ok(())
-/// # }).unwrap();
+/// # }).await.unwrap();
 /// ```
 pub struct JsIterator<'js, T = Value<'js>> {
     iterator: Object<'js>,
@@ -213,18 +213,18 @@ mod test {
     use super::*;
     use crate::*;
 
-    #[test]
-    fn iterable_spread() {
+    #[tokio::test]
+    async fn iterable_spread() {
         test_with(|ctx| {
             let iter = Iterable::from(vec![1i32, 2, 3]);
             ctx.globals().set("myIter", iter).unwrap();
             let result: Vec<i32> = ctx.eval("[...myIter]").unwrap();
             assert_eq!(result, vec![1, 2, 3]);
-        });
+        }).await;
     }
 
-    #[test]
-    fn iterable_for_of() {
+    #[tokio::test]
+    async fn iterable_for_of() {
         test_with(|ctx| {
             let iter = Iterable::from(vec!["a", "b", "c"]);
             ctx.globals().set("myIter", iter).unwrap();
@@ -238,21 +238,21 @@ mod test {
                 )
                 .unwrap();
             assert_eq!(result, "abc");
-        });
+        }).await;
     }
 
-    #[test]
-    fn iterable_from_range() {
+    #[tokio::test]
+    async fn iterable_from_range() {
         test_with(|ctx| {
             let iter = Iterable::from(0..5);
             ctx.globals().set("myIter", iter).unwrap();
             let result: Vec<i32> = ctx.eval("[...myIter]").unwrap();
             assert_eq!(result, vec![0, 1, 2, 3, 4]);
-        });
+        }).await;
     }
 
-    #[test]
-    fn iterable_single_use() {
+    #[tokio::test]
+    async fn iterable_single_use() {
         test_with(|ctx| {
             let iter = Iterable::from(vec![1i32, 2]);
             ctx.globals().set("myIter", iter).unwrap();
@@ -262,30 +262,30 @@ mod test {
             // Second iteration returns empty (iterator exhausted)
             let second: Vec<i32> = ctx.eval("[...myIter]").unwrap();
             assert_eq!(second, Vec::<i32>::new());
-        });
+        }).await;
     }
 
-    #[test]
-    fn js_iter_from_array() {
+    #[tokio::test]
+    async fn js_iter_from_array() {
         test_with(|ctx| {
             let iter: JsIterator<i32> = ctx.eval("[1, 2, 3][Symbol.iterator]()").unwrap();
             let values: Vec<i32> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![1, 2, 3]);
-        });
+        }).await;
     }
 
-    #[test]
-    fn js_iter_from_iterable() {
+    #[tokio::test]
+    async fn js_iter_from_iterable() {
         test_with(|ctx| {
             // Pass an iterable (array), not an iterator
             let iter: JsIterator<i32> = ctx.eval("[4, 5, 6]").unwrap();
             let values: Vec<i32> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![4, 5, 6]);
-        });
+        }).await;
     }
 
-    #[test]
-    fn js_iter_from_generator() {
+    #[tokio::test]
+    async fn js_iter_from_generator() {
         test_with(|ctx| {
             let iter: JsIterator<i32> = ctx
                 .eval(
@@ -300,11 +300,11 @@ mod test {
                 .unwrap();
             let values: Vec<i32> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![10, 20, 30]);
-        });
+        }).await;
     }
 
-    #[test]
-    fn js_iter_roundtrip() {
+    #[tokio::test]
+    async fn js_iter_roundtrip() {
         test_with(|ctx| {
             // Rust -> JS -> Rust roundtrip
             let rust_iter = Iterable::from(vec![100i32, 200, 300]);
@@ -312,11 +312,11 @@ mod test {
             let js_iter: JsIterator<i32> = ctx.eval("myIter").unwrap();
             let values: Vec<i32> = js_iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![100, 200, 300]);
-        });
+        }).await;
     }
 
-    #[test]
-    fn js_iter_raw_values() {
+    #[tokio::test]
+    async fn js_iter_raw_values() {
         test_with(|ctx| {
             // Get raw Value without conversion
             let iter: JsIterator<Value> = ctx.eval("[1, 'two', 3]").unwrap();
@@ -325,61 +325,61 @@ mod test {
             assert!(values[0].is_int());
             assert!(values[1].is_string());
             assert!(values[2].is_int());
-        });
+        }).await;
     }
 
-    #[test]
-    fn js_iter_typed_conversion() {
+    #[tokio::test]
+    async fn js_iter_typed_conversion() {
         test_with(|ctx| {
             // Start with raw values, then convert
             let iter: JsIterator<Value> = ctx.eval("[1, 2, 3]").unwrap();
             let typed = iter.typed::<i32>();
             let values: Vec<i32> = typed.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![1, 2, 3]);
-        });
+        }).await;
     }
 
-    #[test]
-    fn js_iter_strings() {
+    #[tokio::test]
+    async fn js_iter_strings() {
         test_with(|ctx| {
             let iter: JsIterator<std::string::String> =
                 ctx.eval("['hello', 'world', 'rust']").unwrap();
             let values: Vec<std::string::String> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec!["hello", "world", "rust"]);
-        });
+        }).await;
     }
 
-    #[test]
-    fn js_iter_floats() {
+    #[tokio::test]
+    async fn js_iter_floats() {
         test_with(|ctx| {
             let iter: JsIterator<f64> = ctx.eval("[1.5, 2.7, 3.54]").unwrap();
             let values: Vec<f64> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![1.5, 2.7, 3.54]);
-        });
+        }).await;
     }
 
-    #[test]
-    fn js_iter_bools() {
+    #[tokio::test]
+    async fn js_iter_bools() {
         test_with(|ctx| {
             let iter: JsIterator<bool> = ctx.eval("[true, false, true]").unwrap();
             let values: Vec<bool> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![true, false, true]);
-        });
+        }).await;
     }
 
-    #[test]
-    fn js_iter_objects() {
+    #[tokio::test]
+    async fn js_iter_objects() {
         test_with(|ctx| {
             let iter: JsIterator<Object> = ctx.eval("[{a: 1}, {b: 2}]").unwrap();
             let objects: Vec<Object> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(objects.len(), 2);
             assert_eq!(objects[0].get::<_, i32>("a").unwrap(), 1);
             assert_eq!(objects[1].get::<_, i32>("b").unwrap(), 2);
-        });
+        }).await;
     }
 
-    #[test]
-    fn js_iter_map_entries() {
+    #[tokio::test]
+    async fn js_iter_map_entries() {
         test_with(|ctx| {
             // Map.entries() returns [key, value] pairs
             let iter: JsIterator<Array> =
@@ -388,15 +388,15 @@ mod test {
             assert_eq!(entries.len(), 2);
             assert_eq!(entries[0].get::<std::string::String>(0).unwrap(), "a");
             assert_eq!(entries[0].get::<i32>(1).unwrap(), 1);
-        });
+        }).await;
     }
 
-    #[test]
-    fn js_iter_set() {
+    #[tokio::test]
+    async fn js_iter_set() {
         test_with(|ctx| {
             let iter: JsIterator<i32> = ctx.eval("new Set([1, 2, 3])").unwrap();
             let values: Vec<i32> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![1, 2, 3]);
-        });
+        }).await;
     }
 }

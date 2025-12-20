@@ -354,8 +354,8 @@ impl<'js> Object<'js> {
 mod test {
     use crate::*;
 
-    #[test]
-    fn from_javascript_i8() {
+    #[tokio::test]
+    async fn from_javascript_i8() {
         test_with(|ctx| {
             let val: TypedArray<i8> = ctx
                 .eval(
@@ -366,7 +366,7 @@ mod test {
                 .unwrap();
             assert_eq!(val.len(), 4);
             assert_eq!(val.as_ref() as &[i8], &[0i8, -5, 1, 11]);
-        });
+        }).await;
     }
 
     #[tokio::test]

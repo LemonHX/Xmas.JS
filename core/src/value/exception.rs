@@ -90,17 +90,17 @@ impl<'js> Exception<'js> {
     /// Throws a new generic error.
     ///
     /// Equivalent to:
-    /// ```rust
-    /// # use rquickjs::{Runtime,Context,Exception};
-    /// # let rt = Runtime::new().unwrap();
-    /// # let ctx = Context::full(&rt).unwrap();
+    /// ```rust,ignore
+    /// # use rquickjs::{AsyncRuntime,AsyncContext,Exception};
+    /// # let rt = AsyncRuntime::new().unwrap();
+    /// # let ctx = AsyncContext::full(&rt).await.unwrap();
     /// # ctx.with(|ctx|{
     /// # let _ = {
     /// # let message = "";
     /// let (Ok(e) | Err(e)) = Exception::from_message(ctx, message).map(|x| x.throw());
     /// e
     /// # };
-    /// # })
+    /// # }).await
     /// ```
     pub fn throw_message(ctx: &Ctx<'js>, message: &str) -> Error {
         let (Ok(e) | Err(e)) = Self::from_message(ctx.clone(), message).map(|x| x.throw());

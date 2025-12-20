@@ -5,10 +5,10 @@ use crate::{
 impl<'js> Object<'js> {
     /// Define a property of an object
     ///
-    /// ```
-    /// # use rquickjs::{Runtime, Context, Object, object::{Property, Accessor}};
-    /// # let rt = Runtime::new().unwrap();
-    /// # let ctx = Context::full(&rt).unwrap();
+    /// ```rust,ignore
+    /// # use rquickjs::{AsyncRuntime, AsyncContext, Object, object::{Property, Accessor}};
+    /// # let rt = AsyncRuntime::new().unwrap();
+    /// # let ctx = AsyncContext::full(&rt).await.unwrap();
     /// # ctx.with(|ctx| {
     /// # let obj = Object::new(ctx).unwrap();
     /// // Define readonly property without value
@@ -24,7 +24,7 @@ impl<'js> Object<'js> {
     ///     Accessor::from(|| "Some text")
     ///         .set(|new_val: String| { /* do something */ })
     /// ).unwrap();
-    /// # })
+    /// # }).await
     /// ```
     pub fn prop<K, V, P>(&self, key: K, prop: V) -> Result<()>
     where
@@ -257,8 +257,8 @@ where
 mod test {
     use crate::{object::*, *};
 
-    #[test]
-    fn property_with_undefined() {
+    #[tokio::test]
+    async fn property_with_undefined() {
         test_with(|ctx| {
             let obj = Object::new(ctx.clone()).unwrap();
             obj.prop("key", ()).unwrap();
@@ -271,11 +271,11 @@ mod test {
             } else {
                 panic!("Should fail");
             }
-        });
+        }).await;
     }
 
-    #[test]
-    fn property_with_value() {
+    #[tokio::test]
+    async fn property_with_value() {
         test_with(|ctx| {
             let obj = Object::new(ctx.clone()).unwrap();
             obj.prop("key", "str").unwrap();
@@ -289,23 +289,23 @@ mod test {
             } else {
                 panic!("Should fail");
             }
-        });
+        }).await;
     }
 
-    #[test]
-    fn property_with_data_descriptor() {
+    #[tokio::test]
+    async fn property_with_data_descriptor() {
         test_with(|ctx| {
             let obj = Object::new(ctx).unwrap();
             obj.prop("key", Property::from("str")).unwrap();
 
             let s: StdString = obj.get("key").unwrap();
             assert_eq!(s, "str");
-        });
+        }).await;
     }
 
-    #[test]
+    #[tokio::test]
     #[should_panic(expected = "Error: 'key' is read-only")]
-    fn property_with_data_descriptor_readonly() {
+    async fn property_with_data_descriptor_readonly() {
         test_with(|ctx| {
             let obj = Object::new(ctx.clone()).unwrap();
             obj.prop("key", Property::from("str")).unwrap();
@@ -313,21 +313,21 @@ mod test {
                 .catch(&ctx)
                 .map_err(|error| panic!("{}", error))
                 .unwrap();
-        });
+        }).await;
     }
 
-    #[test]
-    fn property_with_data_descriptor_writable() {
+    #[tokio::test]
+    async fn property_with_data_descriptor_writable() {
         test_with(|ctx| {
             let obj = Object::new(ctx).unwrap();
             obj.prop("key", Property::from("str").writable()).unwrap();
             obj.set("key", "text").unwrap();
-        });
+        }).await;
     }
 
-    #[test]
+    #[tokio::test]
     #[should_panic(expected = "Error: property is not configurable")]
-    fn property_with_data_descriptor_not_configurable() {
+    async fn property_with_data_descriptor_not_configurable() {
         test_with(|ctx| {
             let obj = Object::new(ctx.clone()).unwrap();
             obj.prop("key", Property::from("str")).unwrap();
@@ -335,21 +335,21 @@ mod test {
                 .catch(&ctx)
                 .map_err(|error| panic!("{}", error))
                 .unwrap();
-        });
+        }).await;
     }
 
-    #[test]
-    fn property_with_data_descriptor_configurable() {
+    #[tokio::test]
+    async fn property_with_data_descriptor_configurable() {
         test_with(|ctx| {
             let obj = Object::new(ctx).unwrap();
             obj.prop("key", Property::from("str").configurable())
                 .unwrap();
             obj.prop("key", Property::from(39)).unwrap();
-        });
+        }).await;
     }
 
-    #[test]
-    fn property_with_data_descriptor_not_enumerable() {
+    #[tokio::test]
+    async fn property_with_data_descriptor_not_enumerable() {
         test_with(|ctx| {
             let obj = Object::new(ctx).unwrap();
             obj.prop("key", Property::from("str")).unwrap();
@@ -361,22 +361,22 @@ mod test {
             assert_eq!(&keys[0], "key");
             let keys: Vec<StdString> = obj.keys().collect::<Result<_>>().unwrap();
             assert_eq!(keys.len(), 0);
-        });
+        }).await;
     }
 
-    #[test]
-    fn property_with_data_descriptor_enumerable() {
+    #[tokio::test]
+    async fn property_with_data_descriptor_enumerable() {
         test_with(|ctx| {
             let obj = Object::new(ctx).unwrap();
             obj.prop("key", Property::from("str").enumerable()).unwrap();
             let keys: Vec<StdString> = obj.keys().collect::<Result<_>>().unwrap();
             assert_eq!(keys.len(), 1);
             assert_eq!(&keys[0], "key");
-        });
+        }).await;
     }
 
-    #[test]
-    fn property_with_getter_only() {
+    #[tokio::test]
+    async fn property_with_getter_only() {
         test_with(|ctx| {
             let obj = Object::new(ctx.clone()).unwrap();
             obj.prop("key", Accessor::from(|| "str")).unwrap();
@@ -393,11 +393,11 @@ mod test {
             } else {
                 panic!("Should fail");
             }
-        });
+        }).await;
     }
 
-    #[test]
-    fn property_with_getter_and_setter() {
+    #[tokio::test]
+    async fn property_with_getter_and_setter() {
         test_with(|ctx| {
             let val = Ref::new(Mut::new(StdString::new()));
             let obj = Object::new(ctx).unwrap();
@@ -429,6 +429,6 @@ mod test {
             let s: StdString = obj.get("key").unwrap();
             assert_eq!(s, "");
             assert_eq!(val.lock().clone(), "");
-        });
+        }).await;
     }
 }
