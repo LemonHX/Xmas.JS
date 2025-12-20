@@ -10,9 +10,7 @@ pub struct DriveFuture {
     rt: AsyncWeakRuntime,
 }
 
-#[cfg(feature = "parallel")]
 unsafe impl Send for DriveFuture {}
-#[cfg(feature = "parallel")]
 unsafe impl Sync for DriveFuture {}
 
 impl DriveFuture {

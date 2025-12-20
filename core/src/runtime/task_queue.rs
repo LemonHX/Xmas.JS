@@ -1,20 +1,14 @@
-//! Task queue for spawned futures - optimized for both parallel and non-parallel modes
+//! Task queue for spawned futures
 
-#[cfg(not(feature = "parallel"))]
-use std::{boxed::Box, collections::VecDeque};
-#[cfg(feature = "parallel")]
-use std::{boxed::Box, collections::VecDeque, vec::Vec};
-use std::{
+use core::{
     future::Future,
     pin::Pin,
     task::{Context, Poll, Waker},
 };
+use std::{boxed::Box, vec::Vec};
 
-#[cfg(feature = "parallel")]
+use crossbeam_deque::Injector;
 use parking_lot::Mutex;
-
-#[cfg(not(feature = "parallel"))]
-use std::cell::UnsafeCell;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskPoll {
@@ -26,174 +20,102 @@ pub enum TaskPoll {
 
 type BoxedTask = Pin<Box<dyn Future<Output = ()>>>;
 
-#[cfg(feature = "parallel")]
 pub struct TaskQueue {
-    inner: Mutex<TaskQueueInner>,
+    inner: TaskQueueInner,
 }
 
-#[cfg(feature = "parallel")]
 struct TaskQueueInner {
-    tasks: VecDeque<BoxedTask>,
-    waker: Option<Waker>,
+    tasks: crossbeam_deque::Injector<BoxedTask>,
+    waker: Mutex<Option<Waker>>,
 }
 
-#[cfg(not(feature = "parallel"))]
-pub struct TaskQueue {
-    inner: UnsafeCell<TaskQueueInner>,
-}
-
-#[cfg(not(feature = "parallel"))]
-struct TaskQueueInner {
-    tasks: VecDeque<BoxedTask>,
-    waker: Option<Waker>,
-}
-
-#[cfg(feature = "parallel")]
 impl TaskQueue {
     pub fn new() -> Self {
         TaskQueue {
-            inner: Mutex::new(TaskQueueInner {
-                tasks: VecDeque::new(),
-                waker: None,
-            }),
+            inner: TaskQueueInner {
+                tasks: Injector::new(),
+                waker: Mutex::new(None),
+            },
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.inner.lock().tasks.is_empty()
+        self.inner.tasks.is_empty()
     }
 
     /// # Safety
     /// Caller must ensure future lifetime is valid
     pub unsafe fn push<F: Future<Output = ()>>(&self, future: F) {
         let future: BoxedTask =
-            std::mem::transmute(Box::pin(future) as Pin<Box<dyn Future<Output = ()> + '_>>);
-        let mut inner = self.inner.lock();
-        inner.tasks.push_back(future);
-        if let Some(w) = inner.waker.take() {
-            w.wake();
+            core::mem::transmute(Box::pin(future) as Pin<Box<dyn Future<Output = ()> + '_>>);
+        // let mut inner = self.inner.lock();
+        self.inner.tasks.push(future);
+        if let Some(mut w) = self.inner.waker.try_lock().take() {
+            if let Some(waker) = w.take() {
+                waker.wake();
+            }
         }
     }
 
     pub fn listen(&self, waker: Waker) {
-        self.inner.lock().waker = Some(waker);
+        *self.inner.waker.lock() = Some(waker);
     }
 
     /// Poll tasks - optimized to minimize lock contention
     pub fn poll(&self, cx: &mut Context) -> TaskPoll {
         // Take all tasks out in one lock acquisition
-        let mut batch: Vec<BoxedTask> = {
-            let mut inner = self.inner.lock();
-            if inner.tasks.is_empty() {
-                return TaskPoll::Empty;
-            }
-            inner.tasks.drain(..).collect()
-        };
-
-        let mut made_progress = false;
-        let mut pending = Vec::new();
-
-        // Poll all tasks without holding the lock
-        for mut task in batch.drain(..) {
-            match task.as_mut().poll(cx) {
-                Poll::Ready(()) => made_progress = true,
-                Poll::Pending => pending.push(task),
-            }
-        }
-
-        // Put pending tasks back in one lock acquisition
-        if !pending.is_empty() {
-            let mut inner = self.inner.lock();
-            for task in pending.into_iter().rev() {
-                inner.tasks.push_front(task);
-            }
-        }
-
-        // Check if new tasks were spawned during polling
-        let has_tasks = !self.inner.lock().tasks.is_empty();
-
-        if !has_tasks {
-            if made_progress {
-                TaskPoll::Done
-            } else {
-                TaskPoll::Empty
-            }
-        } else if made_progress {
-            TaskPoll::Progress
-        } else {
-            TaskPoll::Pending
-        }
-    }
-}
-
-#[cfg(not(feature = "parallel"))]
-impl TaskQueue {
-    pub fn new() -> Self {
-        TaskQueue {
-            inner: UnsafeCell::new(TaskQueueInner {
-                tasks: VecDeque::new(),
-                waker: None,
-            }),
-        }
-    }
-
-    #[inline]
-    #[allow(clippy::mut_from_ref)]
-    fn inner(&self) -> &mut TaskQueueInner {
-        unsafe { &mut *self.inner.get() }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.inner().tasks.is_empty()
-    }
-
-    /// # Safety
-    /// Caller must ensure future lifetime is valid
-    pub unsafe fn push<F: Future<Output = ()>>(&self, future: F) {
-        let future: BoxedTask =
-            std::mem::transmute(Box::pin(future) as Pin<Box<dyn Future<Output = ()> + '_>>);
-        let inner = self.inner();
-        inner.tasks.push_back(future);
-        if let Some(w) = inner.waker.take() {
-            w.wake();
-        }
-    }
-
-    pub fn listen(&self, waker: Waker) {
-        self.inner().waker = Some(waker);
-    }
-
-    pub fn poll(&self, cx: &mut Context) -> TaskPoll {
-        let inner = self.inner();
-
-        if inner.tasks.is_empty() {
+        if self.inner.tasks.is_empty() {
             return TaskPoll::Empty;
         }
 
-        let mut made_progress = false;
-        let count = inner.tasks.len();
-
-        for _ in 0..count {
-            let Some(mut task) = inner.tasks.pop_front() else {
-                break;
-            };
-
-            match task.as_mut().poll(cx) {
-                Poll::Ready(()) => made_progress = true,
-                Poll::Pending => inner.tasks.push_back(task),
-            }
+        let w = crossbeam_deque::Worker::new_fifo();
+        let mut steal = self.inner.tasks.steal_batch(&w);
+        while let crossbeam_deque::Steal::Retry = steal {
+            steal = self.inner.tasks.steal_batch(&w);
         }
-
-        if inner.tasks.is_empty() {
-            if made_progress {
-                TaskPoll::Done
-            } else {
-                TaskPoll::Empty
+        match steal {
+            crossbeam_deque::Steal::Empty => {
+                // Check if new tasks were spawned during polling
+                let has_tasks = !self.inner.tasks.is_empty();
+                if !has_tasks {
+                    TaskPoll::Empty
+                } else {
+                    TaskPoll::Pending
+                }
             }
-        } else if made_progress {
-            TaskPoll::Progress
-        } else {
-            TaskPoll::Pending
+            crossbeam_deque::Steal::Success(_) => {
+                let mut made_progress = false;
+                let mut pending = Vec::new();
+
+                // Poll all tasks without holding the lock
+                while let Some(mut task) = w.pop() {
+                    match task.as_mut().poll(cx) {
+                        Poll::Ready(()) => made_progress = true,
+                        Poll::Pending => pending.push(task),
+                    }
+                }
+
+                // Put pending tasks back in one lock acquisition
+                for task in pending {
+                    self.inner.tasks.push(task);
+                }
+
+                // Check if new tasks were spawned during polling
+                let has_tasks = !self.inner.tasks.is_empty();
+
+                if !has_tasks {
+                    if made_progress {
+                        TaskPoll::Done
+                    } else {
+                        TaskPoll::Empty
+                    }
+                } else if made_progress {
+                    TaskPoll::Progress
+                } else {
+                    TaskPoll::Pending
+                }
+            }
+            _ => unreachable!(),
         }
     }
 }
@@ -204,7 +126,5 @@ impl Default for TaskQueue {
     }
 }
 
-#[cfg(feature = "parallel")]
 unsafe impl Send for TaskQueue {}
-#[cfg(feature = "parallel")]
 unsafe impl Sync for TaskQueue {}

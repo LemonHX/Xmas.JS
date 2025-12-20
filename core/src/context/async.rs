@@ -94,23 +94,11 @@ impl DropContext for AsyncRuntime {
         let guard = match self.try_lock() {
             Some(x) => x,
             None => {
-                #[cfg(not(feature = "parallel"))]
-                {
-                    let p =
-                        unsafe { &mut *(ctx.as_ptr() as *mut crate::context::ctx::RefCountHeader) };
-                    if p.ref_count <= 1 {
-                        assert!(std::thread::panicking());
-                    }
-                    unsafe { qjs::JS_FreeContext(ctx.as_ptr()) }
-                    return;
-                }
-                #[cfg(feature = "parallel")]
-                {
+
                     self.drop_send
                         .send(ctx)
                         .expect("runtime should be alive while contexts life");
                     return;
-                }
             }
         };
         guard.runtime.update_stack_top();
@@ -223,12 +211,10 @@ impl AsyncContext {
 }
 
 // Since the reference to runtime is behind a Arc this object is send
-#[cfg(feature = "parallel")]
 unsafe impl Send for AsyncContext {}
 
 // Since all functions lock the global runtime lock access is synchronized so
 // this object is sync
-#[cfg(feature = "parallel")]
 unsafe impl Sync for AsyncContext {}
 
 #[cfg(test)]
@@ -270,7 +256,6 @@ mod test {
             .await;
     }
 
-    #[cfg(feature = "parallel")]
     #[tokio::test]
     async fn parallel_drop() {
         use std::{

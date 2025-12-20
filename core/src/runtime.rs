@@ -1,6 +1,5 @@
 //! QuickJS runtime related types.
 
-mod base;
 pub(crate) mod opaque;
 pub(crate) mod raw;
 mod userdata;
@@ -23,27 +22,14 @@ use crate::value::promise::PromiseHookType;
 use crate::{Ctx, Value};
 
 /// The type of the promise hook.
-#[cfg(not(feature = "parallel"))]
-pub type PromiseHook =
-    Box<dyn for<'a> Fn(Ctx<'a>, PromiseHookType, Value<'a>, Value<'a>) + 'static>;
-/// The type of the promise hook.
-#[cfg(feature = "parallel")]
 pub type PromiseHook =
     Box<dyn for<'a> Fn(Ctx<'a>, PromiseHookType, Value<'a>, Value<'a>) + Send + 'static>;
 
 /// The type of the promise rejection tracker.
-#[cfg(not(feature = "parallel"))]
-pub type RejectionTracker = Box<dyn for<'a> Fn(Ctx<'a>, Value<'a>, Value<'a>, bool) + 'static>;
-/// The type of the promise rejection tracker.
-#[cfg(feature = "parallel")]
 pub type RejectionTracker =
     Box<dyn for<'a> Fn(Ctx<'a>, Value<'a>, Value<'a>, bool) + Send + 'static>;
 
 /// The type of the interrupt handler.
-#[cfg(not(feature = "parallel"))]
-pub type InterruptHandler = Box<dyn FnMut() -> bool + 'static>;
-/// The type of the interrupt handler.
-#[cfg(feature = "parallel")]
 pub type InterruptHandler = Box<dyn FnMut() -> bool + Send + 'static>;
 
 /// A struct with information about the runtimes memory usage.
