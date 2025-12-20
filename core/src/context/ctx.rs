@@ -222,17 +222,17 @@ impl<'js> Ctx<'js> {
     /// Returns the last raised JavaScript exception, if there is no exception the JavaScript value `null` is returned.
     ///
     /// # Usage
-    /// ```
-    /// # use rquickjs::{Error, Context, Runtime};
-    /// # let rt = Runtime::new().unwrap();
-    /// # let ctx = Context::full(&rt).unwrap();
+    /// ```rust,ignore
+    /// # use rquickjs::{Error, AsyncContext, AsyncRuntime};
+    /// # let rt = AsyncRuntime::new().unwrap();
+    /// # let ctx = AsyncContext::full(&rt).await.unwrap();
     /// # ctx.with(|ctx|{
     /// if let Err(Error::Exception) = ctx.eval::<(),_>("throw 3"){
     ///     assert_eq!(ctx.catch().as_int(),Some(3));
     /// # }else{
     /// #    panic!()
     /// }
-    /// # });
+    /// # }).await;
     /// ```
     pub fn catch(&self) -> Value<'js> {
         unsafe {

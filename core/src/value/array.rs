@@ -181,8 +181,8 @@ where
 mod test {
 
     use crate::*;
-    #[test]
-    fn from_javascript() {
+    #[tokio::test]
+    async fn from_javascript() {
         test_with(|ctx| {
             let val: Array = ctx
                 .eval(
@@ -198,7 +198,7 @@ mod test {
             assert_eq!(val.get::<i32>(3).unwrap(), 4);
             assert_eq!(val.get::<i32>(4).unwrap(), 10);
             let _six: Object = val.get(6).unwrap();
-        });
+        }).await;
     }
 
     #[tokio::test]

@@ -583,10 +583,10 @@ impl<'js> CaughtError<'js> {
 
 /// Extension trait to easily turn results with [`Error`] into results with [`CaughtError`]
 /// # Usage
-/// ```
-/// # use rquickjs::{Error, Context, Runtime, CaughtError};
-/// # let rt = Runtime::new().unwrap();
-/// # let ctx = Context::full(&rt).unwrap();
+/// ```rust,ignore
+/// # use rquickjs::{Error, AsyncContext, AsyncRuntime, CaughtError};
+/// # let rt = AsyncRuntime::new().unwrap();
+/// # let ctx = AsyncContext::full(&rt).await.unwrap();
 /// # ctx.with(|ctx|{
 /// use rquickjs::CatchResultExt;
 ///
@@ -595,7 +595,7 @@ impl<'js> CaughtError<'js> {
 /// # }else{
 /// #    panic!()
 /// }
-/// # });
+/// # }).await;
 /// ```
 pub trait CatchResultExt<'js, T> {
     fn catch(self, ctx: &Ctx<'js>) -> CaughtResult<'js, T>;

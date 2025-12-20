@@ -27,9 +27,9 @@ mod macro_tests {
         t.pass("tests/macros/pass_*.rs");
         #[cfg(feature = "compile-tests")]
         t.compile_fail("tests/compile_fail/*.rs");
-        #[cfg(all(feature = "futures", feature = "compile-tests"))]
+        #[cfg(all(feature = "compile-tests"))]
         t.compile_fail("tests/async_compile_fail/*.rs");
-        #[cfg(all(feature = "futures", feature = "parallel", feature = "compile-tests"))]
+        #[cfg(all(feature = "parallel", feature = "compile-tests"))]
         t.compile_fail("tests/async_parallel_compile_fail/*.rs");
     }
 

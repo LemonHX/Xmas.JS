@@ -79,7 +79,8 @@ pub mod prelude {
 #[cfg(test)]
 pub(crate) async fn test_with<F, R>(func: F) -> R
 where
-    F: FnOnce(Ctx) -> R,
+    R : Send + 'static,
+    F: FnOnce(Ctx) -> R + Send + 'static,
 {
     let rt = AsyncRuntime::new().unwrap();
     let ctx = AsyncContext::full(&rt).await.unwrap();

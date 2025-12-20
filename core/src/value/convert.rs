@@ -9,10 +9,10 @@ mod into;
 
 /// The wrapper for values to force coercion
 ///
-/// ```
-/// # use rquickjs::{Runtime, Context, Result, convert::Coerced};
-/// # let rt = Runtime::new().unwrap();
-/// # let ctx = Context::full(&rt).unwrap();
+/// ```rust,ignore
+/// # use rquickjs::{AsyncRuntime, AsyncContext, Result, convert::Coerced};
+/// # let rt = AsyncRuntime::new().unwrap();
+/// # let ctx = AsyncContext::full(&rt).await.unwrap();
 /// # ctx.with(|ctx| -> Result<()> {
 /// #
 /// // Coercion to string
@@ -33,7 +33,7 @@ mod into;
 /// assert_eq!(ctx.eval::<Coerced<f64>, _>("`123.5`")?.0, 123.5);
 /// #
 /// # Ok(())
-/// # }).unwrap();
+/// # }).await.unwrap();
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]

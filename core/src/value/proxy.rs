@@ -57,8 +57,8 @@ mod test {
 
     use super::*;
 
-    #[test]
-    fn from_javascript() {
+    #[tokio::test]
+    async fn from_javascript() {
         test_with(|ctx| {
             let proxy: Proxy = ctx
                 .eval(r#"new Proxy({ a: 1 }, { get: () => 2 })"#)
@@ -68,11 +68,11 @@ mod test {
             let a: i32 = target.get("a").unwrap();
             assert_eq!(a, 1);
             let _: Function = handler.get("get").unwrap();
-        });
+        }).await;
     }
 
-    #[test]
-    fn from_rust() {
+    #[tokio::test]
+    async fn from_rust() {
         test_with(|ctx| {
             let handler = ProxyHandler::new(ctx.clone())
                 .unwrap()
@@ -91,11 +91,11 @@ mod test {
             ctx.globals().set("proxy", proxy).unwrap();
             let a: i32 = ctx.eval("proxy.a").unwrap();
             assert_eq!(a, 1);
-        });
+        }).await;
     }
 
-    #[test]
-    fn class_proxy() {
+    #[tokio::test]
+    async fn class_proxy() {
         pub struct MyClass {
             a: i32,
         }
@@ -142,6 +142,6 @@ mod test {
             ctx.globals().set("proxy", proxy).unwrap();
             let a: i32 = ctx.eval("proxy.a").unwrap();
             assert_eq!(a, 1);
-        });
+        }).await;
     }
 }

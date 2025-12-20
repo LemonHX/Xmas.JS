@@ -431,11 +431,11 @@ impl<'js, Evaluated> Module<'js, Evaluated> {
     ///
     /// # Examples
     ///
-    /// ```
-    /// use rquickjs::{Context, Module, Result, Runtime, WriteOptions, WriteOptionsEndianness};
+    /// ```rust,ignore
+    /// use rquickjs::{AsyncContext, Module, Result, AsyncRuntime, WriteOptions, WriteOptionsEndianness};
     /// fn main() -> Result<()> {
-    ///     let rt = Runtime::new()?;
-    ///     let ctx = Context::full(&rt)?;
+    ///     let rt = AsyncRuntime::new()?;
+    ///     let ctx = AsyncContext::full(&rt).await?;
     ///     let bytecode = ctx.with(|ctx| {
     ///         let src = "console.log('hello world')";
     ///         let module = Module::declare(ctx.clone(), "foo.js", src)?;
@@ -443,7 +443,7 @@ impl<'js, Evaluated> Module<'js, Evaluated> {
     ///             endianness: WriteOptionsEndianness::Little,
     ///             ..Default::default()
     ///         })
-    ///     })?;
+    ///     }).await?;
     ///     println!("bytecode: {bytecode:?}");
     ///     Ok(())
     /// }
@@ -701,8 +701,8 @@ mod test {
         }).await
     }
 
-    #[test]
-    fn from_javascript() {
+    #[tokio::test]
+    async fn from_javascript() {
         test_with(|ctx| {
             let (module, promise) = Module::declare(
                 ctx.clone(),
@@ -733,6 +733,6 @@ mod test {
             assert!(ns.contains_key("Baz").unwrap());
 
             assert_eq!(ns.get::<_, u32>("a").unwrap(), 2u32);
-        });
+        }).await;
     }
 }

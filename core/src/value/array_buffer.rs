@@ -254,8 +254,8 @@ impl<'js> Object<'js> {
 mod test {
     use crate::*;
 
-    #[test]
-    fn from_javascript_i8() {
+    #[tokio::test]
+    async fn from_javascript_i8() {
         test_with(|ctx| {
             let val: ArrayBuffer = ctx
                 .eval(
@@ -266,7 +266,7 @@ mod test {
                 .unwrap();
             assert_eq!(val.len(), 4);
             assert_eq!(val.as_ref() as &[i8], &[0i8, -5, 1, 11]);
-        });
+        }).await;
     }
 
     #[tokio::test]
@@ -291,8 +291,8 @@ mod test {
         }).await;
     }
 
-    #[test]
-    fn from_javascript_f32() {
+    #[tokio::test]
+    async fn from_javascript_f32() {
         test_with(|ctx| {
             let val: ArrayBuffer = ctx
                 .eval(
@@ -303,7 +303,7 @@ mod test {
                 .unwrap();
             assert_eq!(val.len(), 12);
             assert_eq!(val.as_ref() as &[f32], &[0.5f32, -5.25, 123.125]);
-        });
+        }).await;
     }
 
     #[tokio::test]

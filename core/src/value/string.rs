@@ -144,34 +144,34 @@ impl<'js> std::hash::Hash for CString<'js> {
 #[cfg(test)]
 mod test {
     use crate::{prelude::*, *};
-    #[test]
-    fn from_javascript() {
+    #[tokio::test]
+    async fn from_javascript() {
         test_with(|ctx| {
             let s: String = ctx.eval(" 'foo bar baz' ").unwrap();
             assert_eq!(s.to_string().unwrap(), "foo bar baz");
-        });
+        }).await;
     }
 
-    #[test]
-    fn to_javascript() {
+    #[tokio::test]
+    async fn to_javascript() {
         test_with(|ctx| {
             let string = String::from_str(ctx.clone(), "foo").unwrap();
             let func: Function = ctx.eval("x =>  x + 'bar'").unwrap();
             let text: StdString = (string,).apply(&func).unwrap();
             assert_eq!(text, "foobar".to_string());
-        });
+        }).await;
     }
 
-    #[test]
-    fn from_javascript_c() {
+    #[tokio::test]
+    async fn from_javascript_c() {
         test_with(|ctx| {
             let s: CString = ctx.eval(" 'foo bar baz' ").unwrap();
             assert_eq!(s.as_str(), "foo bar baz");
-        });
+        }).await;
     }
 
-    #[test]
-    fn to_javascript_c() {
+    #[tokio::test]
+    async fn to_javascript_c() {
         test_with(|ctx| {
             let string = String::from_str(ctx.clone(), "foo")
                 .unwrap()
@@ -180,6 +180,6 @@ mod test {
             let func: Function = ctx.eval("x =>  x + 'bar'").unwrap();
             let text: StdString = (string,).apply(&func).unwrap();
             assert_eq!(text, "foobar".to_string());
-        });
+        }).await;
     }
 }
