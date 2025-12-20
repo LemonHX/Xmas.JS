@@ -41,6 +41,55 @@ pub struct Value<'js> {
     pub(crate) value: qjs::JSValue,
 }
 
+unsafe impl Send for Value<'_> {}
+unsafe impl Sync for Value<'_> {}
+
+impl<'js> Value<'js> {
+
+    /// Serialize a value to a byte array
+    pub fn serialize(&self) -> Result<Vec<u8>> {
+        unsafe {
+            let len_ptr: *mut usize = &mut 0;
+            let flags = qjs::JS_WRITE_OBJ_BYTECODE
+                | qjs::JS_WRITE_OBJ_REFERENCE
+                | qjs::JS_WRITE_OBJ_SAB
+                | qjs::JS_WRITE_OBJ_STRIP_SOURCE;
+            let buf = qjs::JS_WriteObject(self.ctx.as_ptr(), len_ptr as _, self.as_js_value(), flags as i32);
+            if buf.is_null() {
+                return Err(Error::new_from_js(
+                    "Failed to serialize object",
+                    "ArrayBuffer",
+                ));
+            }
+            let len = *len_ptr;
+            let vec = Vec::from_raw_parts(buf, len, len);
+            Ok(vec)
+        }
+    }
+
+    /// Deserialize a value from a byte array
+    pub fn deserialize(ctx: Ctx<'js>, data: &[u8]) -> Result<Self> {
+        unsafe {
+            let flags = qjs::JS_READ_OBJ_BYTECODE
+                | qjs::JS_READ_OBJ_REFERENCE
+                | qjs::JS_READ_OBJ_SAB;
+            let value = qjs::JS_ReadObject(
+                ctx.as_ptr(),
+                data.as_ptr(),
+                data.len() as u64,
+                flags as i32,
+            );
+            if qjs::JS_IsException(value) {
+                return Err(Error::new_from_js(
+                    "Failed to deserialize object",
+                    "Value",
+                ));
+            }
+            Ok(Self::from_js_value(ctx, value))
+        }
+    }
+}
+
 impl<'js> PartialEq for Value<'js> {
     fn eq(&self, other: &Self) -> bool {
         let tag = unsafe { qjs::JS_VALUE_GET_TAG(self.value) };
@@ -811,8 +860,8 @@ mod test {
         assert!(!Type::Bool.interpretable_as(Type::Int));
     }
 
-    #[test]
-    fn big_int() {
+    #[tokio::test]
+    async fn big_int() {
         test_with(|ctx| {
             let val: Value = ctx.eval(r#"1n"#).unwrap();
             assert_eq!(val.type_of(), Type::BigInt);
@@ -822,6 +871,6 @@ mod test {
             assert_eq!(val.type_of(), Type::BigInt);
             let val = Value::new_big_int(ctx, 9999999999999999);
             assert_eq!(val.type_of(), Type::BigInt);
-        });
+        }).await;
     }
 }
