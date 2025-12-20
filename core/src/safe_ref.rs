@@ -1,16 +1,5 @@
-#[cfg(not(feature = "parallel"))]
-use std::cell::RefCell as Cell;
-
-#[cfg(feature = "parallel")]
 use std::sync::Mutex as Cell;
 
-#[cfg(not(feature = "parallel"))]
-pub use std::cell::RefMut as Lock;
-
-#[cfg(not(feature = "parallel"))]
-pub use std::rc::{Rc as Ref, Weak};
-
-#[cfg(feature = "parallel")]
 pub use std::sync::{Arc as Ref, MutexGuard as Lock, Weak};
 
 #[repr(transparent)]
@@ -30,26 +19,10 @@ impl<T: Default> Default for Mut<T> {
 
 impl<T: ?Sized> Mut<T> {
     pub fn lock(&self) -> Lock<T> {
-        #[cfg(not(feature = "parallel"))]
-        {
-            self.0.borrow_mut()
-        }
-
-        #[cfg(feature = "parallel")]
-        {
             self.0.lock().unwrap()
-        }
     }
 
     pub fn try_lock(&self) -> Option<Lock<T>> {
-        #[cfg(not(feature = "parallel"))]
-        {
-            self.0.try_borrow_mut().ok()
-        }
-
-        #[cfg(feature = "parallel")]
-        {
             self.0.lock().ok()
-        }
     }
 }

@@ -117,7 +117,6 @@ pub(crate) struct RawRuntime {
     pub loader: Option<LoaderHolder>,
 }
 
-#[cfg(feature = "parallel")]
 unsafe impl Send for RawRuntime {}
 
 impl Drop for RawRuntime {
@@ -188,7 +187,6 @@ impl RawRuntime {
     }
 
     pub fn update_stack_top(&self) {
-        #[cfg(feature = "parallel")]
         unsafe {
             qjs::JS_UpdateStackTop(self.rt.as_ptr());
         }
@@ -435,7 +433,7 @@ mod test {
                     let mut c = counter.lock().unwrap();
                     *c += 1;
                 }
-            })));
+            }))).await;
         }
         let context = AsyncContext::full(&rt).await.unwrap();
         context.with(|ctx| {
@@ -448,7 +446,7 @@ mod test {
                 throw new Error("Caught")
             "#,
             );
-        });
+        }).await;
         assert_eq!(*counter.lock().unwrap(), 1);
     }
 }

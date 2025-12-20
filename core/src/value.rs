@@ -36,6 +36,8 @@ pub use iterable::{Iterable, JsIterator};
 pub use typed_array::TypedArray;
 
 /// Any JavaScript value
+/// it is Send and Sync because the async runtime needs to be able to move values between threads
+/// **BUT** the value **MUST NOT** live beyond the lifetime of the context it belongs to
 pub struct Value<'js> {
     pub(crate) ctx: Ctx<'js>,
     pub(crate) value: qjs::JSValue,
@@ -45,7 +47,6 @@ unsafe impl Send for Value<'_> {}
 unsafe impl Sync for Value<'_> {}
 
 impl<'js> Value<'js> {
-
     /// Serialize a value to a byte array
     pub fn serialize(&self) -> Result<Vec<u8>> {
         unsafe {

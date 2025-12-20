@@ -1,17 +1,9 @@
 use std::{ffi::CString, vec::Vec};
 use std::{ptr::NonNull, result::Result as StdResult, task::Poll};
 
-#[cfg(feature = "parallel")]
 use std::sync::Arc;
-#[cfg(feature = "parallel")]
 use async_lock::Mutex;
-#[cfg(feature = "parallel")]
 use std::sync::mpsc::{self, Receiver, Sender};
-
-#[cfg(not(feature = "parallel"))]
-use std::rc::Rc;
-#[cfg(not(feature = "parallel"))]
-use std::cell::RefCell;
 
 use super::{
     opaque::Opaque, raw::RawRuntime, spawner::DriveFuture, task_queue::TaskPoll, InterruptHandler,
@@ -20,43 +12,26 @@ use super::{
 use crate::allocator::Allocator;
 
 use crate::loader::{Loader, Resolver};
-#[cfg(feature = "parallel")]
 use crate::qjs;
 use crate::{context::AsyncContext, result::AsyncJobException, Ctx, Result};
 
-// Type aliases for lock abstraction
-#[cfg(feature = "parallel")]
 pub(crate) type RuntimeLock<T> = Mutex<T>;
-#[cfg(not(feature = "parallel"))]
-pub(crate) type RuntimeLock<T> = RefCell<T>;
 
-#[cfg(feature = "parallel")]
 pub(crate) type RuntimeRef<T> = Arc<T>;
-#[cfg(not(feature = "parallel"))]
-pub(crate) type RuntimeRef<T> = Rc<T>;
 
-#[cfg(feature = "parallel")]
 pub(crate) type RuntimeWeak<T> = std::sync::Weak<T>;
-#[cfg(not(feature = "parallel"))]
-pub(crate) type RuntimeWeak<T> = std::rc::Weak<T>;
 
-// Guard type aliases
-#[cfg(feature = "parallel")]
 pub(crate) type RuntimeGuard<'a, T> = async_lock::MutexGuard<'a, T>;
-#[cfg(not(feature = "parallel"))]
-pub(crate) type RuntimeGuard<'a, T> = std::cell::RefMut<'a, T>;
 
 #[derive(Debug)]
 pub(crate) struct InnerRuntime {
     pub runtime: RawRuntime,
-    #[cfg(feature = "parallel")]
     pub drop_recv: Receiver<NonNull<qjs::JSContext>>,
 }
 
 impl InnerRuntime {
     #[inline]
     pub fn drop_pending(&self) {
-        #[cfg(feature = "parallel")]
         while let Ok(x) = self.drop_recv.try_recv() {
             unsafe { qjs::JS_FreeContext(x.as_ptr()) }
         }
@@ -69,7 +44,6 @@ impl Drop for InnerRuntime {
     }
 }
 
-#[cfg(feature = "parallel")]
 unsafe impl Send for InnerRuntime {}
 
 /// A weak handle to the async runtime.
@@ -79,7 +53,6 @@ unsafe impl Send for InnerRuntime {}
 #[derive(Clone)]
 pub struct AsyncWeakRuntime {
     pub(crate) inner: RuntimeWeak<RuntimeLock<InnerRuntime>>,
-    #[cfg(feature = "parallel")]
     pub(crate) drop_send: Sender<NonNull<qjs::JSContext>>,
 }
 
@@ -87,7 +60,6 @@ impl AsyncWeakRuntime {
     pub fn try_ref(&self) -> Option<AsyncRuntime> {
         self.inner.upgrade().map(|inner| AsyncRuntime {
             inner,
-            #[cfg(feature = "parallel")]
             drop_send: self.drop_send.clone(),
         })
     }
@@ -98,17 +70,12 @@ impl AsyncWeakRuntime {
 #[derive(Clone)]
 pub struct AsyncRuntime {
     pub(crate) inner: RuntimeRef<RuntimeLock<InnerRuntime>>,
-    #[cfg(feature = "parallel")]
-    pub(crate) drop_send: Sender<NonNull<qjs::JSContext>>,
+    pub(crate) drop_send: Sender<NonNull<crate::qjs::JSContext>>,
 }
 
-#[cfg(feature = "parallel")]
 unsafe impl Send for AsyncRuntime {}
-#[cfg(feature = "parallel")]
 unsafe impl Send for AsyncWeakRuntime {}
-#[cfg(feature = "parallel")]
 unsafe impl Sync for AsyncRuntime {}
-#[cfg(feature = "parallel")]
 unsafe impl Sync for AsyncWeakRuntime {}
 
 impl AsyncRuntime {
@@ -134,16 +101,13 @@ impl AsyncRuntime {
     }
 
     fn new_inner(runtime: RawRuntime) -> Result<Self> {
-        #[cfg(feature = "parallel")]
         let (drop_send, drop_recv) = mpsc::channel();
 
         Ok(Self {
             inner: RuntimeRef::new(RuntimeLock::new(InnerRuntime {
                 runtime,
-                #[cfg(feature = "parallel")]
                 drop_recv,
             })),
-            #[cfg(feature = "parallel")]
             drop_send,
         })
     }
@@ -151,35 +115,20 @@ impl AsyncRuntime {
     /// Get weak ref to runtime.
     pub fn weak(&self) -> AsyncWeakRuntime {
         AsyncWeakRuntime {
-            #[cfg(feature = "parallel")]
             inner: Arc::downgrade(&self.inner),
-            #[cfg(not(feature = "parallel"))]
-            inner: Rc::downgrade(&self.inner),
-            #[cfg(feature = "parallel")]
             drop_send: self.drop_send.clone(),
         }
     }
 
     // Lock helpers - zero-cost for non-parallel
-    #[cfg(feature = "parallel")]
     pub(crate) async fn lock(&self) -> RuntimeGuard<'_, InnerRuntime> {
         self.inner.lock().await
     }
 
-    #[cfg(not(feature = "parallel"))]
-    pub(crate) async fn lock(&self) -> RuntimeGuard<'_, InnerRuntime> {
-        self.inner.borrow_mut()
-    }
-
-    #[cfg(feature = "parallel")]
     pub(crate) fn try_lock(&self) -> Option<RuntimeGuard<'_, InnerRuntime>> {
         self.inner.try_lock()
     }
 
-    #[cfg(not(feature = "parallel"))]
-    pub(crate) fn try_lock(&self) -> Option<RuntimeGuard<'_, InnerRuntime>> {
-        self.inner.try_borrow_mut().ok()
-    }
 
     /// Set a closure which is called when a promise is rejected.
     pub async fn set_host_promise_rejection_tracker(&self, tracker: Option<RejectionTracker>) {
@@ -349,28 +298,15 @@ macro_rules! async_test_case {
     ($name:ident => ($rt:ident,$ctx:ident) { $($t:tt)* }) => {
     #[test]
     fn $name() {
-        #[cfg(feature = "parallel")]
         let mut new_thread = tokio::runtime::Builder::new_multi_thread();
-        #[cfg(not(feature = "parallel"))]
-        let mut new_thread = tokio::runtime::Builder::new_current_thread();
 
         let rt = new_thread.enable_all().build().unwrap();
 
-        #[cfg(feature = "parallel")]
         rt.block_on(async {
             let $rt = crate::AsyncRuntime::new().unwrap();
             let $ctx = crate::AsyncContext::full(&$rt).await.unwrap();
             $($t)*
         });
-        #[cfg(not(feature = "parallel"))]
-        {
-            let set = tokio::task::LocalSet::new();
-            set.block_on(&rt, async {
-                let $rt = crate::AsyncRuntime::new().unwrap();
-                let $ctx = crate::AsyncContext::full(&$rt).await.unwrap();
-                $($t)*
-            });
-        }
     }
     };
 }
@@ -403,10 +339,7 @@ mod test {
     async_test_case!(drive => (rt,ctx){
         use std::sync::{Arc, atomic::{Ordering,AtomicUsize}};
 
-        #[cfg(feature = "parallel")]
         tokio::spawn(rt.drive());
-        #[cfg(not(feature = "parallel"))]
-        tokio::task::spawn_local(rt.drive());
 
         tokio::time::sleep(Duration::from_secs_f64(0.01)).await;
 
@@ -528,7 +461,6 @@ mod test {
         assert_eq!(COUNT.load(Ordering::Relaxed), 2);
     });
 
-    #[cfg(feature = "parallel")]
     #[tokio::test]
     async fn ensure_types_are_send() {
         fn assert_send<T: Send>(_: &T) {}

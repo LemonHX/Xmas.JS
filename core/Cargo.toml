@@ -20,19 +20,15 @@ phf = { version = "0.13", optional = true }
 indexmap = { version = "2", optional = true }
 either = { version = "1", optional = true }
 async-lock = { version = "3", default-features = false }
-parking_lot = { version = "0.12", optional = true }
+parking_lot = { version = "0.12" }
 chrono = { version = "0.4" }
 dlopen2 = { version = "0.8" }
 relative-path = { version = "2.0" }
+crossbeam-deque = "0.8.6"
 
 [dev-dependencies]
 futures-rs = { package = "futures", version = "0.3" }
-tokio = { version = "1", default-features = false, features = [
-  "rt",
-  "time",
-  "macros",
-  "sync",
-] }
+tokio = { version = "1", default-features = false, features = ["full"] }
 rquickjs.path = "../"
 approx = "0.5"
 trybuild = "1"
@@ -46,9 +42,6 @@ full = [ "either", "indexmap"]
 # Use bindgen to generate bindings at compile-type
 # otherwise bundled bindings will be used
 bindgen = ["rquickjs-sys/bindgen"]
-
-# Enable support of parallel execution
-parallel = ["tokio/rt-multi-thread", "parking_lot"]
 
 # Allows transferring objects between different contexts of the same runtime.
 multi-ctx = []
