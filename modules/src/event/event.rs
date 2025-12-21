@@ -1,9 +1,9 @@
-use rquickjs::{prelude::Opt, Result, Value};
+use rsquickjs::{prelude::Opt, Result, Value};
 
 use crate::utils::object::ObjectExt;
 
-#[rquickjs::class]
-#[derive(rquickjs::class::Trace, rquickjs::JsLifetime)]
+#[rsquickjs::class]
+#[derive(rsquickjs::class::Trace, rsquickjs::JsLifetime)]
 pub struct Event {
     event_type: String,
     bubbles: bool,
@@ -11,7 +11,7 @@ pub struct Event {
     composed: bool,
 }
 
-#[rquickjs::methods]
+#[rsquickjs::methods]
 impl Event {
     #[qjs(constructor)]
     pub fn new(event_type: String, options: Opt<Value<'_>>) -> Result<Self> {

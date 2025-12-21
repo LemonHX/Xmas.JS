@@ -57,7 +57,7 @@ impl FunctionConfig {
         }
     }
 
-    /// Returns a name under which we can access the rquickjs crate.
+    /// Returns a name under which we can access the rsquickjs crate.
     pub fn crate_name(&self) -> Result<String> {
         if let Some(c) = self.crate_.clone() {
             return Ok(c);

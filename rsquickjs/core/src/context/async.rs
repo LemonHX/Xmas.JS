@@ -62,7 +62,6 @@ use future::WithFuture;
 /// rt.idle().await
 /// # }
 /// ```
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
 #[macro_export]
 macro_rules! async_with{
     ($context:expr => |$ctx:ident| { $($t:tt)* }) => {
@@ -110,7 +109,6 @@ impl DropContext for AsyncRuntime {
 /// An asynchronous single execution context with its own global variables and stack.
 ///
 /// Can share objects with other contexts of the same runtime.
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
 #[derive(Clone)]
 pub struct AsyncContext(pub(crate) ContextOwner<AsyncRuntime>);
 

@@ -11,11 +11,11 @@ pub mod console;
 pub mod utils;
 
 pub fn init(
-    ctx: &rquickjs::Ctx, 
+    ctx: &rsquickjs::Ctx, 
     permissions: permissions::Permissions,
     #[cfg(feature = "console")]
     log_type: console::LogType,
-) -> rquickjs::Result<()> {
+) -> rsquickjs::Result<()> {
     utils::primordials::BasePrimordials::init(ctx)?;
     permissions::init(ctx.clone(), permissions)?;
     

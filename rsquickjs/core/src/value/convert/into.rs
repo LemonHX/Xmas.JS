@@ -142,7 +142,7 @@ where
 
 /// Convert the either into JS
 #[cfg(feature = "either")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "either")))]
+#[cfg_attr(doc(cfg(feature = "either")))]
 impl<'js, L, R> IntoJs<'js> for Either<L, R>
 where
     L: IntoJs<'js>,
@@ -158,7 +158,7 @@ where
 
 /// Convert the either into JS
 #[cfg(feature = "either")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "either")))]
+#[cfg_attr(doc(cfg(feature = "either")))]
 impl<'js, L, R> IntoJs<'js> for &Either<L, R>
 where
     for<'a> &'a L: IntoJs<'js>,
@@ -450,7 +450,7 @@ into_js_impls! {
     BTreeSet,
     /// Convert from Rust index set to JS array
     #[cfg(feature = "indexmap")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "indexmap")))]
+    #[cfg_attr(doc(cfg(feature = "indexmap")))]
     IndexSet {S},
 }
 
@@ -465,7 +465,7 @@ into_js_impls! {
     BTreeMap,
     /// Convert from Rust index map to JS object
     #[cfg(feature = "indexmap")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "indexmap")))]
+    #[cfg_attr(doc(cfg(feature = "indexmap")))]
     IndexMap {S},
 }
 

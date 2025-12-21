@@ -25,7 +25,7 @@ pub fn validate(func: &ItemFn) -> Result<()> {
     }
     if sig.inputs.len() != 2 || sig.output == ReturnType::Default {
         return Err(Error::new(
-            func.span(), "Invalid module evaluation function. Function should implement `fn(rquickjs::Ctx,&mut rquickjs::module::Exports) -> rquickjs::result<()>`."));
+            func.span(), "Invalid module evaluation function. Function should implement `fn(rsquickjs::Ctx,&mut rsquickjs::module::Exports) -> rsquickjs::result<()>`."));
     }
 
     Ok(())

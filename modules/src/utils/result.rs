@@ -1,7 +1,7 @@
 
 use std::{fmt::Write, result::Result as StdResult};
 
-use rquickjs::{Ctx, Exception, Result};
+use rsquickjs::{Ctx, Exception, Result};
 
 pub trait ResultExt<T> {
     fn or_throw_msg(self, ctx: &Ctx, msg: &str) -> Result<T>;

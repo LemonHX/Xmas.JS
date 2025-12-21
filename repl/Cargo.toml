@@ -9,7 +9,7 @@ description = "Winter TC JavaScript modules for quickjs"
 keywords = ["quickjs", "ecmascript", "javascript", "es6", "es2020"]
 
 [dependencies]
-rquickjs = { workspace = true, features = ["macro"]}
+rsquickjs = { workspace = true, features = ["macro"]}
 xmas-js-modules = { workspace = true }
 tracing-subscriber = "0.3.17"
 tracing = "0.1.44"

@@ -1,4 +1,4 @@
-use rquickjs::{
+use rsquickjs::{
     atom::PredefinedAtom, class::JsClass, object::Accessor, prelude::This, Array, Class, Ctx,
     Function, Object, Result, Value,
 };

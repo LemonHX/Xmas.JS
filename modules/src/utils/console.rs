@@ -16,7 +16,7 @@ use super::{
     hash,
     primordials::{BasePrimordials, Primordial},
 };
-use rquickjs::{
+use rsquickjs::{
     atom::PredefinedAtom,
     function::This,
     object::Filter,
@@ -364,7 +364,7 @@ fn format_raw_inner<'js>(
             }));
         },
         Type::String => {
-            //FIXME can be removed if https://github.com/DelSkayn/rquickjs/pull/447 is merged
+            //FIXME can be removed if https://github.com/DelSkayn/rsquickjs/pull/447 is merged
             let lossy_string = get_lossy_string(value)?;
             format_raw_string_inner(result, lossy_string, !is_root, color_enabled);
         },

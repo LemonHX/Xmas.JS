@@ -41,7 +41,6 @@ pub enum PromiseHookType {
 pub struct Promise<'js>(pub(crate) Object<'js>);
 
 impl<'js> Promise<'js> {
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
     
     pub fn wrap_future<F, R>(ctx: &Ctx<'js>, future: F) -> Result<Self>
     where
@@ -145,7 +144,6 @@ impl<'js> Promise<'js> {
     }
 
     /// Wrap the promise into a struct which can be polled as a rust future.
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
     
     pub fn into_future<T>(self) -> PromiseFuture<'js, T>
     where
@@ -160,7 +158,6 @@ impl<'js> Promise<'js> {
 }
 
 /// Future-aware promise
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
 
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 #[derive(Debug)]
@@ -215,7 +212,6 @@ where
 }
 
 /// Wrapper for futures to convert to JS promises
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
 #[repr(transparent)]
 
 pub struct Promised<T>(pub T);
@@ -311,7 +307,6 @@ impl<'js> MaybePromise<'js> {
     /// Convert self into a future which will return ready if the wrapped value isn't a promise,
     /// otherwise it will handle the promise like the future returned from
     /// [`Promise::into_future`].
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
     
     pub fn into_future<T: FromJs<'js>>(self) -> MaybePromiseFuture<'js, T> {
         if self.0.is_promise() {
@@ -324,13 +319,9 @@ impl<'js> MaybePromise<'js> {
 }
 
 /// Future-aware maybe promise
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
-
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 #[derive(Debug)]
 pub struct MaybePromiseFuture<'js, T>(MaybePromiseFutureInner<'js, T>);
-
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
 
 #[derive(Debug)]
 enum MaybePromiseFutureInner<'js, T> {

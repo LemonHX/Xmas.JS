@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use rquickjs::{
+use rsquickjs::{
     atom::PredefinedAtom,
     class::{Trace, Tracer},
     function::Constructor,
@@ -30,7 +30,7 @@ pub enum ObjectBytes<'js> {
     Vec(Vec<u8>),
 }
 
-// Requires manual implementation because rquickjs hasn't implemented JsLifetime for f32 or f64
+// Requires manual implementation because rsquickjs hasn't implemented JsLifetime for f32 or f64
 unsafe impl<'js> JsLifetime<'js> for ObjectBytes<'js> {
     type Changed<'to> = ObjectBytes<'to>;
 }

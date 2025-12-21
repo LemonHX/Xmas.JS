@@ -1,4 +1,4 @@
-use rquickjs::{CatchResultExt, CaughtError, Ctx, Error, IntoJs, Result, Value};
+use rsquickjs::{CatchResultExt, CaughtError, Ctx, Error, IntoJs, Result, Value};
 
 pub trait ErrorExtensions<'js> {
     fn into_value(self, ctx: &Ctx<'js>) -> Result<Value<'js>>;

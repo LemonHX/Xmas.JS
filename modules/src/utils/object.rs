@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use rquickjs::{
+use rsquickjs::{
     atom::PredefinedAtom, function::IntoJsFunc, prelude::Func, Array, Coerced, Ctx, Error,
     Exception, FromJs, IntoAtom, IntoJs, Object, Result, Symbol, Undefined, Value,
 };

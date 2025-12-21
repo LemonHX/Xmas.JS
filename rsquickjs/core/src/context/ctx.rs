@@ -390,7 +390,6 @@ impl<'js> Ctx<'js> {
     /// Spawn future on QuickJS's task queue (same thread as JS).
     /// Use this when the future needs to access JS values.
     
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
     pub fn spawn<F>(&self, future: F)
     where
         F: Future<Output = ()> + 'js,
@@ -433,7 +432,6 @@ impl<'js> Ctx<'js> {
     /// })
     /// ```
     
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
     pub fn await_promise<T: FromJs<'js>>(
         &self,
         promise: Promise<'js>,

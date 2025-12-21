@@ -1,4 +1,4 @@
-use rquickjs::{
+use rsquickjs::{
     module::{Exports, ModuleDef},
     Ctx, Object, Result, Value,
 };

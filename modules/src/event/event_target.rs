@@ -1,13 +1,13 @@
 use std::sync::{Arc, RwLock};
 
-use rquickjs::{
+use rsquickjs::{
     class::{Trace, Tracer},
     JsLifetime,
 };
 
 use super::{Emitter, EventList, Events};
 
-#[rquickjs::class]
+#[rsquickjs::class]
 #[derive(Clone)]
 pub struct EventTarget<'js> {
     pub events: Events<'js>,
@@ -29,7 +29,7 @@ impl<'js> Trace<'js> for EventTarget<'js> {
     }
 }
 
-#[rquickjs::methods]
+#[rsquickjs::methods]
 impl<'js> EventTarget<'js> {
     #[qjs(constructor)]
     pub fn new() -> Self {
