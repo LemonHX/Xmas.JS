@@ -14,7 +14,6 @@ pub mod pass_module;
 #[path = "macros/pass_trace.rs"]
 pub mod pass_trace;
 
-#[cfg(feature = "macro")]
 mod macro_tests {
     #[cfg(target_arch = "wasm32")]
     use crate::{pass_class, pass_method, pass_module, pass_trace};

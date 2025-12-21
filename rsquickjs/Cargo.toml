@@ -1,0 +1,95 @@
+[package]
+name = "rsquickjs"
+version = "0.10.0"
+authors = ["LemonHX <lemonhx@lemonhx.moe>", "Mees Delzenne <mees.delzenne@gmail.com>", "K. <kayo@illumium.org>"]
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+readme = "README.md"
+description = "High level bindings to the QuickJS JavaScript engine (fork of rsquickjs)"
+keywords = ["quickjs", "ecmascript", "javascript", "es6", "es2020"]
+categories = ["api-bindings"]
+
+
+[workspace]
+members = [
+  "core",
+  "macro",
+]
+
+[workspace.dependencies]
+# TODO: modify quickjs and rsquickjs-sys later
+rquickjs-sys = { version = "0.10.0", git = "https://github.com/DelSkayn/rquickjs", rev = "111951b1a31075bdff46684e0ff29f37ff2a04b2", default-features = false }
+
+rsquickjs-core = { version = "0.10.0", path = "core", default-features = false }
+rsquickjs-macro = { version = "0.10.0", path = "macro", default-features = false }
+rsquickjs = { version = "0.10.0", path = "./", default-features = false }
+
+[dependencies]
+indexmap-rs = { package = "indexmap", version = "2", optional = true }
+either-rs = { package = "either", version = "1", optional = true }
+rsquickjs-core = { workspace = true }
+rsquickjs-macro = { workspace = true, optional = true }
+
+
+[features]
+default = []
+
+# Almost all features excluding "parallel" and support for async runtimes
+full = [
+  "either",
+  "indexmap",
+  "macro",
+  "phf",
+]
+
+# Enable support for Either type
+either = ["rsquickjs-core/either", "either-rs"]
+
+# Enable support for IndexMap and IndexSet types type
+indexmap = ["rsquickjs-core/indexmap", "indexmap-rs"]
+
+# Enable support for perfect hash maps
+phf = ["rsquickjs-core/phf", "rsquickjs-macro/phf"]
+
+# Use bindgen to generate bindings at compile-time
+# otherwise bundled bindings will be used
+bindgen = ["rsquickjs-core/bindgen", "rsquickjs-macro?/bindgen"]
+
+# Enable helper macros
+macro = ["rsquickjs-macro"]
+
+# Allows transferring objects between different contexts of the same runtime.
+# Disabled for now as it can be used to create unsound code.
+# multi-ctx = ["rsquickjs-core/multi-ctx"]
+
+# Enable QuickJS dumps for debug
+dump-bytecode = ["rsquickjs-core/dump-bytecode"]
+dump-gc = ["rsquickjs-core/dump-gc"]
+dump-gc-free = ["rsquickjs-core/dump-gc-free"]
+dump-free = ["rsquickjs-core/dump-free"]
+# Dump JS values which still alive when runtime is freed
+dump-leaks = ["rsquickjs-core/dump-leaks"]
+dump-mem = ["rsquickjs-core/dump-mem"]
+dump-objects = ["rsquickjs-core/dump-objects"]
+dump-atoms = ["rsquickjs-core/dump-atoms"]
+dump-shapes = ["rsquickjs-core/dump-shapes"]
+dump-module-resolve = ["rsquickjs-core/dump-module-resolve"]
+dump-promise = ["rsquickjs-core/dump-promise"]
+dump-read-object = ["rsquickjs-core/dump-read-object"]
+
+# Disable QuickJS assertions for faster performance
+disable-assertions = ["rsquickjs-core/disable-assertions"]
+
+# Enable compilation tests
+compile-tests = ["rsquickjs-core/compile-tests"]
+
+# Enable unstable doc-cfg feature (for docs.rs)
+doc-cfg = ["rsquickjs-core/doc-cfg"]
+
+
+[dev-dependencies]
+trybuild = "1"
+
+[package.metadata.docs.rs]
+features = ["full-async", "parallel", "doc-cfg"]
