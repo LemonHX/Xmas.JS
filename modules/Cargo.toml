@@ -1,0 +1,29 @@
+[package]
+name = "xmas-js-modules"
+version = "0.1.0"
+authors = ["LemonHX <lemonhx@lemonhx.moe>"]
+edition = "2021"
+license = "MIT"
+readme = "README.md"
+description = "Winter TC JavaScript modules for quickjs"
+keywords = ["quickjs", "ecmascript", "javascript", "es6", "es2020"]
+
+[dependencies]
+rquickjs = { workspace = true, features = ["macro"]}
+tracing = "0.1.44"
+itoa = "1.0.15"
+ryu = "1.0.20"
+simd-json = "0.17.0"
+rand = "0.9.2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+tracing-subscriber = "0.3.17"
+[features]
+default = [
+    "event",
+    "console",
+]
+
+event = []
+console = []
