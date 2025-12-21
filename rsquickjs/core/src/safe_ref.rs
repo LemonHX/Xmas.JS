@@ -1,6 +1,6 @@
 use std::sync::Mutex as Cell;
 
-pub use std::sync::{Arc as Ref, MutexGuard as Lock, Weak};
+pub use std::sync::{Arc as Ref, MutexGuard as Lock};
 
 #[repr(transparent)]
 pub struct Mut<T: ?Sized>(Cell<T>);

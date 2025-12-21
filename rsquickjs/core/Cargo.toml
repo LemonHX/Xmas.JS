@@ -1,20 +1,20 @@
 [package]
-name = "rquickjs-core"
+name = "rsquickjs-core"
 version = "0.10.0"
-authors = ["Mees Delzenne <mees.delzenne@gmail.com>", "K. <kayo@illumium.org>"]
+authors = ["LemonHX <lemonhx@lemonhx.moe>", "Mees Delzenne <mees.delzenne@gmail.com>", "K. <kayo@illumium.org>"]
 edition = "2021"
 license = "MIT"
 readme = "README.md"
 description = "High level bindings to the QuickJS JavaScript engine"
 keywords = ["quickjs", "ecmascript", "javascript", "es6", "es2020"]
 categories = ["api-bindings"]
-repository = "https://github.com/DelSkayn/rquickjs.git"
 
 [package.metadata.docs.rs]
 features = ["full-async", "doc-cfg"]
 
 [dependencies]
 rquickjs-sys = { workspace = true }
+
 hashbrown = { version = "0.16" }
 phf = { version = "0.13", optional = true }
 indexmap = { version = "2", optional = true }
@@ -29,7 +29,7 @@ crossbeam-deque = "0.8.6"
 [dev-dependencies]
 futures-rs = { package = "futures", version = "0.3" }
 tokio = { version = "1", default-features = false, features = ["full"] }
-rquickjs.path = "../"
+rsquickjs.path = "../"
 approx = "0.5"
 trybuild = "1"
 

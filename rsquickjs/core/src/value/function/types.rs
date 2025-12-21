@@ -46,7 +46,7 @@ pub struct This<T>(pub T);
 /// helper type for retrieving function object on which a function is called..
 pub struct FuncArg<T>(pub T);
 
-/// Helper type for optional parameters.
+/// Helper type for optional p
 pub struct Opt<T>(pub Option<T>);
 
 /// Helper type for rest and spread arguments.

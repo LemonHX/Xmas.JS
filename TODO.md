@@ -47,7 +47,6 @@ OXC is great!
 
 [txiki.js](https://github.com/saghul/txiki.js) did a great job implementing TC API's,
 i want to implement those API's as well. 
-
 - [ ] Abort
     - [ ] AbortController
     - [ ] AbortSignal
@@ -66,6 +65,9 @@ i want to implement those API's as well.
     - [x] EventTarget
 
 - [ ] File
+    - [ ] async
+    - [ ] sync
+
 - [ ] FormData
 - [ ] Headers
 - [ ] ReadableByteStreamController
