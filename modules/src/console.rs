@@ -5,20 +5,20 @@ use crate::utils::{
     console::{build_formatted_string, FormatOptions, NEWLINE},
     module::{export_default, ModuleInfo},
 };
-use rquickjs::{
+use rsquickjs::{
     module::{Declarations, Exports, ModuleDef},
     prelude::{Func, Rest},
     Class, Ctx, Object, Result, Value,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, rquickjs::class::Trace, rquickjs::JsLifetime)]
+#[derive(Debug, Clone, PartialEq, Eq, rsquickjs::class::Trace, rsquickjs::JsLifetime)]
 pub enum LogType {
     Stdio,
     Trace,
 }
 
-#[derive(rquickjs::class::Trace, rquickjs::JsLifetime)]
-#[rquickjs::class]
+#[derive(rsquickjs::class::Trace, rsquickjs::JsLifetime)]
+#[rsquickjs::class]
 pub struct Console {}
 
 impl Default for Console {
@@ -27,7 +27,7 @@ impl Default for Console {
     }
 }
 
-#[rquickjs::methods(rename_all = "camelCase")]
+#[rsquickjs::methods(rename_all = "camelCase")]
 impl Console {
     #[qjs(constructor)]
     pub fn new() -> Self {
@@ -249,16 +249,16 @@ mod tests {
     #[tokio::test]
     async fn test_console() {
         use super::{init, LogType};
-        use rquickjs::AsyncContext;
-        use rquickjs::AsyncRuntime;
-        use rquickjs::Function;
+        use rsquickjs::AsyncContext;
+        use rsquickjs::AsyncRuntime;
+        use rsquickjs::Function;
         let rt = AsyncRuntime::new().unwrap();
         let ctx = AsyncContext::full(&rt).await.unwrap();
         // tracing_subscriber::fmt::init();
         fn print(s: String) {
             println!("{s}");
         }
-        ctx.with(|ctx| -> rquickjs::Result<()> {
+        ctx.with(|ctx| -> rsquickjs::Result<()> {
             let global = ctx.globals();
             global.set(
                 "__print",

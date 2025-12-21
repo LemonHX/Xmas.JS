@@ -49,7 +49,6 @@ unsafe impl Send for InnerRuntime {}
 /// A weak handle to the async runtime.
 ///
 /// Holding onto this struct does not prevent the runtime from being dropped.
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
 #[derive(Clone)]
 pub struct AsyncWeakRuntime {
     pub(crate) inner: RuntimeWeak<RuntimeLock<InnerRuntime>>,
@@ -66,7 +65,6 @@ impl AsyncWeakRuntime {
 }
 
 /// Asynchronous QuickJS runtime, entry point of the library.
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "futures")))]
 #[derive(Clone)]
 pub struct AsyncRuntime {
     pub(crate) inner: RuntimeRef<RuntimeLock<InnerRuntime>>,
@@ -155,7 +153,6 @@ impl AsyncRuntime {
 
     /// Set the module loader.
     
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "loader")))]
     pub async fn set_loader<R: Resolver + 'static, L: Loader + 'static>(
         &self,
         resolver: R,

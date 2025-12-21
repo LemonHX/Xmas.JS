@@ -34,7 +34,6 @@ pub type Bundle = bundle::Bundle<bundle::PhfBundleData<&'static [u8]>>;
 pub type Bundle = bundle::Bundle<bundle::ScaBundleData<&'static [u8]>>;
 
 /// Module resolver interface
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "loader")))]
 pub trait Resolver {
     /// Normalize module name
     ///
@@ -59,7 +58,6 @@ pub trait Resolver {
 }
 
 /// Module loader interface
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "loader")))]
 pub trait Loader {
     /// Load module by name
     fn load<'js>(&mut self, ctx: &Ctx<'js>, name: &str) -> Result<Module<'js, Declared>>;

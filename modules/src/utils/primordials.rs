@@ -1,6 +1,6 @@
 use std::any::type_name;
 
-use rquickjs::{
+use rsquickjs::{
     atom::PredefinedAtom, function::Constructor, runtime::UserDataGuard, Ctx, Function, JsLifetime,
     Object, Result, Symbol,
 };

@@ -1,4 +1,4 @@
-#[derive(rquickjs::class::Trace, rquickjs::JsLifetime)]
+#[derive(rsquickjs::class::Trace, rsquickjs::JsLifetime)]
 /// Struct representing permissions for filesystem, network, and environment access.
 /// **WARNING**: by default, no permissions are granted (all whitelists are empty).
 pub struct Permissions {
@@ -8,7 +8,7 @@ pub struct Permissions {
     pub stdio: bool,
 }
 
-#[derive(Debug, PartialEq, Clone, Hash, Eq, rquickjs::class::Trace, rquickjs::JsLifetime)]
+#[derive(Debug, PartialEq, Clone, Hash, Eq, rsquickjs::class::Trace, rsquickjs::JsLifetime)]
 pub enum BlackOrWhiteList {
     BlackList(Vec<String>),
     WhiteList(Vec<String>),
@@ -36,7 +36,7 @@ impl Permissions {
     }
 }
 
-pub fn init(ctx: rquickjs::Ctx<'_>, permissions: Permissions) -> rquickjs::Result<()> {
+pub fn init(ctx: rsquickjs::Ctx<'_>, permissions: Permissions) -> rsquickjs::Result<()> {
     ctx.store_userdata(permissions)?;
     Ok(())
 }

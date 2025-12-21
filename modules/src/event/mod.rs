@@ -6,7 +6,7 @@ use std::{
 use crate::utils::{
     error::ErrorExtensions, module::ModuleInfo, object::ObjectExt, result::ResultExt,
 };
-use rquickjs::{
+use rsquickjs::{
     class::{JsClass, OwnedBorrow, Trace, Tracer},
     module::{Declarations, Exports, ModuleDef},
     prelude::{Func, Opt, Rest, This},
@@ -59,7 +59,7 @@ pub struct EventItem<'js> {
 pub type EventList<'js> = Vec<(EventKey<'js>, Vec<EventItem<'js>>)>;
 pub type Events<'js> = Arc<RwLock<EventList<'js>>>;
 
-#[rquickjs::class]
+#[rsquickjs::class]
 #[derive(Clone)]
 pub struct EventEmitter<'js> {
     pub events: Events<'js>,
@@ -81,7 +81,7 @@ impl<'js> Trace<'js> for EventEmitter<'js> {
     }
 }
 
-#[rquickjs::methods]
+#[rsquickjs::methods]
 impl<'js> EventEmitter<'js> {
     #[qjs(constructor)]
     pub fn new() -> Self {

@@ -107,7 +107,7 @@ where
 
 /// Convert from JS to either
 #[cfg(feature = "either")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "either")))]
+#[cfg_attr(doc(cfg(feature = "either")))]
 impl<'js, L, R> FromJs<'js> for Either<L, R>
 where
     L: FromJs<'js>,
@@ -343,7 +343,7 @@ from_js_impls! {
     BTreeSet (Eq + Ord),
     /// Convert from JS array to Rust index set
     #[cfg(feature = "indexmap")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "indexmap")))]
+    #[cfg_attr(doc(cfg(feature = "indexmap")))]
     IndexSet {S: Default + BuildHasher} (Eq + Hash),
 }
 
@@ -358,7 +358,7 @@ from_js_impls! {
     BTreeMap (Eq + Ord),
     /// Convert from JS object to Rust index map
     #[cfg(feature = "indexmap")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "indexmap")))]
+    #[cfg_attr(doc(cfg(feature = "indexmap")))]
     IndexMap {S: Default + BuildHasher} (Eq + Hash),
 }
 

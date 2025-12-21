@@ -88,12 +88,9 @@
 //! - `dump-promise`
 //! - `dump-read-object`
 
-#![cfg_attr(feature = "doc-cfg", feature(doc_cfg))]
-#![cfg_attr(not(test), no_std)]
 
 pub use rsquickjs_core::*;
 
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "macro")))]
 #[cfg(feature = "macro")]
 pub use rsquickjs_macro::{class, function, methods, module, JsLifetime};
 
@@ -101,7 +98,6 @@ pub mod class {
     //! JavaScript classes defined from Rust.
 
     pub use rsquickjs_core::class::*;
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "macro")))]
     #[cfg(feature = "macro")]
     pub use rsquickjs_macro::Trace;
 }
@@ -109,9 +105,7 @@ pub mod class {
 // The following imports needed to linking docs
 
 #[cfg(feature = "either")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "either")))]
 extern crate either_rs as either;
 
 #[cfg(feature = "indexmap")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "indexmap")))]
 extern crate indexmap_rs as indexmap;

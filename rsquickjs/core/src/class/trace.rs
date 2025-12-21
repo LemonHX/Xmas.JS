@@ -109,7 +109,7 @@ impl<'js> Trace<'js> for Atom<'js> {
 }
 
 #[cfg(feature = "either")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "either")))]
+#[cfg_attr(doc(cfg(feature = "either")))]
 impl<'js, L, R> Trace<'js> for Either<L, R>
 where
     L: Trace<'js>,
@@ -265,7 +265,7 @@ trace_impls! {
     std::collections::HashSet {S},
     std::collections::BTreeSet,
     #[cfg(feature = "indexmap")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(all(feature = "indexmap"))))]
+    #[cfg_attr(doc(cfg(all(feature = "indexmap"))))]
     indexmap::IndexSet {S},
 }
 
@@ -274,6 +274,6 @@ trace_impls! {
     std::collections::HashMap {S},
     std::collections::BTreeMap,
     #[cfg(feature = "indexmap")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(all(feature = "indexmap"))))]
+    #[cfg_attr(doc(cfg(all(feature = "indexmap"))))]
     indexmap::IndexMap {S},
 }

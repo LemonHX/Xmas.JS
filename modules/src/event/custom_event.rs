@@ -1,15 +1,15 @@
-use rquickjs::{prelude::Opt, Ctx, IntoJs, Null, Result, Value};
+use rsquickjs::{prelude::Opt, Ctx, IntoJs, Null, Result, Value};
 
 use crate::utils::object::ObjectExt;
 
-#[rquickjs::class]
-#[derive(rquickjs::class::Trace, rquickjs::JsLifetime)]
+#[rsquickjs::class]
+#[derive(rsquickjs::class::Trace, rsquickjs::JsLifetime)]
 pub struct CustomEvent<'js> {
     event_type: String,
     detail: Option<Value<'js>>,
 }
 
-#[rquickjs::methods]
+#[rsquickjs::methods]
 impl<'js> CustomEvent<'js> {
     #[qjs(constructor)]
     pub fn new(event_type: String, options: Opt<Value<'js>>) -> Result<Self> {

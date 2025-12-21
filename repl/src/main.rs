@@ -1,7 +1,7 @@
 use std::io::stdout;
 
-use rquickjs::prelude::Rest;
-use rquickjs::{AsyncContext, AsyncRuntime, CatchResultExt};
+use rsquickjs::prelude::Rest;
+use rsquickjs::{AsyncContext, AsyncRuntime, CatchResultExt};
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor};
 use xmas_js_modules::console::write_log;
@@ -14,7 +14,7 @@ async fn main() -> anyhow::Result<()> {
     }
     let runtime = AsyncRuntime::new()?;
     let context = AsyncContext::full(&runtime).await?;
-    rquickjs::async_with!(context => |ctx| {
+    rsquickjs::async_with!(context => |ctx| {
         xmas_js_modules::init(&ctx, Permissions::allow_all(), xmas_js_modules::console::LogType::Stdio
     )?;
     loop {
@@ -23,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
             Ok(line) => {
                 rl.add_history_entry(line.as_str())?;
                 
-                ctx.eval::<rquickjs::Value, _>(line.as_bytes())
+                ctx.eval::<rsquickjs::Value, _>(line.as_bytes())
                 .and_then(|ret| write_log(stdout(), &ctx, Rest(vec![ret])))
                 .catch(&ctx)
                 .unwrap_or_else(|err| eprintln!("{err}"));

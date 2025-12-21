@@ -1,6 +1,6 @@
 
 use crate::utils::bytes::ObjectBytes;
-use rquickjs::{Array, Ctx, Exception, IntoJs, Null, Object, Result, Undefined, Value};
+use rsquickjs::{Array, Ctx, Exception, IntoJs, Null, Object, Result, Undefined, Value};
 use simd_json::{Node, StaticNode};
 
 pub fn json_parse_string<'js>(ctx: Ctx<'js>, bytes: ObjectBytes<'js>) -> Result<Value<'js>> {

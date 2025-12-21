@@ -30,7 +30,7 @@ mod methods;
 mod module;
 mod trace;
 
-/// An attribute for implementing [`JsClass`](rquickjs_std::class::JsClass`) for a Rust type.
+/// An attribute for implementing [`JsClass`](rsquickjs_std::class::JsClass`) for a Rust type.
 ///
 /// # Attribute options
 ///
@@ -42,7 +42,7 @@ mod trace;
 ///
 /// | **Option**   | **Value** | **Description**                                                                                                                                                                         |
 /// |--------------|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-/// | `crate`      | String    | Changes the name from which the attribute tries to use rquickjs types. Use when the name behind which the rquickjs crate is declared is not properly resolved by the macro.             |
+/// | `crate`      | String    | Changes the name from which the attribute tries to use rsquickjs types. Use when the name behind which the rsquickjs crate is declared is not properly resolved by the macro.             |
 /// | `rename`     | String    | Changes the name of the implemented class on the JavaScript side.                                                                                                                       |
 /// | `rename_all` | Casing    | Converts the case of all the fields of this struct which have implement accessors. Can be one of `lowercase`, `UPPERCASE`, `camelCase`, `PascalCase`,`snake_case`, or `SCREAMING_SNAKE` |
 /// | `frozen`     | Flag      | Changes the class implementation to only allow borrowing immutably.  Trying to borrow mutably will result in an error.                                                                  |
@@ -65,14 +65,14 @@ mod trace;
 ///
 /// # Example
 /// ```
-/// use rquickjs::{class::Trace, CatchResultExt, Class, Context, Object, Runtime, JsLifetime};
+/// use rsquickjs::{class::Trace, CatchResultExt, Class, Context, Object, Runtime, JsLifetime};
 ///
 /// /// Implement JsClass for TestClass.
 /// /// This allows passing any instance of TestClass straight to JavaScript.
 /// /// It is command to also add #[derive(Trace)] as all types which implement JsClass need to
 /// /// also implement trace.
 /// #[derive(Trace, JsLifetime)]
-/// #[rquickjs::class(rename_all = "camelCase")]
+/// #[rsquickjs::class(rename_all = "camelCase")]
 /// pub struct TestClass<'js> {
 ///     /// These attribute make the accessible from JavaScript with getters and setters.
 ///     /// As we used `rename_all = "camelCase"` in the attribute it will be called `innerObject`
@@ -152,7 +152,7 @@ pub fn function(attr: TokenStream1, item: TokenStream1) -> TokenStream1 {
 /// A attribute for implementing methods for a class.
 ///
 /// This attribute can be added to a impl block which implements methods for a type which uses the
-/// [`macro@class`] attribute to derive [`JsClass`](rquickjs_std::class::JsClass).
+/// [`macro@class`] attribute to derive [`JsClass`](rsquickjs_std::class::JsClass).
 ///
 /// # Limitations
 /// Due to limitations in the Rust type system this attribute can be used on only one impl block
@@ -168,7 +168,7 @@ pub fn function(attr: TokenStream1, item: TokenStream1) -> TokenStream1 {
 ///
 /// | **Option**   | **Value** | **Description**                                                                                                                                                                         |
 /// |--------------|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-/// | `crate`      | String    | Changes the name from which the attribute tries to use rquickjs types. Use when the name behind which the rquickjs crate is declared is not properly resolved by the macro.             |
+/// | `crate`      | String    | Changes the name from which the attribute tries to use rsquickjs types. Use when the name behind which the rsquickjs crate is declared is not properly resolved by the macro.             |
 /// | `rename`     | String    | Changes the name of the implemented class on the JavaScript side.                                                                                                                       |
 /// | `rename_all` | Casing    | Converts the case of all the fields of this struct which have implement accessors. Can be one of `lowercase`, `UPPERCASE`, `camelCase`, `PascalCase`,`snake_case`, or `SCREAMING_SNAKE` |
 ///
@@ -184,26 +184,26 @@ pub fn function(attr: TokenStream1, item: TokenStream1) -> TokenStream1 {
 /// | `set`          | Flag                                                              | Makes this method a setter for a field of the same name.                                        |
 /// | `enumerable`   | Flag                                                              | Makes the method, if it is a getter or setter, enumerable in JavaScript.                        |
 /// | `configurable` | Flag                                                              | Makes the method, if it is a getter or setter, configurable in JavaScript.                      |
-/// | `rename`       | String or [`PredefinedAtom`](rquickjs_std::atom::PredefinedAtom) | Changes the name of the field getter and/or setter to the specified name in JavaScript.         |
+/// | `rename`       | String or [`PredefinedAtom`](rsquickjs_std::atom::PredefinedAtom) | Changes the name of the field getter and/or setter to the specified name in JavaScript.         |
 /// | `static`       | Flag                                                              | Makes the method a static method i.e. defined on the type constructor instead of the prototype. |
 /// | `constructor`  | Flag                                                              | Marks this method a the constructor for this type.                                              |
 /// | `skip`         | Flag                                                              | Skips defining this method on the JavaScript class.                                             |
 ///
 /// # Example
 /// ```
-/// use rquickjs::{
+/// use rsquickjs::{
 ///     atom::PredefinedAtom, class::Trace, prelude::Func, CatchResultExt, Class, Context, Ctx,
 ///     Object, Result, Runtime, JsLifetime
 /// };
 ///
 /// #[derive(Trace, JsLifetime)]
-/// #[rquickjs::class]
+/// #[rsquickjs::class]
 /// pub struct TestClass {
 ///     value: u32,
 ///     another_value: u32,
 /// }
 ///
-/// #[rquickjs::methods]
+/// #[rsquickjs::methods]
 /// impl TestClass {
 ///     /// Marks a method as a constructor.
 ///     /// This method will be used when a new TestClass object is created from JavaScript.
@@ -332,7 +332,7 @@ pub fn methods(attr: TokenStream1, item: TokenStream1) -> TokenStream1 {
 ///
 /// | **Option**     | **Value** | **Description**                                                                                                                                                                        |
 /// |----------------|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-/// | `crate`        | String    | Changes the name from which the attribute tries to use rquickjs types. Use when the name behind which the rquickjs crate is declared is not properly resolved by the macro.            |
+/// | `crate`        | String    | Changes the name from which the attribute tries to use rsquickjs types. Use when the name behind which the rsquickjs crate is declared is not properly resolved by the macro.            |
 /// | `rename`       | String    | Changes the name of the implemented module on the JavaScript side.                                                                                                                     |
 /// | `rename_vars`  | Casing    | Alters the name of all items exported as JavaScript values by changing the case.  Can be one of `lowercase`, `UPPERCASE`, `camelCase`, `PascalCase`,`snake_case`, or `SCREAMING_SNAKE` |
 /// | `rename_types` | Casing    | Alters the name of all items exported as JavaScript classes by changing the case. Can be one of `lowercase`, `UPPERCASE`, `camelCase`, `PascalCase`,`snake_case`, or `SCREAMING_SNAKE` |
@@ -354,16 +354,16 @@ pub fn methods(attr: TokenStream1, item: TokenStream1) -> TokenStream1 {
 /// # Example
 ///
 /// ```
-/// use rquickjs::{CatchResultExt, Context, Module, Runtime};
+/// use rsquickjs::{CatchResultExt, Context, Module, Runtime};
 ///
 /// /// A class which will be exported from the module.
-/// #[derive(rquickjs::class::Trace, rquickjs::JsLifetime)]
-/// #[rquickjs::class]
+/// #[derive(rsquickjs::class::Trace, rsquickjs::JsLifetime)]
+/// #[rsquickjs::class]
 /// pub struct Test {
 ///     foo: u32,
 /// }
 ///
-/// #[rquickjs::methods]
+/// #[rsquickjs::methods]
 /// impl Test {
 ///     #[qjs(constructor)]
 ///     pub fn new() -> Test {
@@ -377,10 +377,10 @@ pub fn methods(attr: TokenStream1, item: TokenStream1) -> TokenStream1 {
 ///     }
 /// }
 ///
-/// #[rquickjs::module(rename_vars = "camelCase")]
+/// #[rsquickjs::module(rename_vars = "camelCase")]
 /// mod test_mod {
 ///     /// Imports and other declarations which aren't `pub` won't be exported.
-///     use rquickjs::Ctx;
+///     use rsquickjs::Ctx;
 ///
 ///     /// You can even use `use` to export types from outside.
 ///     ///
@@ -392,14 +392,14 @@ pub fn methods(attr: TokenStream1, item: TokenStream1) -> TokenStream1 {
 ///     pub use super::Test as RenamedTest;
 ///
 ///     /// A class which will be exported from the module under the name `FooBar`.
-///     #[derive(rquickjs::class::Trace, rquickjs::JsLifetime)]
-///     #[rquickjs::class(rename = "FooBar")]
+///     #[derive(rsquickjs::class::Trace, rsquickjs::JsLifetime)]
+///     #[rsquickjs::class(rename = "FooBar")]
 ///     pub struct Test2 {
 ///         bar: u32,
 ///     }
 ///
 ///     /// Implement methods for the class like normal.
-///     #[rquickjs::methods]
+///     #[rsquickjs::methods]
 ///     impl Test2 {
 ///         /// A constructor is required for exporting types.
 ///         #[qjs(constructor)]
@@ -421,7 +421,7 @@ pub fn methods(attr: TokenStream1, item: TokenStream1) -> TokenStream1 {
 ///     /// If your module doesn't quite fit with how this macro exports you can manually export from
 ///     /// the declare and evaluate functions.
 ///     #[qjs(declare)]
-///     pub fn declare(declare: &rquickjs::module::Declarations) -> rquickjs::Result<()> {
+///     pub fn declare(declare: &rsquickjs::module::Declarations) -> rsquickjs::Result<()> {
 ///         declare.declare("aManuallyExportedValue")?;
 ///         Ok(())
 ///     }
@@ -429,14 +429,14 @@ pub fn methods(attr: TokenStream1, item: TokenStream1) -> TokenStream1 {
 ///     #[qjs(evaluate)]
 ///     pub fn evaluate<'js>(
 ///         _ctx: &Ctx<'js>,
-///         exports: &rquickjs::module::Exports<'js>,
-///     ) -> rquickjs::Result<()> {
+///         exports: &rsquickjs::module::Exports<'js>,
+///     ) -> rsquickjs::Result<()> {
 ///         exports.export("aManuallyExportedValue", "Some Value")?;
 ///         Ok(())
 ///     }
 ///
 ///     /// You can also export functions.
-///     #[rquickjs::function]
+///     #[rsquickjs::function]
 ///     pub fn foo() -> u32 {
 ///         1 + 1
 ///     }
@@ -456,7 +456,7 @@ pub fn methods(attr: TokenStream1, item: TokenStream1) -> TokenStream1 {
 ///     ctx.with(|ctx| {
 ///          // These modules are declared like normal with the declare_def function.
 ///          // The name of the module is js_ + the name of the module. This prefix can be changed
-///          // by writing for example `#[rquickjs::module(prefix = "prefix_")]`.
+///          // by writing for example `#[rsquickjs::module(prefix = "prefix_")]`.
 ///          Module::declare_def::<js_test_mod, _>(ctx.clone(), "test").unwrap();
 ///          let _ = Module::evaluate(
 ///              ctx.clone(),

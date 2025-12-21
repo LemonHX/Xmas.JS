@@ -30,7 +30,7 @@ pub fn validate(func: &ItemFn) -> Result<()> {
         ));
     }
     if sig.inputs.len() != 1 || sig.output == ReturnType::Default {
-        return Err(Error::new(func.span(), "Invalid module declaration function. Function should implement `fn(&mut rquickjs::module::Declarations) -> rquickjs::result<()>`."));
+        return Err(Error::new(func.span(), "Invalid module declaration function. Function should implement `fn(&mut rsquickjs::module::Declarations) -> rsquickjs::result<()>`."));
     }
 
     Ok(())

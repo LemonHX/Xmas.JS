@@ -1,6 +1,6 @@
 use std::{collections::HashSet, mem, rc::Rc, slice};
 
-use rquickjs::{
+use rsquickjs::{
     atom::PredefinedAtom, function::This, qjs, Ctx, Error, Exception, Function, Object, Result,
     Type, Value,
 };

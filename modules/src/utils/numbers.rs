@@ -1,7 +1,7 @@
 use crate::utils::object::ObjectExt;
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-use rquickjs::{
+use rsquickjs::{
     atom::PredefinedAtom,
     function::{Opt, This},
     prelude::Func,

@@ -10,21 +10,6 @@ description = "High level bindings to the QuickJS JavaScript engine (fork of rsq
 keywords = ["quickjs", "ecmascript", "javascript", "es6", "es2020"]
 categories = ["api-bindings"]
 
-
-[workspace]
-members = [
-  "core",
-  "macro",
-]
-
-[workspace.dependencies]
-# TODO: modify quickjs and rsquickjs-sys later
-rquickjs-sys = { version = "0.10.0", git = "https://github.com/DelSkayn/rquickjs", rev = "111951b1a31075bdff46684e0ff29f37ff2a04b2", default-features = false }
-
-rsquickjs-core = { version = "0.10.0", path = "core", default-features = false }
-rsquickjs-macro = { version = "0.10.0", path = "macro", default-features = false }
-rsquickjs = { version = "0.10.0", path = "./", default-features = false }
-
 [dependencies]
 indexmap-rs = { package = "indexmap", version = "2", optional = true }
 either-rs = { package = "either", version = "1", optional = true }
@@ -33,13 +18,30 @@ rsquickjs-macro = { workspace = true, optional = true }
 
 
 [features]
-default = []
+default = [
+    "macro",
+    "disable-assertions",
+]
 
-# Almost all features excluding "parallel" and support for async runtimes
-full = [
+debug = [
+    "dump-bytecode",
+    "dump-gc",
+    "dump-gc-free",
+    "dump-free",
+    "dump-leaks",
+    "dump-mem",
+    "dump-objects",
+    "dump-atoms",
+    "dump-shapes",
+    "dump-module-resolve",
+    "dump-promise",
+    "dump-read-object",
+    "compile-tests",
+]
+
+extra = [
   "either",
   "indexmap",
-  "macro",
   "phf",
 ]
 
@@ -84,12 +86,5 @@ disable-assertions = ["rsquickjs-core/disable-assertions"]
 # Enable compilation tests
 compile-tests = ["rsquickjs-core/compile-tests"]
 
-# Enable unstable doc-cfg feature (for docs.rs)
-doc-cfg = ["rsquickjs-core/doc-cfg"]
-
-
 [dev-dependencies]
 trybuild = "1"
-
-[package.metadata.docs.rs]
-features = ["full-async", "parallel", "doc-cfg"]
