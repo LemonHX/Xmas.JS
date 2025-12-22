@@ -1,6 +1,5 @@
 use std::io::{stderr, stdout, IsTerminal, Write};
 
-// use llrt_logging::{build_formatted_string, FormatOptions, NEWLINE};
 use crate::utils::{
     console::{build_formatted_string, FormatOptions, NEWLINE},
     module::{export_default, ModuleInfo},
