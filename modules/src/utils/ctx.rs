@@ -2,6 +2,7 @@ use super::primordials::{BasePrimordials, Primordial};
 use rsquickjs::{atom::PredefinedAtom, CatchResultExt, CaughtError, Object};
 use rsquickjs::{Ctx, Result};
 use std::future::Future;
+use std::ptr::NonNull;
 use std::sync::OnceLock;
 use tokio::sync::oneshot::{self, Receiver};
 
@@ -34,6 +35,8 @@ pub trait CtxExtension<'js> {
     fn spawn_exit_simple<F>(&self, future: F)
     where
         F: Future<Output = Result<()>> + 'js;
+
+    fn get_background_task_poller(&self) -> tokio::task::JoinHandle<()>;
 }
 
 impl<'js> CtxExtension<'js> for Ctx<'js> {
@@ -73,6 +76,19 @@ impl<'js> CtxExtension<'js> for Ctx<'js> {
                 handle_spawn_error(&ctx, err, None)
             }
         });
+    }
+
+    /// Get a background task poller handle
+    fn get_background_task_poller(&self) -> tokio::task::JoinHandle<()> {
+        let ctx1 = self.clone().as_raw().as_ptr() as usize;
+        let t = tokio::spawn(async move {
+            let ctx = unsafe { Ctx::from_raw(NonNull::new(ctx1 as *mut _).unwrap()) };
+            loop {
+                ctx.await_background_once();
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        });
+        return t;
     }
 }
 

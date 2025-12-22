@@ -1,7 +1,8 @@
 use std::io::stdout;
+use std::ptr::NonNull;
 use colored::*;
 use rsquickjs::prelude::Rest;
-use rsquickjs::{AsyncContext, AsyncRuntime, CatchResultExt, Value};
+use rsquickjs::{AsyncContext, AsyncRuntime, CatchResultExt, Ctx, Value};
 use rustyline::completion::FilenameCompleter;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
@@ -15,6 +16,7 @@ use syntect::util::{LinesWithEndings, as_24_bit_terminal_escaped};
 use syntect::highlighting::{Style, Theme, ThemeSet};
 use xmas_js_modules::console::write_log;
 use xmas_js_modules::permissions::Permissions;
+use xmas_js_modules::utils::ctx::CtxExtension;
 
 #[derive(Helper, Completer, Hinter, Validator)]
 struct JSHelper {
@@ -57,6 +59,7 @@ impl Highlighter for JSHelper {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt::init();
     let config = Config::builder()
         .history_ignore_space(true)
         .completion_type(CompletionType::List)
@@ -84,53 +87,51 @@ async fn main() -> anyhow::Result<()> {
     let runtime = AsyncRuntime::new()?;
     let context = AsyncContext::full(&runtime).await?;
     rsquickjs::async_with!(context => |ctx| {
-        xmas_js_modules::init(&ctx, Permissions::allow_all(), xmas_js_modules::console::LogType::Stdio
-    )?;
-    loop {
-        let readline = rl.readline("🎄 >> ");
-        match readline {
-            Ok(line) => {
-                rl.add_history_entry(line.as_str())?;
-                
-                match ctx.eval_promise::<_>(line.as_bytes()) {
-                    Ok(res) => {
-                        res.into_future::<Value>().await
-                        .catch(&ctx)
-                        .and_then(|v| {
-                            let v = if v.is_object() {
-                                v.as_object().unwrap().get("value").unwrap()
-                            } else {
-                                v
-                            };
-                            let _ = write_log(stdout(), &ctx, Rest(vec![v])); 
+        xmas_js_modules::init(&ctx, Permissions::allow_all(), xmas_js_modules::console::LogType::Stdio)?;
+        let t = ctx.get_background_task_poller();
+        loop {
+            let readline = rl.readline("🎄 >> ");
+            match readline {
+                Ok(line) => {
+                    rl.add_history_entry(line.as_str())?;
+                    match ctx.eval_promise::<_>(line.as_bytes()) {
+                        Ok(res) => {
+                            res.into_future::<Value>().await
+                            .catch(&ctx)
+                            .and_then(|v| {
+                                let v = if v.is_object() {
+                                    v.as_object().unwrap().get("value").unwrap()
+                                } else {
+                                    v
+                                };
+                                let _ = write_log(stdout(), &ctx, Rest(vec![v])); 
+                                Ok(())
+                            })
 
-                            Ok(())
-                        })
-
-                        .unwrap_or_else(|err| eprintln!("{}: {}", "Error".red().bold(), err));
-                    },
-                    Err(err) => {
-                        eprintln!("{}: {}", "Error".red().bold(), err);
+                            .unwrap_or_else(|err| eprintln!("{}: {}", "Error".red().bold(), err));
+                        },
+                        Err(err) => {
+                            eprintln!("{}: {}", "Error".red().bold(), err);
+                        }
                     }
+                },
+                Err(ReadlineError::Interrupted) => {
+                    t.abort();
+                    println!("CTRL-C received, exiting...");
+                    break
+                },
+                Err(ReadlineError::Eof) => {
+                    t.abort();
+                    println!("CTRL-D received, save and exiting...");
+                    rl.save_history("history.js")?;
+                    break
+                },
+                Err(err) => {
+                    println!("Error: {:?}", err);
+                    break
                 }
-                
-
-            },
-            Err(ReadlineError::Interrupted) => {
-                println!("CTRL-C received, exiting...");
-                break
-            },
-            Err(ReadlineError::Eof) => {
-                println!("CTRL-D received, save and exiting...");
-                rl.save_history("history.js")?;
-                break
-            },
-            Err(err) => {
-                println!("Error: {:?}", err);
-                break
             }
         }
-    }
         Ok(())
     }).await
 }
