@@ -19,6 +19,15 @@ pub mod source;
 #[cfg(feature = "fs")]
 pub mod fs;
 
+#[cfg(feature = "tls")]
+pub mod tls;
+
+#[cfg(feature = "http")]
+pub mod http;
+
+#[cfg(feature = "dns")]
+pub mod dns;
+
 pub mod utils;
 
 pub mod async_hooks;
