@@ -107,7 +107,6 @@ where
 
 /// Convert from JS to either
 #[cfg(feature = "either")]
-#[cfg_attr(doc(cfg(feature = "either")))]
 impl<'js, L, R> FromJs<'js> for Either<L, R>
 where
     L: FromJs<'js>,
