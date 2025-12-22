@@ -8,6 +8,9 @@ pub mod event;
 #[cfg(feature = "console")]
 pub mod console;
 
+#[cfg(feature = "parser")]
+pub mod parser;
+
 pub mod utils;
 
 pub fn init(
