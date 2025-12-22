@@ -109,12 +109,12 @@ Global methods / properties:
     - TODO: console.table
 - [ ] globalThis.crypto
 - [ ] globalThis.fetch()
-- [ ] globalThis.navigator.userAgent
+- [x] globalThis.navigator.userAgent
 - [ ] globalThis.performance.now()
 - [ ] globalThis.performance.timeOrigin
-- [ ] globalThis.queueMicrotask()
-- [ ] globalThis.setTimeout() / globalThis.clearTimeout()
-- [ ] globalThis.setInterval() / globalThis.clearInterval()
+- [x] globalThis.queueMicrotask()
+- [x] globalThis.setTimeout() / globalThis.clearTimeout()
+- [x] globalThis.setInterval() / globalThis.clearInterval()
 - [ ] globalThis.structuredClone()
 
 - [ ] WASM

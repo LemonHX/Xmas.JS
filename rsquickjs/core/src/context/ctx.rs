@@ -1,6 +1,5 @@
 use std::future::Future;
 
-use std::{boxed::Box, ffi::CString, vec::Vec};
 use std::{
     any::Any,
     ffi::CStr,
@@ -8,6 +7,7 @@ use std::{
     ptr::NonNull,
     result::Result as StdResult,
 };
+use std::{boxed::Box, ffi::CString, vec::Vec};
 
 use std::{fs, path::Path, string::String as StdString};
 
@@ -18,7 +18,6 @@ use crate::{
     runtime::{opaque::Opaque, UserDataError, UserDataGuard},
     Atom, Error, FromJs, Function, IntoJs, JsLifetime, Object, Promise, Result, String, Value,
 };
-
 
 /// Eval options.
 #[non_exhaustive]
@@ -32,7 +31,6 @@ pub struct EvalOptions {
     /// Support top-level-await.
     pub promise: bool,
     /// Filename. Ignored when calling eval_file_*.
-    
     pub filename: Option<StdString>,
 }
 
@@ -67,7 +65,7 @@ impl Default for EvalOptions {
             strict: true,
             backtrace_barrier: false,
             promise: false,
-            
+
             filename: None,
         }
     }
@@ -79,6 +77,9 @@ pub struct Ctx<'js> {
     ctx: NonNull<qjs::JSContext>,
     _marker: Invariant<'js>,
 }
+
+unsafe impl Send for Ctx<'_> {}
+unsafe impl Sync for Ctx<'_> {}
 
 impl<'js> Clone for Ctx<'js> {
     fn clone(&self) -> Self {
@@ -95,8 +96,6 @@ impl<'js> Drop for Ctx<'js> {
         unsafe { qjs::JS_FreeContext(self.ctx.as_ptr()) };
     }
 }
-
-unsafe impl Send for Ctx<'_> {}
 
 #[repr(C)] // Ensure C-compatible memory layout
 pub(crate) struct RefCountHeader {
@@ -169,7 +168,6 @@ impl<'js> Ctx<'js> {
         source: S,
         options: EvalOptions,
     ) -> Result<V> {
-        
         let file_name = {
             if let Some(filename) = &options.filename {
                 &CString::new(filename.clone())?
@@ -184,13 +182,11 @@ impl<'js> Ctx<'js> {
         })
     }
 
-    
     /// Evaluate a script directly from a file.
     pub fn eval_file<V: FromJs<'js>, P: AsRef<Path>>(&self, path: P) -> Result<V> {
         self.eval_file_with_options(path, Default::default())
     }
 
-    
     pub fn eval_file_with_options<V: FromJs<'js>, P: AsRef<Path>>(
         &self,
         path: P,
@@ -389,7 +385,7 @@ impl<'js> Ctx<'js> {
 
     /// Spawn future on QuickJS's task queue (same thread as JS).
     /// Use this when the future needs to access JS values.
-    
+
     pub fn spawn<F>(&self, future: F)
     where
         F: Future<Output = ()> + 'js,
@@ -398,7 +394,7 @@ impl<'js> Ctx<'js> {
     }
 
     /// Execute pending JS jobs and poll spawned futures once.
-    
+
     fn poll_once(&self, cx: &mut std::task::Context) -> bool {
         let mut did_work = false;
 
@@ -431,7 +427,7 @@ impl<'js> Ctx<'js> {
     ///     })
     /// })
     /// ```
-    
+
     pub fn await_promise<T: FromJs<'js>>(
         &self,
         promise: Promise<'js>,
@@ -455,6 +451,13 @@ impl<'js> Ctx<'js> {
                 }
             }
         }
+    }
+
+    pub fn await_background_once(&self) {
+        use std::task::{Context, Waker};
+        let waker = Waker::noop();
+        let mut cx = Context::from_waker(waker);
+        self.poll_once(&mut cx);
     }
 
     /// Create a new `Ctx` from a pointer to the context and a invariant lifetime.
@@ -555,10 +558,12 @@ mod test {
 
     #[tokio::test]
     async fn exports() {
-        use crate::{context::intrinsic, AsyncContext, Function, Module, Promise, AsyncRuntime};
+        use crate::{context::intrinsic, AsyncContext, AsyncRuntime, Function, Module, Promise};
 
         let runtime = AsyncRuntime::new().unwrap();
-        let ctx = AsyncContext::custom::<(intrinsic::Promise, intrinsic::Eval)>(&runtime).await.unwrap();
+        let ctx = AsyncContext::custom::<(intrinsic::Promise, intrinsic::Eval)>(&runtime)
+            .await
+            .unwrap();
         ctx.with(|ctx| {
             let (module, promise) = Module::declare(ctx, "test", "export default async () => 1;")
                 .unwrap()
@@ -567,7 +572,8 @@ mod test {
             promise.finish::<()>().unwrap();
             let func: Function = module.get("default").unwrap();
             func.call::<(), Promise>(()).unwrap();
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -591,7 +597,8 @@ mod test {
                 .unwrap();
 
             assert_eq!("bar".to_string(), res);
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -603,13 +610,14 @@ mod test {
         ctx.with(|ctx| {
             let res: i32 = ctx.eval(" 1 + 1 ").unwrap();
             assert_eq!(2, res);
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
     #[should_panic(expected = "foo is not defined")]
     async fn eval_with_sloppy_code() {
-        use crate::{CatchResultExt, AsyncContext, AsyncRuntime};
+        use crate::{AsyncContext, AsyncRuntime, CatchResultExt};
 
         let runtime = AsyncRuntime::new().unwrap();
         let ctx = AsyncContext::full(&runtime).await.unwrap();
@@ -627,7 +635,8 @@ mod test {
                 )
                 .catch(&ctx)
                 .unwrap();
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -655,13 +664,14 @@ mod test {
                 .unwrap();
 
             assert_eq!("bar".to_string(), res);
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
     #[should_panic(expected = "foo is not defined")]
     async fn eval_with_options_strict_sloppy_code() {
-        use crate::{context::EvalOptions, CatchResultExt, AsyncContext, AsyncRuntime};
+        use crate::{context::EvalOptions, AsyncContext, AsyncRuntime, CatchResultExt};
 
         let runtime = AsyncRuntime::new().unwrap();
         let ctx = AsyncContext::full(&runtime).await.unwrap();
@@ -683,12 +693,13 @@ mod test {
                 )
                 .catch(&ctx)
                 .unwrap();
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
     async fn json_parse() {
-        use crate::{Array, AsyncContext, Object, AsyncRuntime};
+        use crate::{Array, AsyncContext, AsyncRuntime, Object};
 
         let runtime = AsyncRuntime::new().unwrap();
         let ctx = AsyncContext::full(&runtime).await.unwrap();
@@ -703,12 +714,13 @@ mod test {
             let inner_array: Array = obj.get("d").unwrap();
             assert_eq!(inner_array.get::<i32>(0).unwrap(), 0);
             assert_eq!(inner_array.get::<String>(1).unwrap(), "foo".to_string());
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
     async fn json_stringify() {
-        use crate::{Array, AsyncContext, Object, AsyncRuntime};
+        use crate::{Array, AsyncContext, AsyncRuntime, Object};
 
         let runtime = AsyncRuntime::new().unwrap();
         let ctx = AsyncContext::full(&runtime).await.unwrap();
@@ -733,12 +745,13 @@ mod test {
                 .unwrap();
 
             assert_eq!(str, r#"{"a":{"b":1,"c":true},"d":[0,"foo"]}"#);
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
     async fn userdata() {
-        use crate::{AsyncContext, Function, AsyncRuntime};
+        use crate::{AsyncContext, AsyncRuntime, Function};
 
         pub struct MyUserData<'js> {
             base: Function<'js>,
@@ -754,7 +767,8 @@ mod test {
         ctx.with(|ctx| {
             let func = ctx.eval("() => 42").catch(&ctx).unwrap();
             ctx.store_userdata(MyUserData { base: func }).unwrap();
-        }).await;
+        })
+        .await;
 
         ctx.with(|ctx| {
             let userdata = ctx.userdata::<MyUserData>().unwrap();
@@ -763,10 +777,12 @@ mod test {
 
             let r: usize = userdata.base.call(()).unwrap();
             assert_eq!(r, 42)
-        }).await;
+        })
+        .await;
 
         ctx.with(|ctx| {
             ctx.remove_userdata::<MyUserData>().unwrap().unwrap();
-        }).await
+        })
+        .await
     }
 }
