@@ -46,19 +46,10 @@ impl Default for ModuleBuilder {
         builder = builder.with_module(crate::module::module::ModuleModule);
         builder = builder.with_module(crate::async_hooks::AsyncHooksModule);
         builder = builder.with_module(crate::timers::TimersModule);
-        #[cfg(feature = "abort")]
-        {
-            builder = builder.with_global(crate::modules::abort::init);
-        }
+        builder = builder.with_module(crate::buffer::BufferModule);
         #[cfg(feature = "assert")]
         {
             builder = builder.with_module(crate::modules::assert::AssertModule);
-        }
-        #[cfg(feature = "buffer")]
-        {
-            builder = builder
-                .with_global(crate::modules::buffer::init)
-                .with_module(crate::modules::buffer::BufferModule);
         }
         #[cfg(feature = "child-process")]
         {
@@ -78,7 +69,7 @@ impl Default for ModuleBuilder {
         }
         #[cfg(feature = "dns")]
         {
-            builder = builder.with_module(crate::modules::dns::DnsModule);
+            builder = builder.with_module(crate::dns::DnsModule);
         }
         #[cfg(feature = "event")]
         {
@@ -88,9 +79,9 @@ impl Default for ModuleBuilder {
         {
             builder = builder.with_global(crate::modules::exceptions::init);
         }
-        #[cfg(feature = "https")]
+        #[cfg(feature = "http")]
         {
-            builder = builder.with_module(crate::modules::https::HttpsModule);
+            builder = builder.with_module(crate::http::HttpsModule);
         }
         #[cfg(feature = "fetch")]
         {
@@ -101,10 +92,6 @@ impl Default for ModuleBuilder {
             builder = builder
                 .with_module(crate::fs::FsPromisesModule)
                 .with_module(crate::fs::FsModule);
-        }
-        #[cfg(feature = "navigator")]
-        {
-            builder = builder.with_global(crate::modules::navigator::init);
         }
         #[cfg(feature = "net")]
         {
