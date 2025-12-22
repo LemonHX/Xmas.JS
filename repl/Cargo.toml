@@ -13,9 +13,11 @@ rsquickjs = { workspace = true, features = ["macro"]}
 xmas-js-modules = { workspace = true }
 tracing-subscriber = "0.3.17"
 tracing = "0.1.44"
-rustyline = "17.0.1"
+rustyline = {version = "17.0.1", features = ["derive"]}
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0.100"
+syntect = "5.3.0"
+colored = "3.0.0"
 # itoa = "1.0.15"
 # ryu = "1.0.20"
 # simd-json = "0.17.0"
