@@ -1,7 +1,7 @@
 use std::io::stdout;
 use colored::*;
 use rsquickjs::prelude::Rest;
-use rsquickjs::{AsyncContext, AsyncRuntime, CatchResultExt};
+use rsquickjs::{AsyncContext, AsyncRuntime, CatchResultExt, Value};
 use rustyline::completion::FilenameCompleter;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
@@ -92,10 +92,29 @@ async fn main() -> anyhow::Result<()> {
             Ok(line) => {
                 rl.add_history_entry(line.as_str())?;
                 
-                ctx.eval::<rsquickjs::Value, _>(line.as_bytes())
-                .and_then(|ret| write_log(stdout(), &ctx, Rest(vec![ret])))
-                .catch(&ctx)
-                .unwrap_or_else(|err| eprintln!("{err}"));
+                match ctx.eval_promise::<_>(line.as_bytes()) {
+                    Ok(res) => {
+                        res.into_future::<Value>().await
+                        .catch(&ctx)
+                        .and_then(|v| {
+                            let v = if v.is_object() {
+                                v.as_object().unwrap().get("value").unwrap()
+                            } else {
+                                v
+                            };
+                            let _ = write_log(stdout(), &ctx, Rest(vec![v])); 
+
+                            Ok(())
+                        })
+
+                        .unwrap_or_else(|err| eprintln!("{}: {}", "Error".red().bold(), err));
+                    },
+                    Err(err) => {
+                        eprintln!("{}: {}", "Error".red().bold(), err);
+                    }
+                }
+                
+
             },
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C received, exiting...");

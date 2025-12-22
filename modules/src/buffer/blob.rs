@@ -12,7 +12,7 @@ use rsquickjs::{
 
 use super::file::File;
 
-static CONSTRUCT_ERROR: &str =
+const CONSTRUCT_ERROR: &str =
     "Failed to construct 'Blob': The provided value cannot be converted to a sequence.";
 
 enum EndingType {

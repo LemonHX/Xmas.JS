@@ -1,6 +1,3 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 use std::{io, path::Path};
 
 use crate::{fs::access::check_could_ctx_access_permission, utils::result::ResultExt};

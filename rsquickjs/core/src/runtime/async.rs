@@ -1,9 +1,9 @@
 use std::{ffi::CString, vec::Vec};
 use std::{ptr::NonNull, result::Result as StdResult, task::Poll};
 
-use std::sync::Arc;
 use async_lock::Mutex;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
 
 use super::{
     opaque::Opaque, raw::RawRuntime, spawner::DriveFuture, task_queue::TaskPoll, InterruptHandler,
@@ -102,10 +102,7 @@ impl AsyncRuntime {
         let (drop_send, drop_recv) = mpsc::channel();
 
         Ok(Self {
-            inner: RuntimeRef::new(RuntimeLock::new(InnerRuntime {
-                runtime,
-                drop_recv,
-            })),
+            inner: RuntimeRef::new(RuntimeLock::new(InnerRuntime { runtime, drop_recv })),
             drop_send,
         })
     }
@@ -126,7 +123,6 @@ impl AsyncRuntime {
     pub(crate) fn try_lock(&self) -> Option<RuntimeGuard<'_, InnerRuntime>> {
         self.inner.try_lock()
     }
-
 
     /// Set a closure which is called when a promise is rejected.
     pub async fn set_host_promise_rejection_tracker(&self, tracker: Option<RejectionTracker>) {
@@ -152,7 +148,7 @@ impl AsyncRuntime {
     }
 
     /// Set the module loader.
-    
+
     pub async fn set_loader<R: Resolver + 'static, L: Loader + 'static>(
         &self,
         resolver: R,
@@ -251,7 +247,7 @@ impl AsyncRuntime {
                     Err(e) => {
                         let ctx = unsafe { Ctx::from_ptr(e) };
                         let err = ctx.catch();
-                        
+
                         {
                             use std::println;
                             if let Some(ex) = err

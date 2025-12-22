@@ -1,13 +1,10 @@
-use std::path::Path;
-
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
 use crate::buffer::Buffer;
 use crate::fs::access::check_could_ctx_access_permission;
 use crate::utils::{object::ObjectExt, result::ResultExt};
 use either::Either;
 use rsquickjs::Exception;
 use rsquickjs::{function::Opt, Ctx, Error, FromJs, IntoJs, Result, Value};
+use std::path::Path;
 use tokio::fs;
 
 pub async fn read_file(
