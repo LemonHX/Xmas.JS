@@ -54,7 +54,7 @@ i want to implement those API's as well.
 - [ ] Crypto
 - [ ] CryptoKey
 
-- [ ] Blob
+- [x] Blob
 - [ ] ByteLengthQueuingStrategy
 - [ ] CompressionStream
 - [ ] CountQueuingStrategy
@@ -64,9 +64,9 @@ i want to implement those API's as well.
 - [x] Event
     - [x] EventTarget
 
-- [ ] File
-    - [ ] async
-    - [ ] sync
+- [x] File
+    - [x] async
+    - [x] sync
 
 - [ ] FormData
 - [ ] Headers
@@ -99,8 +99,8 @@ i want to implement those API's as well.
 
 Global methods / properties:
 - [ ] globalThis
-- [ ] globalThis.atob()
-- [ ] globalThis.btoa()
+- [x] globalThis.atob()
+- [x] globalThis.btoa()
 - [x] globalThis.console
     - i think i should use rust's log/tracing instead of printing
     - due to it is easier to connect with rust's logging ecosystem

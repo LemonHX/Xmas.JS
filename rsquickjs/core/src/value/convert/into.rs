@@ -142,7 +142,6 @@ where
 
 /// Convert the either into JS
 #[cfg(feature = "either")]
-#[cfg_attr(doc(cfg(feature = "either")))]
 impl<'js, L, R> IntoJs<'js> for Either<L, R>
 where
     L: IntoJs<'js>,
@@ -158,7 +157,6 @@ where
 
 /// Convert the either into JS
 #[cfg(feature = "either")]
-#[cfg_attr(doc(cfg(feature = "either")))]
 impl<'js, L, R> IntoJs<'js> for &Either<L, R>
 where
     for<'a> &'a L: IntoJs<'js>,

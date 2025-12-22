@@ -109,7 +109,6 @@ impl<'js> Trace<'js> for Atom<'js> {
 }
 
 #[cfg(feature = "either")]
-#[cfg_attr(doc(cfg(feature = "either")))]
 impl<'js, L, R> Trace<'js> for Either<L, R>
 where
     L: Trace<'js>,

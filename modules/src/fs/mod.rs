@@ -1,0 +1,183 @@
+pub mod access;
+pub mod chmod;
+pub mod file_handle;
+pub mod mkdir;
+pub mod open;
+pub mod read_dir;
+pub mod read_file;
+pub mod rename;
+pub mod rm;
+pub mod stats;
+pub mod symlink;
+pub mod write_file;
+
+pub const CONSTANT_F_OK: u32 = 0;
+pub const CONSTANT_R_OK: u32 = 4;
+pub const CONSTANT_W_OK: u32 = 2;
+pub const CONSTANT_X_OK: u32 = 1;
+
+pub struct FsPromisesModule;
+use crate::utils::module::{export_default, ModuleInfo};
+
+use self::access::{access, access_sync};
+use self::chmod::{chmod, chmod_sync};
+use self::file_handle::FileHandle;
+use self::mkdir::{mkdir, mkdir_sync, mkdtemp, mkdtemp_sync};
+use self::open::open;
+use self::read_dir::{read_dir, read_dir_sync, Dirent};
+use self::read_file::{read_file, read_file_sync};
+use self::rename::{rename, rename_sync};
+use self::rm::{rmdir, rmdir_sync, rmfile, rmfile_sync};
+use self::stats::{lstat_fn, lstat_fn_sync, stat_fn, stat_fn_sync, Stats};
+use self::symlink::{symlink, symlink_sync};
+use self::write_file::{write_file, write_file_sync};
+use rsquickjs::{
+    module::{Declarations, Exports, ModuleDef},
+    prelude::{Async, Func},
+};
+use rsquickjs::{Class, Ctx, Object, Result};
+impl ModuleDef for FsPromisesModule {
+    fn declare(declare: &Declarations) -> Result<()> {
+        declare.declare("access")?;
+        declare.declare("open")?;
+        declare.declare("readFile")?;
+        declare.declare("writeFile")?;
+        declare.declare("rename")?;
+        declare.declare("readdir")?;
+        declare.declare("mkdir")?;
+        declare.declare("mkdtemp")?;
+        declare.declare("rm")?;
+        declare.declare("rmdir")?;
+        declare.declare("stat")?;
+        declare.declare("lstat")?;
+        declare.declare("constants")?;
+        declare.declare("chmod")?;
+        declare.declare("symlink")?;
+
+        declare.declare("default")?;
+
+        Ok(())
+    }
+
+    fn evaluate<'js>(ctx: &Ctx<'js>, exports: &Exports<'js>) -> Result<()> {
+        let globals = ctx.globals();
+
+        Class::<Dirent>::define(&globals)?;
+        Class::<FileHandle>::define(&globals)?;
+        Class::<Stats>::define(&globals)?;
+
+        export_default(ctx, exports, |default| {
+            export_promises(ctx, default)?;
+
+            Ok(())
+        })
+    }
+}
+
+impl From<FsPromisesModule> for ModuleInfo<FsPromisesModule> {
+    fn from(val: FsPromisesModule) -> Self {
+        ModuleInfo {
+            name: "fs/promises",
+            module: val,
+        }
+    }
+}
+
+pub struct FsModule;
+
+impl ModuleDef for FsModule {
+    fn declare(declare: &Declarations) -> Result<()> {
+        declare.declare("promises")?;
+        declare.declare("accessSync")?;
+        declare.declare("mkdirSync")?;
+        declare.declare("mkdtempSync")?;
+        declare.declare("readdirSync")?;
+        declare.declare("readFileSync")?;
+        declare.declare("rmdirSync")?;
+        declare.declare("rmSync")?;
+        declare.declare("statSync")?;
+        declare.declare("lstatSync")?;
+        declare.declare("writeFileSync")?;
+        declare.declare("constants")?;
+        declare.declare("chmodSync")?;
+        declare.declare("renameSync")?;
+        declare.declare("symlinkSync")?;
+
+        declare.declare("default")?;
+
+        Ok(())
+    }
+
+    fn evaluate<'js>(ctx: &Ctx<'js>, exports: &Exports<'js>) -> Result<()> {
+        let globals = ctx.globals();
+
+        Class::<Dirent>::define(&globals)?;
+        Class::<FileHandle>::define(&globals)?;
+        Class::<Stats>::define(&globals)?;
+
+        export_default(ctx, exports, |default| {
+            let promises = Object::new(ctx.clone())?;
+            export_promises(ctx, &promises)?;
+            export_constants(ctx, default)?;
+
+            default.set("promises", promises)?;
+            default.set("accessSync", Func::from(access_sync))?;
+            default.set("mkdirSync", Func::from(mkdir_sync))?;
+            default.set("mkdtempSync", Func::from(mkdtemp_sync))?;
+            default.set("readdirSync", Func::from(read_dir_sync))?;
+            default.set("readFileSync", Func::from(read_file_sync))?;
+            default.set("rmdirSync", Func::from(rmdir_sync))?;
+            default.set("rmSync", Func::from(rmfile_sync))?;
+            default.set("statSync", Func::from(stat_fn_sync))?;
+            default.set("lstatSync", Func::from(lstat_fn_sync))?;
+            default.set("writeFileSync", Func::from(write_file_sync))?;
+            default.set("chmodSync", Func::from(chmod_sync))?;
+            default.set("renameSync", Func::from(rename_sync))?;
+            default.set("symlinkSync", Func::from(symlink_sync))?;
+
+            Ok(())
+        })
+    }
+}
+
+fn export_promises<'js>(ctx: &Ctx<'js>, exports: &Object<'js>) -> Result<()> {
+    export_constants(ctx, exports)?;
+
+    exports.set("access", Func::from(Async(access)))?;
+    exports.set("open", Func::from(Async(open)))?;
+    exports.set("readFile", Func::from(Async(read_file)))?;
+    exports.set("writeFile", Func::from(Async(write_file)))?;
+    exports.set("rename", Func::from(Async(rename)))?;
+    exports.set("readdir", Func::from(Async(read_dir)))?;
+    exports.set("mkdir", Func::from(Async(mkdir)))?;
+    exports.set("mkdtemp", Func::from(Async(mkdtemp)))?;
+    exports.set("rm", Func::from(Async(rmfile)))?;
+    exports.set("rmdir", Func::from(Async(rmdir)))?;
+    exports.set("stat", Func::from(Async(stat_fn)))?;
+    exports.set("lstat", Func::from(Async(lstat_fn)))?;
+    exports.set("chmod", Func::from(Async(chmod)))?;
+    exports.set("symlink", Func::from(Async(symlink)))?;
+
+    Ok(())
+}
+
+fn export_constants<'js>(ctx: &Ctx<'js>, exports: &Object<'js>) -> Result<()> {
+    let constants = Object::new(ctx.clone())?;
+    constants.set("F_OK", CONSTANT_F_OK)?;
+    constants.set("R_OK", CONSTANT_R_OK)?;
+    constants.set("W_OK", CONSTANT_W_OK)?;
+    constants.set("X_OK", CONSTANT_X_OK)?;
+
+    exports.set("constants", constants)?;
+
+    Ok(())
+}
+
+impl From<FsModule> for ModuleInfo<FsModule> {
+    fn from(val: FsModule) -> Self {
+        ModuleInfo {
+            name: "fs",
+            module: val,
+        }
+    }
+}
