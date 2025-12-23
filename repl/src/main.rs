@@ -1,3 +1,4 @@
+use core::alloc;
 use std::io::stdout;
 use std::ptr::NonNull;
 use colored::*;
@@ -17,6 +18,7 @@ use syntect::highlighting::{Style, Theme, ThemeSet};
 use xmas_js_modules::console::write_log;
 use xmas_js_modules::permissions::Permissions;
 use xmas_js_modules::utils::ctx::CtxExtension;
+use xmas_js_modules::utils::result::ResultExt;
 
 #[derive(Helper, Completer, Hinter, Validator)]
 struct JSHelper {
@@ -98,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
     let runtime = AsyncRuntime::new()?;
     let context = AsyncContext::full(&runtime).await?;
     print_version();
-
+    let allocator = xmas_js_modules::script::allocator();
     rsquickjs::async_with!(context => |ctx| {
         xmas_js_modules::init(&ctx, Permissions::allow_all(), xmas_js_modules::console::LogType::Stdio)?;
         let t = ctx.get_background_task_poller();
@@ -130,7 +132,15 @@ async fn main() -> anyhow::Result<()> {
                     }
 
                     rl.add_history_entry(line.as_str())?;
-                    match ctx.eval_promise::<_>(line.as_bytes()) {
+                    let ast = xmas_js_modules::script::parse("tsx", &line, &allocator).or_throw(&ctx)?;
+                    let transformed = xmas_js_modules::script::transform(
+                        &format!("<repl_input>.tsx"),
+                        None,
+                        false,
+                        &allocator,
+                        ast,
+                    ).or_throw(&ctx)?;
+                    match ctx.eval_promise::<_>(transformed.as_bytes()) {
                         Ok(res) => {
                             res.into_future::<Value>().await
                             .catch(&ctx)
