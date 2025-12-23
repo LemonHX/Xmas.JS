@@ -6,7 +6,7 @@ edition = "2021"
 rust-version = "1.85"
 license = "MIT"
 readme = "README.md"
-description = "High level bindings to the QuickJS JavaScript engine"
+description = "WinterTC compatible ECMAScript/TypeScript runtime"
 
 
 [workspace]
@@ -35,6 +35,3 @@ xmas-js-modules = { workspace = true }
 
 [features]
 default = []
-
-
-

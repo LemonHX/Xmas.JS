@@ -47,9 +47,9 @@ OXC is great!
 
 [txiki.js](https://github.com/saghul/txiki.js) did a great job implementing TC API's,
 i want to implement those API's as well. 
-- [ ] Abort
-    - [ ] AbortController
-    - [ ] AbortSignal
+- [x] Abort
+    - [x] AbortController
+    - [x] AbortSignal
 
 - [ ] Crypto
 - [ ] CryptoKey
@@ -59,7 +59,7 @@ i want to implement those API's as well.
 - [ ] CompressionStream
 - [ ] CountQueuingStrategy
 - [ ] DecompressionStream
-- [ ] DOMException
+- [x] DOMException
 
 - [x] Event
     - [x] EventTarget
@@ -108,7 +108,7 @@ Global methods / properties:
     - TODO: console.span(level: "info" | "debug" | "warn" | "error" | "trace", name: string, fn: (span) => void)
     - TODO: console.table
 - [ ] globalThis.crypto
-- [ ] globalThis.fetch()
+- [x] globalThis.fetch()
 - [x] globalThis.navigator.userAgent
 - [ ] globalThis.performance.now()
 - [ ] globalThis.performance.timeOrigin

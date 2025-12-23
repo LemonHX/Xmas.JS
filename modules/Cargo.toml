@@ -57,15 +57,31 @@ hyper-rustls = { version = "0.27", features = [
     "ring",
     "http2",
 ], optional = true }
+pin-project-lite = "0.2.16"
+percent-encoding = { version = "2.3.2", optional = true }
+url = "2.5.7"
 
-[dev-dependencies]
-tokio = { version = "1", features = ["full"] }
-tracing-subscriber = "0.3.22"
+brotli = { version = "8", features = ["std"], default-features = false }
+flate2 = { version = "1", features = ["miniz_oxide"], default-features = false }
+zstd = { version = "0.13", default-features = false }
+
 
 [features]
-default = ["event", "console", "source", "fs", "tls", "dns", "http"]
+default = [
+    "event",
+    "abort",
+    "console",
+    "source",
+    "fs",
+    "tls",
+    "dns",
+    "http",
+    "url",
+    "fetch",
+]
 
 event = []
+abort = ["event"]
 console = []
 source = ["oxc"]
 fs = ["tokio", "junction"]
@@ -83,3 +99,11 @@ http = [
     "tower-service",
     "quick_cache",
 ]
+url = []
+fetch = ["http", "percent-encoding", "url"]
+
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+tracing-subscriber = "0.3.22"
+wiremock = "0.6.5"

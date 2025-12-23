@@ -1,11 +1,13 @@
 #![feature(iter_array_chunks)]
 use crate::utils::primordials::Primordial;
 
-pub mod permissions;
+#[cfg(feature = "abort")]
+pub mod abort;
+pub mod exceptions;
 
 pub mod buffer;
-
 pub mod path;
+pub mod permissions;
 
 #[cfg(feature = "event")]
 pub mod event;
@@ -22,19 +24,24 @@ pub mod fs;
 #[cfg(feature = "tls")]
 pub mod tls;
 
-#[cfg(feature = "http")]
-pub mod http;
-
 #[cfg(feature = "dns")]
 pub mod dns;
 
-pub mod utils;
+#[cfg(feature = "http")]
+pub mod http;
+
+#[cfg(feature = "fetch")]
+pub mod fetch;
+
+#[cfg(feature = "url")]
+pub mod url;
 
 pub mod async_hooks;
 pub mod hooking;
 pub mod module;
 pub mod navigator;
 pub mod timers;
+pub mod utils;
 
 pub fn init(
     ctx: &rsquickjs::Ctx,
@@ -44,7 +51,7 @@ pub fn init(
     navigator::init(ctx)?;
     utils::primordials::BasePrimordials::init(ctx)?;
     permissions::init(ctx.clone(), permissions)?;
-
+    exceptions::init(ctx)?;
     async_hooks::init(ctx)?;
 
     module::module::init(ctx)?;
@@ -55,10 +62,21 @@ pub fn init(
     {
         event::init(ctx)?;
     }
+    #[cfg(feature = "abort")]
+    {
+        abort::init(ctx)?;
+    }
     #[cfg(feature = "console")]
     {
         console::init(ctx, log_type)?;
     }
-
+    #[cfg(feature = "url")]
+    {
+        url::init(ctx)?;
+    }
+    #[cfg(feature = "fetch")]
+    {
+        fetch::init(ctx)?;
+    }
     Ok(())
 }

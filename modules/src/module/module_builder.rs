@@ -83,10 +83,6 @@ impl Default for ModuleBuilder {
         {
             builder = builder.with_module(crate::http::HttpsModule);
         }
-        #[cfg(feature = "fetch")]
-        {
-            builder = builder.with_global(crate::modules::fetch::init);
-        }
         #[cfg(feature = "fs")]
         {
             builder = builder
@@ -133,9 +129,7 @@ impl Default for ModuleBuilder {
         }
         #[cfg(feature = "url")]
         {
-            builder = builder
-                .with_global(crate::modules::url::init)
-                .with_module(crate::modules::url::UrlModule);
+            builder = builder.with_module(crate::url::UrlModule);
         }
         #[cfg(feature = "util")]
         {
