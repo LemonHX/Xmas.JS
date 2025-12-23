@@ -92,7 +92,7 @@ Traditional System Scripts          Modern System Scripts with Xmas.JS
 
 ## 📦 Installation
 
-### 🚧 From Binary (Comming soon ❄️)
+### 🚧 From Binary (Coming soon ❄️)
 
 ```bash
 # Coming soon - pre-built binaries for major platforms
