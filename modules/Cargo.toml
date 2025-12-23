@@ -18,7 +18,7 @@ rand = "0.9.2"
 tokio = { version = "1", features = ["full"], optional = true }
 
 # source
-oxc = { version = "0.104.0", optional = true, features = [
+oxc = { version = "0.105.0", optional = true, features = [
     "transformer",
     "codegen",
     "semantic",
