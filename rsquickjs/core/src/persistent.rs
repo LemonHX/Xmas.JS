@@ -144,16 +144,19 @@ mod test {
     async fn different_runtime() {
         let rt1 = AsyncRuntime::new().unwrap();
         let ctx = AsyncContext::full(&rt1).await.unwrap();
-        let persistent_v = ctx.with(|ctx| {
-            let v: Value = ctx.eval("1").unwrap();
-            Persistent::save(&ctx, v)
-        }).await;
+        let persistent_v = ctx
+            .with(|ctx| {
+                let v: Value = ctx.eval("1").unwrap();
+                Persistent::save(&ctx, v)
+            })
+            .await;
 
         let rt2 = AsyncRuntime::new().unwrap();
         let ctx = AsyncContext::full(&rt2).await.unwrap();
         ctx.with(|ctx| {
             let _ = persistent_v.clone().restore(&ctx).unwrap();
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -162,17 +165,20 @@ mod test {
         let ctx1 = AsyncContext::full(&rt1).await.unwrap();
         let ctx2 = AsyncContext::full(&rt1).await.unwrap();
 
-        let persistent_v = ctx1.with(|ctx| {
-            let v: Object = ctx.eval("({ a: 1 })").unwrap();
-            Persistent::save(&ctx, v)
-        }).await;
+        let persistent_v = ctx1
+            .with(|ctx| {
+                let v: Object = ctx.eval("({ a: 1 })").unwrap();
+                Persistent::save(&ctx, v)
+            })
+            .await;
 
         std::mem::drop(ctx1);
 
         ctx2.with(|ctx| {
             let obj: Object = persistent_v.clone().restore(&ctx).unwrap();
             assert_eq!(obj.get::<_, i32>("a").unwrap(), 1);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -180,22 +186,28 @@ mod test {
         let rt = AsyncRuntime::new().unwrap();
         let ctx = AsyncContext::full(&rt).await.unwrap();
 
-        let func = ctx.with(|ctx| {
-            let func: Function = ctx.eval("a => a + 1").unwrap();
-            Persistent::save(&ctx, func)
-        }).await;
+        let func = ctx
+            .with(|ctx| {
+                let func: Function = ctx.eval("a => a + 1").unwrap();
+                Persistent::save(&ctx, func)
+            })
+            .await;
 
-        let res: i32 = ctx.with(|ctx| {
-            let func = func.clone().restore(&ctx).unwrap();
-            func.call((2,)).unwrap()
-        }).await;
+        let res: i32 = ctx
+            .with(|ctx| {
+                let func = func.clone().restore(&ctx).unwrap();
+                func.call((2,)).unwrap()
+            })
+            .await;
         assert_eq!(res, 3);
 
         let ctx2 = AsyncContext::full(&rt).await.unwrap();
-        let res: i32 = ctx2.with(|ctx| {
-            let func = func.restore(&ctx).unwrap();
-            func.call((0,)).unwrap()
-        }).await;
+        let res: i32 = ctx2
+            .with(|ctx| {
+                let func = func.restore(&ctx).unwrap();
+                func.call((0,)).unwrap()
+            })
+            .await;
         assert_eq!(res, 1);
     }
 
@@ -204,16 +216,19 @@ mod test {
         let rt = AsyncRuntime::new().unwrap();
         let ctx = AsyncContext::full(&rt).await.unwrap();
 
-        let persistent_v = ctx.with(|ctx| {
-            let v: Value = ctx.eval("1").unwrap();
-            Persistent::save(&ctx, v)
-        }).await;
+        let persistent_v = ctx
+            .with(|ctx| {
+                let v: Value = ctx.eval("1").unwrap();
+                Persistent::save(&ctx, v)
+            })
+            .await;
 
         ctx.with(|ctx| {
             let v = persistent_v.clone().restore(&ctx).unwrap();
             ctx.globals().set("v", v).unwrap();
             let eq: Value = ctx.eval("v == 1").unwrap();
             assert!(eq.as_bool().unwrap());
-        }).await;
+        })
+        .await;
     }
 }

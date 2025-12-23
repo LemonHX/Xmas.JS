@@ -2,8 +2,8 @@ use crate::{
     function::{Exhaustive, Flat, FuncArg, Opt, Rest, This},
     qjs, Ctx, FromJs, Result, Value,
 };
-use std::vec::Vec;
 use std::slice;
+use std::vec::Vec;
 
 /// A struct which contains the values a callback is called with.
 ///

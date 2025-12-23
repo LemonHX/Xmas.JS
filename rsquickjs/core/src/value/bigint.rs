@@ -39,7 +39,8 @@ mod test {
         test_with(|ctx| {
             let s: BigInt = ctx.eval(format!("{}n", i64::MAX)).unwrap();
             assert_eq!(s.to_i64().unwrap(), i64::MAX);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -57,6 +58,7 @@ mod test {
                 ))
                 .unwrap();
             func.call::<_, ()>((bigint,)).unwrap();
-        }).await;
+        })
+        .await;
     }
 }

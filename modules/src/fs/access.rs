@@ -1,4 +1,7 @@
-use std::{fs::Metadata, path::{self, Path}};
+use std::{
+    fs::Metadata,
+    path::{self, Path},
+};
 
 #[allow(dead_code, unused_imports)]
 use super::{CONSTANT_F_OK, CONSTANT_R_OK, CONSTANT_W_OK, CONSTANT_X_OK};
@@ -57,7 +60,10 @@ pub fn check_could_ctx_access_permission(ctx: &Ctx, path: &Path) -> bool {
         }
     }
 
-    let found = normal_paths.iter().find(|x| *x == &canonical_path).is_some();
+    let found = normal_paths
+        .iter()
+        .find(|x| *x == &canonical_path)
+        .is_some();
     if white_list {
         return found;
     } else {

@@ -68,7 +68,8 @@ mod test {
             let a: i32 = target.get("a").unwrap();
             assert_eq!(a, 1);
             let _: Function = handler.get("get").unwrap();
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -91,7 +92,8 @@ mod test {
             ctx.globals().set("proxy", proxy).unwrap();
             let a: i32 = ctx.eval("proxy.a").unwrap();
             assert_eq!(a, 1);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -142,6 +144,7 @@ mod test {
             ctx.globals().set("proxy", proxy).unwrap();
             let a: i32 = ctx.eval("proxy.a").unwrap();
             assert_eq!(a, 1);
-        }).await;
+        })
+        .await;
     }
 }

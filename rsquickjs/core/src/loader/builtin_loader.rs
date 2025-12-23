@@ -1,6 +1,6 @@
 use crate::{loader::Loader, module::Declared, Ctx, Error, Module, Result};
-use std::{string::String, vec::Vec};
 use std::collections::HashMap;
+use std::{string::String, vec::Vec};
 
 /// The builtin script module loader
 ///

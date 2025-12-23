@@ -271,7 +271,8 @@ mod test {
             } else {
                 panic!("Should fail");
             }
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -289,7 +290,8 @@ mod test {
             } else {
                 panic!("Should fail");
             }
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -300,7 +302,8 @@ mod test {
 
             let s: StdString = obj.get("key").unwrap();
             assert_eq!(s, "str");
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -313,7 +316,8 @@ mod test {
                 .catch(&ctx)
                 .map_err(|error| panic!("{}", error))
                 .unwrap();
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -322,7 +326,8 @@ mod test {
             let obj = Object::new(ctx).unwrap();
             obj.prop("key", Property::from("str").writable()).unwrap();
             obj.set("key", "text").unwrap();
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -335,7 +340,8 @@ mod test {
                 .catch(&ctx)
                 .map_err(|error| panic!("{}", error))
                 .unwrap();
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -345,7 +351,8 @@ mod test {
             obj.prop("key", Property::from("str").configurable())
                 .unwrap();
             obj.prop("key", Property::from(39)).unwrap();
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -361,7 +368,8 @@ mod test {
             assert_eq!(&keys[0], "key");
             let keys: Vec<StdString> = obj.keys().collect::<Result<_>>().unwrap();
             assert_eq!(keys.len(), 0);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -372,7 +380,8 @@ mod test {
             let keys: Vec<StdString> = obj.keys().collect::<Result<_>>().unwrap();
             assert_eq!(keys.len(), 1);
             assert_eq!(&keys[0], "key");
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -393,7 +402,8 @@ mod test {
             } else {
                 panic!("Should fail");
             }
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -429,6 +439,7 @@ mod test {
             let s: StdString = obj.get("key").unwrap();
             assert_eq!(s, "");
             assert_eq!(val.lock().clone(), "");
-        }).await;
+        })
+        .await;
     }
 }

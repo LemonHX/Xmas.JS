@@ -1,6 +1,5 @@
 //! Types for loading and handling JS modules.
 
-use std::{ffi::CString, vec::Vec};
 use std::{
     ffi::CStr,
     marker::PhantomData,
@@ -8,6 +7,7 @@ use std::{
     ptr::{self, null_mut, NonNull},
     slice,
 };
+use std::{ffi::CString, vec::Vec};
 
 use crate::{
     atom::PredefinedAtom, qjs, Atom, Ctx, Error, FromAtom, FromJs, IntoAtom, IntoJs, Object,
@@ -582,7 +582,8 @@ mod test {
                 .to_string()
                 .unwrap();
             assert_eq!(text.as_str(), "world");
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -617,7 +618,8 @@ mod test {
                 .to_string()
                 .unwrap();
             assert_eq!(text.as_str(), "world");
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -628,13 +630,14 @@ mod test {
             let hello: StdString = val.get("hello").unwrap();
 
             assert_eq!(&hello, "world");
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
     #[should_panic(expected = "kaboom")]
     async fn import_crashing() {
-        use crate::{CatchResultExt, AsyncContext, AsyncRuntime};
+        use crate::{AsyncContext, AsyncRuntime, CatchResultExt};
 
         let runtime = AsyncRuntime::new().unwrap();
         let ctx = AsyncContext::full(&runtime).await.unwrap();
@@ -646,7 +649,8 @@ mod test {
                 .finish()
                 .catch(&ctx)
                 .unwrap();
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -666,7 +670,8 @@ mod test {
                 .unwrap()
                 .finish::<()>();
             assert!(res.is_err())
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -698,7 +703,8 @@ mod test {
             promise.finish::<()>().unwrap();
 
             assert_eq!(ns.get::<_, std::string::String>("res").unwrap(), "OK");
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -733,6 +739,7 @@ mod test {
             assert!(ns.contains_key("Baz").unwrap());
 
             assert_eq!(ns.get::<_, u32>("a").unwrap(), 2u32);
-        }).await;
+        })
+        .await;
     }
 }

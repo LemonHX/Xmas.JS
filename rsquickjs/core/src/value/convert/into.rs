@@ -4,12 +4,15 @@ use crate::{
     Array, CString, Ctx, Error, IntoAtom, IntoJs, Object, Result, StdResult, StdString, String,
     Value,
 };
-use std::{
-    boxed::Box, collections::{BTreeMap, BTreeSet, LinkedList, VecDeque}, string::ToString as _, time::SystemTime, vec::Vec
-};
-use std::cell::{Cell, RefCell};
 use hashbrown::{HashMap as HashbrownMap, HashSet as HashbrownSet};
-
+use std::cell::{Cell, RefCell};
+use std::{
+    boxed::Box,
+    collections::{BTreeMap, BTreeSet, LinkedList, VecDeque},
+    string::ToString as _,
+    time::SystemTime,
+    vec::Vec,
+};
 
 use std::{
     collections::{HashMap, HashSet},
@@ -206,7 +209,6 @@ where
     }
 }
 
-
 impl<'js, T> IntoJs<'js> for Mutex<T>
 where
     T: IntoJs<'js>,
@@ -216,7 +218,6 @@ where
         self.into_inner().expect("mutex was poisoned").into_js(ctx)
     }
 }
-
 
 impl<'js, T> IntoJs<'js> for &Mutex<T>
 where
@@ -228,7 +229,6 @@ where
     }
 }
 
-
 impl<'js, T> IntoJs<'js> for RwLock<T>
 where
     T: IntoJs<'js>,
@@ -238,7 +238,6 @@ where
         self.into_inner().expect("lock was poisoned").into_js(ctx)
     }
 }
-
 
 impl<'js, T> IntoJs<'js> for &RwLock<T>
 where
@@ -440,7 +439,7 @@ into_js_impls! {
     /// Convert from Rust linked list to JS array
     LinkedList,
     /// Convert from Rust hash set to JS array
-    
+
     HashSet {S},
     /// Convert from hashbrown hash set to JS array
     HashbrownSet {S},
@@ -455,7 +454,7 @@ into_js_impls! {
 into_js_impls! {
     map:
     /// Convert from Rust hash map to JS object
-    
+
     HashMap {S},
     /// Convert from hashbrown hash map to JS object
     HashbrownMap {S},
@@ -534,7 +533,7 @@ mod test {
 
     #[tokio::test]
     async fn char_to_js() {
-        use crate::{AsyncContext, IntoJs, AsyncRuntime};
+        use crate::{AsyncContext, AsyncRuntime, IntoJs};
         let runtime = AsyncRuntime::new().unwrap();
         let ctx = AsyncContext::full(&runtime).await.unwrap();
 
@@ -552,12 +551,13 @@ mod test {
             assert!(rt.is_ok());
             let rt = ctx.eval::<char, _>("'ab'");
             assert!(rt.is_err());
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
     async fn system_time_to_js() {
-        use crate::{AsyncContext, IntoJs, AsyncRuntime};
+        use crate::{AsyncContext, AsyncRuntime, IntoJs};
         #[cfg(not(target_arch = "wasm32"))]
         use std::time::Duration;
         use std::time::SystemTime;
@@ -576,27 +576,29 @@ mod test {
             globs.set("ts", ts.into_js(&ctx).unwrap()).unwrap();
             let res: i64 = ctx.eval("ts.getTime()").unwrap();
             assert_eq!(millis, res as _);
-        }).await;
+        })
+        .await;
 
         // wasm32-wasip1 and wasm32-wasip2 do not support SystemTime before the Unix epoch.
         // The subtraction from the Unix epoch would panic with: overflow when subtracting duration from instant
-            let ts = SystemTime::UNIX_EPOCH - Duration::from_millis(123456);
-            let millis = SystemTime::UNIX_EPOCH
-                .duration_since(ts)
-                .unwrap()
-                .as_millis();
+        let ts = SystemTime::UNIX_EPOCH - Duration::from_millis(123456);
+        let millis = SystemTime::UNIX_EPOCH
+            .duration_since(ts)
+            .unwrap()
+            .as_millis();
 
-            ctx.with(|ctx| {
-                let globs = ctx.globals();
-                globs.set("ts", ts.into_js(&ctx).unwrap()).unwrap();
-                let res: i64 = ctx.eval("ts.getTime()").unwrap();
-                assert_eq!(-(millis as i64), res as _);
-            }).await;
+        ctx.with(|ctx| {
+            let globs = ctx.globals();
+            globs.set("ts", ts.into_js(&ctx).unwrap()).unwrap();
+            let res: i64 = ctx.eval("ts.getTime()").unwrap();
+            assert_eq!(-(millis as i64), res as _);
+        })
+        .await;
     }
 
     #[tokio::test]
     async fn chrono_to_js() {
-        use crate::{AsyncContext, IntoJs, AsyncRuntime};
+        use crate::{AsyncContext, AsyncRuntime, IntoJs};
         use chrono::Utc;
 
         let runtime = AsyncRuntime::new().unwrap();
@@ -610,6 +612,7 @@ mod test {
             globs.set("ts", ts.into_js(&ctx).unwrap()).unwrap();
             let res: i64 = ctx.eval("ts.getTime()").unwrap();
             assert_eq!(millis, res);
-        }).await;
+        })
+        .await;
     }
 }

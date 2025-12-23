@@ -220,7 +220,8 @@ mod test {
             ctx.globals().set("myIter", iter).unwrap();
             let result: Vec<i32> = ctx.eval("[...myIter]").unwrap();
             assert_eq!(result, vec![1, 2, 3]);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -238,7 +239,8 @@ mod test {
                 )
                 .unwrap();
             assert_eq!(result, "abc");
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -248,7 +250,8 @@ mod test {
             ctx.globals().set("myIter", iter).unwrap();
             let result: Vec<i32> = ctx.eval("[...myIter]").unwrap();
             assert_eq!(result, vec![0, 1, 2, 3, 4]);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -262,7 +265,8 @@ mod test {
             // Second iteration returns empty (iterator exhausted)
             let second: Vec<i32> = ctx.eval("[...myIter]").unwrap();
             assert_eq!(second, Vec::<i32>::new());
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -271,7 +275,8 @@ mod test {
             let iter: JsIterator<i32> = ctx.eval("[1, 2, 3][Symbol.iterator]()").unwrap();
             let values: Vec<i32> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![1, 2, 3]);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -281,7 +286,8 @@ mod test {
             let iter: JsIterator<i32> = ctx.eval("[4, 5, 6]").unwrap();
             let values: Vec<i32> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![4, 5, 6]);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -300,7 +306,8 @@ mod test {
                 .unwrap();
             let values: Vec<i32> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![10, 20, 30]);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -312,7 +319,8 @@ mod test {
             let js_iter: JsIterator<i32> = ctx.eval("myIter").unwrap();
             let values: Vec<i32> = js_iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![100, 200, 300]);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -325,7 +333,8 @@ mod test {
             assert!(values[0].is_int());
             assert!(values[1].is_string());
             assert!(values[2].is_int());
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -336,7 +345,8 @@ mod test {
             let typed = iter.typed::<i32>();
             let values: Vec<i32> = typed.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![1, 2, 3]);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -346,7 +356,8 @@ mod test {
                 ctx.eval("['hello', 'world', 'rust']").unwrap();
             let values: Vec<std::string::String> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec!["hello", "world", "rust"]);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -355,7 +366,8 @@ mod test {
             let iter: JsIterator<f64> = ctx.eval("[1.5, 2.7, 3.54]").unwrap();
             let values: Vec<f64> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![1.5, 2.7, 3.54]);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -364,7 +376,8 @@ mod test {
             let iter: JsIterator<bool> = ctx.eval("[true, false, true]").unwrap();
             let values: Vec<bool> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![true, false, true]);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -375,7 +388,8 @@ mod test {
             assert_eq!(objects.len(), 2);
             assert_eq!(objects[0].get::<_, i32>("a").unwrap(), 1);
             assert_eq!(objects[1].get::<_, i32>("b").unwrap(), 2);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -388,7 +402,8 @@ mod test {
             assert_eq!(entries.len(), 2);
             assert_eq!(entries[0].get::<std::string::String>(0).unwrap(), "a");
             assert_eq!(entries[0].get::<i32>(1).unwrap(), 1);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -397,6 +412,7 @@ mod test {
             let iter: JsIterator<i32> = ctx.eval("new Set([1, 2, 3])").unwrap();
             let values: Vec<i32> = iter.filter_map(|r| r.ok()).collect();
             assert_eq!(values, vec![1, 2, 3]);
-        }).await;
+        })
+        .await;
     }
 }

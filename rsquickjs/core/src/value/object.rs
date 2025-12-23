@@ -635,7 +635,8 @@ mod test {
             val.remove("hallo").unwrap();
             let text: Option<StdString> = val.get("hallo").unwrap();
             assert_eq!(text, None);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -668,7 +669,8 @@ mod test {
             assert!(val.get::<_, Object>("func_2").unwrap().is_function());
             assert!(!val.get::<_, Object>("obj_1").unwrap().is_function());
             assert!(!val.get::<_, Object>("obj_1").unwrap().is_array());
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -692,7 +694,8 @@ mod test {
             assert_eq!(keys[1], "str");
             assert_eq!(keys[2], "arr");
             assert_eq!(keys[3], "");
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -720,7 +723,8 @@ mod test {
             assert_eq!(pairs[1].1, "abc");
             assert_eq!(pairs[2].0, "");
             assert_eq!(pairs[2].1, "def");
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -751,7 +755,8 @@ mod test {
                 Undefined::from_js(&ctx, pairs[3].1.clone()).unwrap(),
                 Undefined
             );
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -776,7 +781,8 @@ mod test {
                 .unwrap();
             assert_eq!(keys.len(), 1);
             assert_eq!(keys[0], "123");
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -799,6 +805,7 @@ mod test {
                 StdString::from_js(&ctx, object.get("").unwrap()).unwrap(),
                 "xyz"
             );
-        }).await
+        })
+        .await
     }
 }

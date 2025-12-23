@@ -22,8 +22,8 @@ pub use builtin_resolver::BuiltinResolver;
 pub use compile::Compile;
 pub use file_resolver::FileResolver;
 pub use module_loader::ModuleLoader;
-pub use script_loader::ScriptLoader;
 pub use native_loader::NativeLoader;
+pub use script_loader::ScriptLoader;
 
 #[cfg(feature = "phf")]
 /// The type of bundle that the `embed!` macro returns
@@ -232,7 +232,7 @@ loader_impls!(A B C D E F G H);
 
 #[cfg(test)]
 mod test {
-    use crate::{CatchResultExt, AsyncContext, Ctx, Error, Module, Result, AsyncRuntime};
+    use crate::{AsyncContext, AsyncRuntime, CatchResultExt, Ctx, Error, Module, Result};
 
     use super::{Loader, Resolver};
 
@@ -288,7 +288,8 @@ mod test {
             .unwrap()
             .finish::<()>()
             .unwrap();
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -310,6 +311,7 @@ mod test {
             .finish::<()>()
             .catch(&ctx)
             .expect("Unable to resolve");
-        }).await;
+        })
+        .await;
     }
 }

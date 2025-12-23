@@ -354,7 +354,8 @@ mod test {
         function::This,
         test_with,
         value::Constructor,
-        CatchResultExt, Class, AsyncContext, FromJs, Function, IntoJs, JsLifetime, Object, AsyncRuntime,
+        AsyncContext, AsyncRuntime, CatchResultExt, Class, FromJs, Function, IntoJs, JsLifetime,
+        Object,
     };
 
     /// Test circular references.
@@ -416,7 +417,8 @@ mod test {
 
             let cls_clone = cls.clone();
             cls.borrow_mut().inner.push(cls_clone);
-        }).await;
+        })
+        .await;
         rt.run_gc().await;
         assert!(drop_test.load(Ordering::SeqCst));
         ctx.with(|ctx| {
@@ -431,7 +433,8 @@ mod test {
             let cls_clone = cls.clone();
             cls.borrow_mut().inner.push(cls_clone);
             ctx.globals().set("t", cls).unwrap();
-        }).await;
+        })
+        .await;
     }
 
     #[derive(Clone, Copy)]
@@ -523,7 +526,8 @@ mod test {
 
             let name: String = ctx.eval("new Vec3(1,2,3).constructor.name").unwrap();
             assert_eq!(name, Vec3::NAME);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -551,7 +555,8 @@ mod test {
             approx::assert_abs_diff_eq!(v.x, 1.0);
             approx::assert_abs_diff_eq!(v.y, 2.0);
             approx::assert_abs_diff_eq!(v.z, 3.0);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -585,7 +590,8 @@ mod test {
         test_with(|ctx| {
             let proto = Class::<X>::prototype(&ctx).unwrap().unwrap();
             assert_eq!(proto.get::<_, String>("foo").unwrap(), "bar")
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -672,6 +678,7 @@ mod test {
             ctx.globals()
                 .get::<_, Class<DebugPrinter<String>>>("b")
                 .unwrap();
-        }).await;
+        })
+        .await;
     }
 }

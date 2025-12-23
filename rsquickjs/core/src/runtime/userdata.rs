@@ -1,4 +1,5 @@
 use std::boxed::Box;
+use std::collections::HashMap;
 use std::fmt;
 use std::{
     any::{Any, TypeId},
@@ -7,7 +8,6 @@ use std::{
     mem::ManuallyDrop,
     ops::Deref,
 };
-use std::collections::HashMap;
 
 use crate::JsLifetime;
 

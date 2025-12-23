@@ -1,7 +1,7 @@
 use crate::{module::ModuleDef, Ctx, Error, Module, Result};
-use std::{string::String, vec::Vec};
-use std::fmt::Debug;
 use std::collections::HashMap;
+use std::fmt::Debug;
+use std::{string::String, vec::Vec};
 
 use super::Loader;
 

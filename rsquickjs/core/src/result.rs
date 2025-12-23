@@ -16,8 +16,8 @@ use std::io::Error as IoError;
 use crate::context::AsyncContext;
 use crate::value::array_buffer::AsSliceError;
 use crate::{
-    atom::PredefinedAtom, qjs, runtime::UserDataError, value::exception::ERROR_FORMAT_STR,
-    Ctx, Exception, Object, StdResult, StdString, Type, Value,
+    atom::PredefinedAtom, qjs, runtime::UserDataError, value::exception::ERROR_FORMAT_STR, Ctx,
+    Exception, Object, StdResult, StdString, Type, Value,
 };
 
 /// Result type used throughout the library.
@@ -107,14 +107,14 @@ pub enum Error {
         expected: usize,
         given: usize,
     },
-    
+
     /// Error when resolving js module
     Resolving {
         base: StdString,
         name: StdString,
         message: Option<StdString>,
     },
-    
+
     /// Error when loading js module
     Loading {
         name: StdString,
@@ -134,7 +134,6 @@ pub enum Error {
 }
 
 impl Error {
-    
     /// Create resolving error
     pub fn new_resolving<B, N>(base: B, name: N) -> Self
     where
@@ -147,7 +146,6 @@ impl Error {
         }
     }
 
-    
     /// Create resolving error with message
     pub fn new_resolving_message<B, N, M>(base: B, name: N, msg: M) -> Self
     where
@@ -160,13 +158,11 @@ impl Error {
         }
     }
 
-    
     /// Returns whether the error is a resolving error
     pub fn is_resolving(&self) -> bool {
         matches!(self, Error::Resolving { .. })
     }
 
-    
     /// Create loading error
     pub fn new_loading<N>(name: N) -> Self
     where
@@ -178,7 +174,6 @@ impl Error {
         }
     }
 
-    
     /// Create loading error
     pub fn new_loading_message<N, M>(name: N, msg: M) -> Self
     where
@@ -190,7 +185,6 @@ impl Error {
         }
     }
 
-    
     /// Returns whether the error is a loading error
     pub fn is_loading(&self) -> bool {
         matches!(self, Error::Loading { .. })
@@ -305,7 +299,7 @@ impl Error {
                     )
                 }
             }
-            
+
             Resolving { .. } | Loading { .. } => {
                 let message = self.to_cstring();
                 unsafe {
@@ -417,7 +411,7 @@ impl Display for Error {
                 expected.fmt(f)?;
                 " arguments".fmt(f)?;
             }
-            
+
             Error::Resolving {
                 base,
                 name,
@@ -435,7 +429,7 @@ impl Display for Error {
                     }
                 }
             }
-            
+
             Error::Loading { name, message } => {
                 "Error loading module '".fmt(f)?;
                 name.fmt(f)?;
@@ -652,7 +646,6 @@ impl Display for JobException {
 #[derive(Clone)]
 pub struct AsyncJobException(pub AsyncContext);
 
-
 impl fmt::Debug for AsyncJobException {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_tuple("AsyncJobException")
@@ -660,7 +653,6 @@ impl fmt::Debug for AsyncJobException {
             .finish()
     }
 }
-
 
 impl Display for AsyncJobException {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {

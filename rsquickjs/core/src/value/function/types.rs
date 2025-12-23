@@ -65,7 +65,6 @@ pub struct Flat<T>(pub T);
 /// Helper type for making an parameter set exhaustive.
 pub struct Exhaustive;
 
-
 /// Helper type for creating a function from a closure which returns a future.
 pub struct Async<T>(pub T);
 

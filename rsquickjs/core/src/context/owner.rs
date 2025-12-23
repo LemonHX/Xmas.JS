@@ -26,8 +26,6 @@ impl<R: DropContext> ContextOwner<R> {
         }
     }
 
-
-
     pub(crate) fn ctx(&self) -> NonNull<qjs::JSContext> {
         *self.ctx
     }
@@ -36,8 +34,6 @@ impl<R: DropContext> ContextOwner<R> {
         &self.rt
     }
 }
-
-
 
 impl<R: DropContext> Clone for ContextOwner<R> {
     fn clone(&self) -> Self {

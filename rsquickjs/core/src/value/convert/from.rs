@@ -2,6 +2,7 @@ use crate::{
     convert::List, Array, CString, Ctx, Error, FromAtom, FromJs, Object, Result, StdString, String,
     Type, Value,
 };
+use hashbrown::{HashMap as HashbrownMap, HashSet as HashbrownSet};
 use std::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet, LinkedList, VecDeque},
@@ -15,8 +16,6 @@ use std::{
     hash::{BuildHasher, Hash},
     time::Duration,
 };
-use hashbrown::{HashMap as HashbrownMap, HashSet as HashbrownSet};
-
 
 use std::{
     collections::{HashMap, HashSet},
@@ -299,9 +298,9 @@ from_js_impls! {
     Arc,
     Cell,
     RefCell,
-    
+
     Mutex,
-    
+
     RwLock,
 }
 
@@ -334,7 +333,7 @@ from_js_impls! {
     /// Convert from JS array to Rust linked list
     LinkedList,
     /// Convert from JS array to Rust hash set
-    
+
     HashSet {S: Default + BuildHasher} (Eq + Hash),
     /// Convert from JS array to hashbrown hash set
     HashbrownSet {S: Default + BuildHasher} (Eq + Hash),
@@ -349,7 +348,7 @@ from_js_impls! {
 from_js_impls! {
     map:
     /// Convert from JS object to Rust hash map
-    
+
     HashMap {S: Default + BuildHasher} (Eq + Hash),
     /// Convert from JS object to hashbrown hash map
     HashbrownMap {S: Default + BuildHasher} (Eq + Hash),
@@ -382,7 +381,6 @@ fn date_to_millis<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> Result<i64> {
 
     get_time_fn.call((crate::function::This(value),))
 }
-
 
 impl<'js> FromJs<'js> for SystemTime {
     fn from_js(ctx: &Ctx<'js>, value: Value<'js>) -> Result<SystemTime> {
@@ -470,7 +468,8 @@ mod test {
                     res.to_string()
                 );
             }
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -484,20 +483,23 @@ mod test {
         ctx.with(|ctx| {
             let res: DateTime<Utc> = ctx.eval("new Date(123456789)").unwrap();
             assert_eq!(123456789, res.timestamp_millis());
-        }).await;
+        })
+        .await;
 
         ctx.with(|ctx| {
             let res: DateTime<Utc> = ctx
                 .eval("new Date('Fri Jun 03 2022 23:16:50 GMT+0300')")
                 .unwrap();
             assert_eq!(1654287410000, res.timestamp_millis());
-        }).await;
+        })
+        .await;
 
         ctx.with(|ctx| {
             let res: DateTime<Utc> = ctx
                 .eval("new Date('Fri Jun 03 2022 23:16:50 GMT-0300')")
                 .unwrap();
             assert_eq!(1654309010000, res.timestamp_millis());
-        }).await;
+        })
+        .await;
     }
 }

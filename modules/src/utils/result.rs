@@ -1,4 +1,3 @@
-
 use std::{fmt::Write, result::Result as StdResult};
 
 use rsquickjs::{Ctx, Exception, Result};

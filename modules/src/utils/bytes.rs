@@ -8,7 +8,7 @@ use rsquickjs::{
     Value,
 };
 
-use crate::{utils::result::ResultExt};
+use crate::utils::result::ResultExt;
 
 pub const ERROR_MSG_NOT_ARRAY_BUFFER: &str = "Not an ArrayBuffer";
 pub const ERROR_MSG_ARRAY_BUFFER_DETACHED: &str = "ArrayBuffer is detached";
@@ -70,7 +70,7 @@ impl<'js> IntoJs<'js> for ObjectBytes<'js> {
             ObjectBytes::DataView(d) => {
                 let ctor: Constructor = ctx.globals().get(PredefinedAtom::DataView)?;
                 ctor.construct((d,))
-            },
+            }
             ObjectBytes::Vec(v) => v.into_js(ctx),
         }
     }
@@ -229,7 +229,7 @@ impl<'js> ObjectBytes<'js> {
                     byte_length,
                     typed_array.get("byteOffset")?,
                 )
-            },
+            }
             ObjectBytes::I8Array(typed_array) => {
                 let byte_length = typed_array.len();
                 (
@@ -237,7 +237,7 @@ impl<'js> ObjectBytes<'js> {
                     byte_length,
                     typed_array.get("byteOffset")?,
                 )
-            },
+            }
             ObjectBytes::U16Array(typed_array) => {
                 let byte_length = typed_array.len() * 2;
                 (
@@ -245,7 +245,7 @@ impl<'js> ObjectBytes<'js> {
                     byte_length,
                     typed_array.get("byteOffset")?,
                 )
-            },
+            }
             ObjectBytes::I16Array(typed_array) => {
                 let byte_length = typed_array.len() * 2;
                 (
@@ -253,7 +253,7 @@ impl<'js> ObjectBytes<'js> {
                     byte_length,
                     typed_array.get("byteOffset")?,
                 )
-            },
+            }
             ObjectBytes::U32Array(typed_array) => {
                 let byte_length = typed_array.len() * 4;
                 (
@@ -261,7 +261,7 @@ impl<'js> ObjectBytes<'js> {
                     byte_length,
                     typed_array.get("byteOffset")?,
                 )
-            },
+            }
             ObjectBytes::I32Array(typed_array) => {
                 let byte_length = typed_array.len() * 4;
                 (
@@ -269,7 +269,7 @@ impl<'js> ObjectBytes<'js> {
                     byte_length,
                     typed_array.get("byteOffset")?,
                 )
-            },
+            }
             ObjectBytes::U64Array(typed_array) => {
                 let byte_length = typed_array.len() * 8;
                 (
@@ -277,7 +277,7 @@ impl<'js> ObjectBytes<'js> {
                     byte_length,
                     typed_array.get("byteOffset")?,
                 )
-            },
+            }
             ObjectBytes::I64Array(typed_array) => {
                 let byte_length = typed_array.len() * 8;
                 (
@@ -285,7 +285,7 @@ impl<'js> ObjectBytes<'js> {
                     byte_length,
                     typed_array.get("byteOffset")?,
                 )
-            },
+            }
             ObjectBytes::F32Array(typed_array) => {
                 let byte_length = typed_array.len() * 4;
                 (
@@ -293,7 +293,7 @@ impl<'js> ObjectBytes<'js> {
                     byte_length,
                     typed_array.get("byteOffset")?,
                 )
-            },
+            }
             ObjectBytes::F64Array(typed_array) => {
                 let byte_length = typed_array.len() * 8;
                 (
@@ -301,7 +301,7 @@ impl<'js> ObjectBytes<'js> {
                     byte_length,
                     typed_array.get("byteOffset")?,
                 )
-            },
+            }
             _ => return Ok(None),
         };
 

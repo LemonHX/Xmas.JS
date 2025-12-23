@@ -87,6 +87,7 @@ mod test {
 
             let s: Symbol<'_> = ctx.eval("Symbol()").unwrap();
             assert!(s.description().unwrap().is_undefined());
-        }).await;
+        })
+        .await;
     }
 }

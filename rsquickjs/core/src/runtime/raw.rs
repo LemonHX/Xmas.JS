@@ -112,7 +112,7 @@ pub(crate) struct RawRuntime {
 
     #[allow(dead_code)]
     pub allocator: Option<AllocatorHolder>,
-    
+
     #[allow(dead_code)]
     pub loader: Option<LoaderHolder>,
 }
@@ -153,7 +153,7 @@ impl RawRuntime {
             rt,
             info: None,
             allocator: None,
-            
+
             loader: None,
         })
     }
@@ -181,7 +181,7 @@ impl RawRuntime {
             rt,
             info: None,
             allocator: Some(allocator),
-            
+
             loader: None,
         })
     }
@@ -214,7 +214,6 @@ impl RawRuntime {
         Err(unsafe { ctx_ptr.assume_init() })
     }
 
-    
     pub unsafe fn set_loader<R, L>(&mut self, resolver: R, loader: L)
     where
         R: Resolver + 'static,
@@ -433,20 +432,23 @@ mod test {
                     let mut c = counter.lock().unwrap();
                     *c += 1;
                 }
-            }))).await;
+            })))
+            .await;
         }
         let context = AsyncContext::full(&rt).await.unwrap();
-        context.with(|ctx| {
-            let _: Result<(), _> = ctx.eval(
-                r#"
+        context
+            .with(|ctx| {
+                let _: Result<(), _> = ctx.eval(
+                    r#"
                 const x = async () => {
                     throw new Error("Uncaught")
                 }
                 x()
                 throw new Error("Caught")
             "#,
-            );
-        }).await;
+                );
+            })
+            .await;
         assert_eq!(*counter.lock().unwrap(), 1);
     }
 }

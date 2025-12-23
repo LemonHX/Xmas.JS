@@ -1,7 +1,7 @@
 use crate::{loader::Resolver, Ctx, Error, Result};
-use std::string::{String, ToString as _};
 use relative_path::RelativePath;
 use std::collections::HashSet;
+use std::string::{String, ToString as _};
 
 /// The builtin module resolver
 ///
