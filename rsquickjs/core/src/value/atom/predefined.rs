@@ -644,7 +644,7 @@ impl PredefinedAtom {
 
 #[cfg(test)]
 mod test {
-    use crate::{Atom, AsyncContext, IntoAtom, AsyncRuntime};
+    use crate::{AsyncContext, AsyncRuntime, Atom, IntoAtom};
 
     use super::PredefinedAtom;
     #[tokio::test]
@@ -855,24 +855,26 @@ mod test {
 
         let rt = AsyncRuntime::new().unwrap();
         let context = AsyncContext::full(&rt).await.unwrap();
-        context.with(|ctx| {
-            for predef in ALL_PREDEFS {
-                let atom = predef.into_atom(&ctx).unwrap();
-                assert_eq!(atom.to_string().unwrap().as_str(), predef.to_str());
+        context
+            .with(|ctx| {
+                for predef in ALL_PREDEFS {
+                    let atom = predef.into_atom(&ctx).unwrap();
+                    assert_eq!(atom.to_string().unwrap().as_str(), predef.to_str());
 
-                // the string of a symbol doesn't convert to the same atom.
-                if predef.is_symbol() {
-                    continue;
+                    // the string of a symbol doesn't convert to the same atom.
+                    if predef.is_symbol() {
+                        continue;
+                    }
+
+                    let from_str = Atom::from_str(ctx.clone(), predef.to_str()).unwrap();
+                    assert_eq!(
+                        atom,
+                        from_str,
+                        "Atom `{}` from str and from redefined not equal",
+                        predef.to_str()
+                    )
                 }
-
-                let from_str = Atom::from_str(ctx.clone(), predef.to_str()).unwrap();
-                assert_eq!(
-                    atom,
-                    from_str,
-                    "Atom `{}` from str and from redefined not equal",
-                    predef.to_str()
-                )
-            }
-        }).await
+            })
+            .await
     }
 }

@@ -3,7 +3,7 @@ use std::{env, path::Path};
 use crate::common::crate_ident;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
-use rsquickjs_core::{AsyncContext, Module, Result as JsResult, AsyncRuntime, WriteOptions};
+use rsquickjs_core::{AsyncContext, AsyncRuntime, Module, Result as JsResult, WriteOptions};
 use syn::{
     parse::{Parse, ParseStream},
     punctuated::Punctuated,

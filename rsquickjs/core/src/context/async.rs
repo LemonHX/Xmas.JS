@@ -93,11 +93,10 @@ impl DropContext for AsyncRuntime {
         let guard = match self.try_lock() {
             Some(x) => x,
             None => {
-
-                    self.drop_send
-                        .send(ctx)
-                        .expect("runtime should be alive while contexts life");
-                    return;
+                self.drop_send
+                    .send(ctx)
+                    .expect("runtime should be alive while contexts life");
+                return;
             }
         };
         guard.runtime.update_stack_top();

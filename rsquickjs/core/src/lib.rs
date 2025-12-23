@@ -9,8 +9,8 @@
 #![allow(mismatched_lifetime_syntaxes)]
 #![allow(clippy::doc_lazy_continuation)]
 
-pub(crate) use std::string::String as StdString;
 pub(crate) use std::result::Result as StdResult;
+pub(crate) use std::string::String as StdString;
 
 mod js_lifetime;
 pub mod markers;
@@ -78,7 +78,7 @@ pub mod prelude {
 #[cfg(test)]
 pub(crate) async fn test_with<F, R>(func: F) -> R
 where
-    R : Send + 'static,
+    R: Send + 'static,
     F: FnOnce(Ctx) -> R + Send + 'static,
 {
     let rt = AsyncRuntime::new().unwrap();

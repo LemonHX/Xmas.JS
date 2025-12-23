@@ -19,10 +19,10 @@ impl<T: Default> Default for Mut<T> {
 
 impl<T: ?Sized> Mut<T> {
     pub fn lock(&self) -> Lock<T> {
-            self.0.lock().unwrap()
+        self.0.lock().unwrap()
     }
 
     pub fn try_lock(&self) -> Option<Lock<T>> {
-            self.0.lock().ok()
+        self.0.lock().ok()
     }
 }

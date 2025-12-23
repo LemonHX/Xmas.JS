@@ -198,7 +198,8 @@ mod test {
             assert_eq!(val.get::<i32>(3).unwrap(), 4);
             assert_eq!(val.get::<i32>(4).unwrap(), 10);
             let _six: Object = val.get(6).unwrap();
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -214,7 +215,8 @@ mod test {
                 .unwrap();
             let object = val.into_object();
             assert_eq!(object.get::<_, i32>(0).unwrap(), 1);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -232,7 +234,8 @@ mod test {
             assert_eq!(i8::from_js(&ctx, elems[0].clone()).unwrap(), 1);
             assert_eq!(StdString::from_js(&ctx, elems[1].clone()).unwrap(), "abcd");
             assert!(bool::from_js(&ctx, elems[2].clone()).unwrap());
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -251,7 +254,8 @@ mod test {
             assert_eq!(elems[1], "b");
             assert_eq!(elems[2], "");
             assert_eq!(elems[3], "cdef");
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -266,6 +270,7 @@ mod test {
             assert_eq!(i32::from_js(&ctx, array.get(0).unwrap()).unwrap(), 1);
             assert_eq!(i32::from_js(&ctx, array.get(1).unwrap()).unwrap(), 2);
             assert_eq!(i32::from_js(&ctx, array.get(2).unwrap()).unwrap(), 3);
-        }).await
+        })
+        .await
     }
 }

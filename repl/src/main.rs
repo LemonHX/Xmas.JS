@@ -1,7 +1,5 @@
-use core::alloc;
-use std::io::stdout;
-use std::ptr::NonNull;
 use colored::*;
+use core::alloc;
 use rsquickjs::prelude::Rest;
 use rsquickjs::{AsyncContext, AsyncRuntime, CatchResultExt, Ctx, Value};
 use rustyline::completion::FilenameCompleter;
@@ -9,12 +7,14 @@ use rustyline::error::ReadlineError;
 use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
 use rustyline::hint::HistoryHinter;
 use rustyline::validate::MatchingBracketValidator;
-use rustyline::{CompletionType, Config, EditMode, Editor};
 use rustyline::{Completer, Helper, Hinter, Validator};
+use rustyline::{CompletionType, Config, EditMode, Editor};
+use std::io::stdout;
+use std::ptr::NonNull;
 use syntect::easy::HighlightLines;
-use syntect::parsing::{SyntaxDefinition, SyntaxReference, SyntaxSet, SyntaxSetBuilder};
-use syntect::util::{LinesWithEndings, as_24_bit_terminal_escaped};
 use syntect::highlighting::{Style, Theme, ThemeSet};
+use syntect::parsing::{SyntaxDefinition, SyntaxReference, SyntaxSet, SyntaxSetBuilder};
+use syntect::util::{as_24_bit_terminal_escaped, LinesWithEndings};
 use xmas_js_modules::console::write_log;
 use xmas_js_modules::permissions::Permissions;
 use xmas_js_modules::utils::ctx::CtxExtension;
@@ -33,10 +33,12 @@ struct JSHelper {
     theme: Theme,
 }
 
-
 impl Highlighter for JSHelper {
     fn highlight<'l>(&self, line: &'l str, _: usize) -> std::borrow::Cow<'l, str> {
-        let mut h = HighlightLines::new(self.syntaxes.find_syntax_by_extension("tsx").unwrap(), &self.theme);
+        let mut h = HighlightLines::new(
+            self.syntaxes.find_syntax_by_extension("tsx").unwrap(),
+            &self.theme,
+        );
         let mut out = String::new();
         for line in LinesWithEndings::from(line) {
             let ranges = h.highlight_line(line, &self.syntaxes).unwrap();
@@ -46,7 +48,11 @@ impl Highlighter for JSHelper {
         std::borrow::Cow::Owned(out)
     }
 
-    fn highlight_prompt<'b, 's: 'b, 'p: 'b>(&'s self, prompt: &'p str, _: bool) -> std::borrow::Cow<'b, str> {
+    fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
+        &'s self,
+        prompt: &'p str,
+        _: bool,
+    ) -> std::borrow::Cow<'b, str> {
         std::borrow::Cow::Owned(prompt.green().bold().to_string())
     }
 
@@ -54,21 +60,198 @@ impl Highlighter for JSHelper {
         std::borrow::Cow::Owned(hint.bright_black().to_string())
     }
 
-    fn highlight_candidate<'c>(&self, candidate: &'c str, _: rustyline::CompletionType) -> std::borrow::Cow<'c, str> {
+    fn highlight_candidate<'c>(
+        &self,
+        candidate: &'c str,
+        _: rustyline::CompletionType,
+    ) -> std::borrow::Cow<'c, str> {
         std::borrow::Cow::Owned(candidate.bright_cyan().to_string())
     }
 }
 
 fn print_version() {
-    println!("{}{}{}{}{}", " ██╗  ██╗".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "███╗   ███╗".color(Color::TrueColor { r: 153, g: 240, b: 0 }), " █████╗ ".color(Color::TrueColor { r: 102, g: 102, b: 255 }), "███████╗".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "         ██╗ ███████╗".color(Color::TrueColor { r: 255, g: 205, b: 51 }));
-    println!("{}{}{}{}{}", " ╚██╗██╔╝".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "████╗ ████║".color(Color::TrueColor { r: 153, g: 240, b: 0 }), "██╔══██╗".color(Color::TrueColor { r: 102, g: 102, b: 255 }), "██╔════╝".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "         ██║ ██╔════╝".color(Color::TrueColor { r: 255, g: 205, b: 51 }));
-    println!("{}{}{}{}{}", "  ╚███╔╝ ".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "██╔████╔██║".color(Color::TrueColor { r: 153, g: 240, b: 0 }), "███████║".color(Color::TrueColor { r: 102, g: 102, b: 255 }), "███████╗".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "         ██║ ███████╗".color(Color::TrueColor { r: 255, g: 205, b: 51 }));
-    println!("{}{}{}{}{}", "  ██╔██╗ ".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "██║╚██╔╝██║".color(Color::TrueColor { r: 153, g: 240, b: 0 }), "██╔══██║".color(Color::TrueColor { r: 102, g: 102, b: 255 }), "╚════██║".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "    ██   ██║ ╚════██║".color(Color::TrueColor { r: 255, g: 205, b: 51 }));
-    println!("{}{}{}{}{}", " ██╔╝ ██╗".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "██║ ╚═╝ ██║".color(Color::TrueColor { r: 153, g: 240, b: 0 }), "██║  ██║".color(Color::TrueColor { r: 102, g: 102, b: 255 }), "███████║".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "██╗ ╚█████╔╝ ███████║".color(Color::TrueColor { r: 255, g: 205, b: 51 }));
-    println!("{}{}{}{}{}", " ╚═╝  ╚═╝".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "╚═╝     ╚═╝".color(Color::TrueColor { r: 153, g: 240, b: 0 }), "╚═╝  ╚═╝".color(Color::TrueColor { r: 102, g: 102, b: 255 }), "╚══════╝".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "╚═╝  ╚════╝  ╚══════╝".color(Color::TrueColor { r: 255, g: 205, b: 51 }));
-    println!("☃️\t{} {}", "Xmas.JS version".bold().cyan(), env!("CARGO_PKG_VERSION").cyan().italic());
-    println!("🛷\t{} {}", "/help".cyan().bold(), "for getting help".cyan());
-    println!("⛷️\t{}", "CTRL+D for save and exit, CTRL+C for interrupt exit".cyan());
+    println!(
+        "{}{}{}{}{}",
+        " ██╗  ██╗".color(Color::TrueColor {
+            r: 204,
+            g: 0,
+            b: 102
+        }),
+        "███╗   ███╗".color(Color::TrueColor {
+            r: 153,
+            g: 240,
+            b: 0
+        }),
+        " █████╗ ".color(Color::TrueColor {
+            r: 102,
+            g: 102,
+            b: 255
+        }),
+        "███████╗".color(Color::TrueColor {
+            r: 204,
+            g: 0,
+            b: 102
+        }),
+        "         ██╗ ███████╗".color(Color::TrueColor {
+            r: 255,
+            g: 205,
+            b: 51
+        })
+    );
+    println!(
+        "{}{}{}{}{}",
+        " ╚██╗██╔╝".color(Color::TrueColor {
+            r: 204,
+            g: 0,
+            b: 102
+        }),
+        "████╗ ████║".color(Color::TrueColor {
+            r: 153,
+            g: 240,
+            b: 0
+        }),
+        "██╔══██╗".color(Color::TrueColor {
+            r: 102,
+            g: 102,
+            b: 255
+        }),
+        "██╔════╝".color(Color::TrueColor {
+            r: 204,
+            g: 0,
+            b: 102
+        }),
+        "         ██║ ██╔════╝".color(Color::TrueColor {
+            r: 255,
+            g: 205,
+            b: 51
+        })
+    );
+    println!(
+        "{}{}{}{}{}",
+        "  ╚███╔╝ ".color(Color::TrueColor {
+            r: 204,
+            g: 0,
+            b: 102
+        }),
+        "██╔████╔██║".color(Color::TrueColor {
+            r: 153,
+            g: 240,
+            b: 0
+        }),
+        "███████║".color(Color::TrueColor {
+            r: 102,
+            g: 102,
+            b: 255
+        }),
+        "███████╗".color(Color::TrueColor {
+            r: 204,
+            g: 0,
+            b: 102
+        }),
+        "         ██║ ███████╗".color(Color::TrueColor {
+            r: 255,
+            g: 205,
+            b: 51
+        })
+    );
+    println!(
+        "{}{}{}{}{}",
+        "  ██╔██╗ ".color(Color::TrueColor {
+            r: 204,
+            g: 0,
+            b: 102
+        }),
+        "██║╚██╔╝██║".color(Color::TrueColor {
+            r: 153,
+            g: 240,
+            b: 0
+        }),
+        "██╔══██║".color(Color::TrueColor {
+            r: 102,
+            g: 102,
+            b: 255
+        }),
+        "╚════██║".color(Color::TrueColor {
+            r: 204,
+            g: 0,
+            b: 102
+        }),
+        "    ██   ██║ ╚════██║".color(Color::TrueColor {
+            r: 255,
+            g: 205,
+            b: 51
+        })
+    );
+    println!(
+        "{}{}{}{}{}",
+        " ██╔╝ ██╗".color(Color::TrueColor {
+            r: 204,
+            g: 0,
+            b: 102
+        }),
+        "██║ ╚═╝ ██║".color(Color::TrueColor {
+            r: 153,
+            g: 240,
+            b: 0
+        }),
+        "██║  ██║".color(Color::TrueColor {
+            r: 102,
+            g: 102,
+            b: 255
+        }),
+        "███████║".color(Color::TrueColor {
+            r: 204,
+            g: 0,
+            b: 102
+        }),
+        "██╗ ╚█████╔╝ ███████║".color(Color::TrueColor {
+            r: 255,
+            g: 205,
+            b: 51
+        })
+    );
+    println!(
+        "{}{}{}{}{}",
+        " ╚═╝  ╚═╝".color(Color::TrueColor {
+            r: 204,
+            g: 0,
+            b: 102
+        }),
+        "╚═╝     ╚═╝".color(Color::TrueColor {
+            r: 153,
+            g: 240,
+            b: 0
+        }),
+        "╚═╝  ╚═╝".color(Color::TrueColor {
+            r: 102,
+            g: 102,
+            b: 255
+        }),
+        "╚══════╝".color(Color::TrueColor {
+            r: 204,
+            g: 0,
+            b: 102
+        }),
+        "╚═╝  ╚════╝  ╚══════╝".color(Color::TrueColor {
+            r: 255,
+            g: 205,
+            b: 51
+        })
+    );
+    println!(
+        "☃️\t{} {}",
+        "Xmas.JS version".bold().cyan(),
+        env!("CARGO_PKG_VERSION").cyan().italic()
+    );
+    println!(
+        "🛷\t{} {}",
+        "/help".cyan().bold(),
+        "for getting help".cyan()
+    );
+    println!(
+        "⛷️\t{}",
+        "CTRL+D for save and exit, CTRL+C for interrupt exit".cyan()
+    );
 }
 
 #[tokio::main]
@@ -80,23 +263,27 @@ async fn main() -> anyhow::Result<()> {
         .edit_mode(EditMode::Emacs)
         .build();
     let mut rl = Editor::with_config(config)?;
-    rl.set_helper(Some(JSHelper{
+    rl.set_helper(Some(JSHelper {
         completer: FilenameCompleter::new(),
         validator: MatchingBracketValidator::new(),
         hinter: HistoryHinter::new(),
         syntaxes: {
             let mut syntaxset = SyntaxSetBuilder::new();
-            let syntaxdef = SyntaxDefinition::load_from_str(include_str!("../tsx.sublime-syntax"), true, Some("js")).unwrap();
+            let syntaxdef = SyntaxDefinition::load_from_str(
+                include_str!("../tsx.sublime-syntax"),
+                true,
+                Some("js"),
+            )
+            .unwrap();
             syntaxset.add(syntaxdef);
             syntaxset.build()
         },
         theme: {
             let ts = ThemeSet::load_defaults();
             ts.themes["base16-ocean.dark"].clone()
-        }
+        },
     }));
-    if rl.load_history("history.js").is_err() {
-    }
+    if rl.load_history("history.js").is_err() {}
     let runtime = AsyncRuntime::new()?;
     let context = AsyncContext::full(&runtime).await?;
     print_version();
@@ -150,7 +337,7 @@ async fn main() -> anyhow::Result<()> {
                                 } else {
                                     v
                                 };
-                                let _ = write_log(stdout(), &ctx, Rest(vec![v])); 
+                                let _ = write_log(stdout(), &ctx, Rest(vec![v]));
                                 Ok(())
                             })
 

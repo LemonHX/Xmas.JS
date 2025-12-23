@@ -42,7 +42,7 @@ pub fn read_file_sync(
     handle_read_file_bytes(&ctx, options, bytes)
 }
 
-pub(crate) fn handle_read_file_bytes<'a>(
+pub fn handle_read_file_bytes<'a>(
     ctx: &Ctx<'a>,
     options: Opt<Either<String, ReadFileOptions>>,
     bytes: Vec<u8>,
@@ -65,7 +65,7 @@ pub(crate) fn handle_read_file_bytes<'a>(
     buffer.into_js(ctx)
 }
 
-pub(crate) struct ReadFileOptions {
+pub struct ReadFileOptions {
     pub encoding: Option<String>,
 }
 

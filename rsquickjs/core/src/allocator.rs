@@ -4,8 +4,8 @@ use crate::qjs;
 
 mod rust;
 
-use std::boxed::Box;
 pub use rust::RustAllocator;
+use std::boxed::Box;
 
 /// The allocator interface
 ///

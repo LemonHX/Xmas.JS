@@ -15,12 +15,9 @@ use std::{
     ptr,
 };
 
-
 use std::collections::{hash_map::Entry, HashMap};
 
-
 use super::task_queue::{TaskPoll, TaskQueue};
-
 
 use std::{
     future::Future,
@@ -50,7 +47,6 @@ pub(crate) struct Opaque<'js> {
 
     userdata: UserDataMap,
 
-    
     queue: Option<UnsafeCell<TaskQueue>>,
 
     _marker: PhantomData<&'js ()>,
@@ -76,12 +72,10 @@ impl<'js> Opaque<'js> {
 
             _marker: PhantomData,
 
-            
             queue: None,
         }
     }
 
-    
     pub fn with_spawner() -> Self {
         let mut this = Opaque::new();
         this.queue = Some(UnsafeCell::new(TaskQueue::new()));
@@ -123,14 +117,12 @@ impl<'js> Opaque<'js> {
         &*(qjs::JS_GetRuntimeOpaque(rt).cast::<Self>())
     }
 
-    
     fn queue(&self) -> &UnsafeCell<TaskQueue> {
         self.queue
             .as_ref()
             .expect("tried to use async function in non async runtime")
     }
 
-    
     pub unsafe fn push<F>(&self, f: F)
     where
         F: Future<Output = ()>,
@@ -138,17 +130,14 @@ impl<'js> Opaque<'js> {
         (*self.queue().get()).push(f)
     }
 
-    
     pub fn listen(&self, wake: Waker) {
         unsafe { (*self.queue().get()).listen(wake) };
     }
 
-    
     pub fn spawner_is_empty(&self) -> bool {
         unsafe { (*self.queue().get()).is_empty() }
     }
 
-    
     pub fn poll(&self, cx: &mut Context) -> TaskPoll {
         unsafe { (*self.queue().get()).poll(cx) }
     }
@@ -258,7 +247,7 @@ impl<'js> Opaque<'js> {
         self.interrupt_handler.get_mut().take();
         self.panic.take();
         self.prototypes.get_mut().clear();
-        
+
         self.queue.take();
         self.userdata.clear()
     }

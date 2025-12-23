@@ -88,7 +88,6 @@
 //! - `dump-promise`
 //! - `dump-read-object`
 
-
 pub use rsquickjs_core::*;
 
 #[cfg(feature = "macro")]

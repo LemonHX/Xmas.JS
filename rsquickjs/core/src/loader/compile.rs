@@ -2,11 +2,11 @@ use crate::{
     loader::{util::resolve_simple, Loader, Resolver},
     Ctx, Lock, Module, Mut, Ref, Result, WriteOptions,
 };
-use std::{string::String, vec::Vec};
 use std::{
     iter::FusedIterator,
     ops::{Deref, DerefMut},
 };
+use std::{string::String, vec::Vec};
 
 use std::collections::{hash_map::Iter as HashMapIter, HashMap};
 

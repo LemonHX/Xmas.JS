@@ -1,6 +1,5 @@
 use std::{string::String, vec, vec::Vec};
 
-
 use crate::{
     loader::{util::check_extensions, Loader},
     Ctx, Error, Module, Result,
@@ -36,7 +35,6 @@ impl Default for ScriptLoader {
         }
     }
 }
-
 
 impl Loader for ScriptLoader {
     fn load<'js>(&mut self, ctx: &Ctx<'js>, path: &str) -> Result<Module<'js>> {

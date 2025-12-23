@@ -149,7 +149,8 @@ mod test {
         test_with(|ctx| {
             let s: String = ctx.eval(" 'foo bar baz' ").unwrap();
             assert_eq!(s.to_string().unwrap(), "foo bar baz");
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -159,7 +160,8 @@ mod test {
             let func: Function = ctx.eval("x =>  x + 'bar'").unwrap();
             let text: StdString = (string,).apply(&func).unwrap();
             assert_eq!(text, "foobar".to_string());
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -167,7 +169,8 @@ mod test {
         test_with(|ctx| {
             let s: CString = ctx.eval(" 'foo bar baz' ").unwrap();
             assert_eq!(s.as_str(), "foo bar baz");
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -180,6 +183,7 @@ mod test {
             let func: Function = ctx.eval("x =>  x + 'bar'").unwrap();
             let text: StdString = (string,).apply(&func).unwrap();
             assert_eq!(text, "foobar".to_string());
-        }).await;
+        })
+        .await;
     }
 }

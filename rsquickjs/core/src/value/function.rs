@@ -13,10 +13,10 @@ mod into_func;
 mod params;
 mod types;
 
-use std::{borrow::ToOwned as _, boxed::Box};
 pub use args::{Args, IntoArg, IntoArgs};
 pub use ffi::RustFunction;
 pub use params::{FromParam, FromParams, ParamRequirement, Params, ParamsAccessor};
+use std::{borrow::ToOwned as _, boxed::Box};
 
 pub use types::Async;
 pub use types::{Exhaustive, Flat, Func, FuncArg, MutFn, Null, OnceFn, Opt, Rest, This};
@@ -305,7 +305,8 @@ mod test {
 
             let _: () = ().apply(&f).unwrap();
             let _: () = f.call(()).unwrap();
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -318,7 +319,8 @@ mod test {
 
             let res: i32 = f.call(()).unwrap();
             assert_eq!(res, 42);
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -331,7 +333,8 @@ mod test {
 
             let res: i32 = f.call((1,)).unwrap();
             assert_eq!(res, 5);
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -344,7 +347,8 @@ mod test {
 
             let res: i32 = f.call((5, 1)).unwrap();
             assert_eq!(res, 9);
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -358,7 +362,8 @@ mod test {
                 )
                 .unwrap();
             func.call((Rest(vec![1, 2, 3]),)).unwrap()
-        }).await;
+        })
+        .await;
         assert_eq!(res.len(), 4);
         assert_eq!(res[0], 3);
         assert_eq!(res[1], 1);
@@ -377,7 +382,8 @@ mod test {
                 )
                 .unwrap();
             func.call((-2, -1, Rest(vec![1, 2]))).unwrap()
-        }).await;
+        })
+        .await;
         assert_eq!(res.len(), 5);
         assert_eq!(res[0], -2);
         assert_eq!(res[1], -1);
@@ -399,7 +405,8 @@ mod test {
             } else {
                 panic!("Should throws");
             }
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -413,7 +420,8 @@ mod test {
             assert_eq!(res, 42);
             let res: i32 = f.call((This(obj),)).unwrap();
             assert_eq!(res, 42);
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -429,7 +437,8 @@ mod test {
             assert_eq!(res, 6);
             let res: i32 = f.call((This(obj), 3)).unwrap();
             assert_eq!(res, 9);
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -443,14 +452,16 @@ mod test {
             f.defer((g.clone(),)).unwrap();
             let c: Value = g.get("called").unwrap();
             assert_eq!(c.type_of(), Type::Undefined);
-        }).await;
+        })
+        .await;
         assert!(rt.is_job_pending().await);
         rt.execute_pending_job().await.unwrap();
         ctx.with(|ctx| {
             let g = ctx.globals();
             let c: Value = g.get("called").unwrap();
             assert_eq!(c.type_of(), Type::Bool);
-        }).await
+        })
+        .await
     }
 
     fn test() {
@@ -472,7 +483,8 @@ mod test {
             let get_name: Function = ctx.eval("a => a.name").unwrap();
             let name: StdString = get_name.call((f.clone(),)).unwrap();
             assert_eq!(name, "test");
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -499,7 +511,8 @@ mod test {
             let get_name: Function = ctx.eval("a => a.name").unwrap();
             let name: StdString = get_name.call((f.clone(),)).unwrap();
             assert_eq!(name, "test");
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -527,7 +540,8 @@ mod test {
             let get_name: Function = ctx.eval("a => a.name").unwrap();
             let name: StdString = get_name.call((f.clone(),)).unwrap();
             assert_eq!(name, "test");
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -553,7 +567,8 @@ mod test {
             .unwrap();
             ctx.globals().set("foo", f.clone()).unwrap();
             f.call::<_, ()>(()).unwrap();
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -574,7 +589,8 @@ mod test {
             ctx.globals().set("foo", f.clone()).unwrap();
             f.call::<_, ()>(()).catch(&ctx).unwrap();
             f.call::<_, ()>(()).catch(&ctx).unwrap();
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -589,7 +605,8 @@ mod test {
 
             let r: f64 = ctx.eval("neg(add(one(), 2))").unwrap();
             assert_approx_eq!(r, -3.0);
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -618,7 +635,8 @@ mod test {
             let id: u32 = ctx.eval("new_id()").unwrap();
             assert_eq!(id, 3);
             let _err = ctx.eval::<u32, _>("new_id()").unwrap_err();
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -650,7 +668,8 @@ mod test {
             assert_eq!(id, 12);
             let id: u32 = ctx.eval("new_id()").unwrap();
             assert_eq!(id, 13);
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -670,7 +689,8 @@ mod test {
             .unwrap();
             let val: StdString = ctx.globals().get("test_str").unwrap();
             assert_eq!(val, "test_str");
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -691,7 +711,8 @@ mod test {
                 "#,
             )
             .unwrap()
-        }).await;
+        })
+        .await;
         assert_eq!(res, 11.0);
     }
 
@@ -712,7 +733,8 @@ mod test {
                 "#,
             )
             .unwrap()
-        }).await;
+        })
+        .await;
         assert_eq!(res, 11.0);
     }
 
@@ -733,7 +755,8 @@ mod test {
                 "#,
             )
             .unwrap()
-        }).await;
+        })
+        .await;
         assert_eq!(res, 11.0);
     }
 
@@ -754,7 +777,8 @@ mod test {
                 "#,
             )
             .unwrap()
-        }).await;
+        })
+        .await;
         assert_eq!(res.len(), 4);
         assert_eq!(res[0], 3);
         assert_eq!(res[1], 1);
@@ -781,7 +805,8 @@ mod test {
                 "#,
             )
             .unwrap()
-        }).await;
+        })
+        .await;
         assert_eq!(res.len(), 5);
         assert_eq!(res[0], -2);
         assert_eq!(res[1], -1);
@@ -815,6 +840,7 @@ mod test {
                 .unwrap();
             let n: u32 = ctx.eval("log(\"foo\") + log(\"bar\")").unwrap();
             assert_eq!(n, 3);
-        }).await;
+        })
+        .await;
     }
 }

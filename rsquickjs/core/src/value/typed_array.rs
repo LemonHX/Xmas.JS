@@ -366,7 +366,8 @@ mod test {
                 .unwrap();
             assert_eq!(val.len(), 4);
             assert_eq!(val.as_ref() as &[i8], &[0i8, -5, 1, 11]);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -388,7 +389,8 @@ mod test {
                 )
                 .unwrap();
             assert_eq!(res, 0);
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -403,7 +405,8 @@ mod test {
                 .unwrap();
             assert_eq!(val.len(), 3);
             assert_eq!(val.as_ref() as &[f32], &[0.5, -5.25, 123.125]);
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -423,7 +426,8 @@ mod test {
                 )
                 .unwrap();
             assert_eq!(res, 0);
-        }).await
+        })
+        .await
     }
 
     #[tokio::test]
@@ -443,7 +447,8 @@ mod test {
             res[4..].copy_from_slice(&bytes_1);
 
             assert_eq!(val.as_bytes().unwrap(), &res)
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -462,6 +467,7 @@ mod test {
 
             let obj = Object::new(ctx).unwrap();
             assert!(!obj.is_typed_array::<u8>());
-        }).await;
+        })
+        .await;
     }
 }

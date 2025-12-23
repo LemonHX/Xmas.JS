@@ -4,7 +4,6 @@ pub(crate) mod opaque;
 pub(crate) mod raw;
 mod userdata;
 
-
 mod r#async;
 
 mod spawner;
@@ -15,8 +14,8 @@ pub use spawner::DriveFuture;
 
 use std::boxed::Box;
 // pub use base::{Runtime, WeakRuntime};
-pub use userdata::{UserDataError, UserDataGuard};
 pub use r#async::{AsyncRuntime, AsyncWeakRuntime};
+pub use userdata::{UserDataError, UserDataGuard};
 
 use crate::value::promise::PromiseHookType;
 use crate::{Ctx, Value};

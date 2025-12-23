@@ -41,7 +41,6 @@ pub enum PromiseHookType {
 pub struct Promise<'js>(pub(crate) Object<'js>);
 
 impl<'js> Promise<'js> {
-    
     pub fn wrap_future<F, R>(ctx: &Ctx<'js>, future: F) -> Result<Self>
     where
         F: Future<Output = R> + 'js,
@@ -67,7 +66,6 @@ impl<'js> Promise<'js> {
             };
             // TODO figure out something better to do here.
             if let Err(_e) = err {
-                
                 println!("promise handle function returned error:{}", _e);
             }
         };
@@ -144,7 +142,7 @@ impl<'js> Promise<'js> {
     }
 
     /// Wrap the promise into a struct which can be polled as a rust future.
-    
+
     pub fn into_future<T>(self) -> PromiseFuture<'js, T>
     where
         T: FromJs<'js>,
@@ -170,7 +168,6 @@ pub struct PromiseFuture<'js, T> {
 // Nothing is actually pinned so promise future is unpin.
 
 impl<'js, T> Unpin for PromiseFuture<'js, T> {}
-
 
 impl<'js, T> Future for PromiseFuture<'js, T>
 where
@@ -216,13 +213,11 @@ where
 
 pub struct Promised<T>(pub T);
 
-
 impl<T> From<T> for Promised<T> {
     fn from(future: T) -> Self {
         Self(future)
     }
 }
-
 
 impl<'js, T, R> IntoJs<'js> for Promised<T>
 where
@@ -307,7 +302,7 @@ impl<'js> MaybePromise<'js> {
     /// Convert self into a future which will return ready if the wrapped value isn't a promise,
     /// otherwise it will handle the promise like the future returned from
     /// [`Promise::into_future`].
-    
+
     pub fn into_future<T: FromJs<'js>>(self) -> MaybePromiseFuture<'js, T> {
         if self.0.is_promise() {
             let fut = self.0.into_promise().unwrap().into_future();
@@ -329,7 +324,6 @@ enum MaybePromiseFutureInner<'js, T> {
     Future(PromiseFuture<'js, T>),
 }
 
-
 impl<'js, T> Future for MaybePromiseFuture<'js, T>
 where
     T: FromJs<'js>,
@@ -347,26 +341,22 @@ where
 #[cfg(test)]
 mod test {
     use std::sync::atomic::{AtomicBool, Ordering};
-    
+
     use std::time::Duration;
 
     use super::Promise;
-    
+
     use crate::{
         async_with, function::Async, promise::Promised, AsyncContext, AsyncRuntime, CaughtError,
         Result,
     };
-    use crate::{
-        function::Func, prelude::This, promise::PromiseState, CatchResultExt,Function,
-    };
+    use crate::{function::Func, prelude::This, promise::PromiseState, CatchResultExt, Function};
 
-    
     async fn set_timeout<'js>(cb: Function<'js>, number: f64) -> Result<()> {
         tokio::time::sleep(Duration::from_secs_f64(number / 1000.0)).await;
         cb.call::<_, ()>(())
     }
 
-    
     #[tokio::test]
     async fn promise() {
         let rt = AsyncRuntime::new().unwrap();
@@ -418,7 +408,6 @@ mod test {
         .await
     }
 
-    
     #[tokio::test]
     async fn promised() {
         use crate::Exception;
@@ -502,6 +491,7 @@ mod test {
             while ctx.execute_pending_job() {}
 
             assert!(DID_EXECUTE.load(Ordering::SeqCst));
-        }).await
+        })
+        .await
     }
 }

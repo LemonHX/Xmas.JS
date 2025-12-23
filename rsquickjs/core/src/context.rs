@@ -1,11 +1,11 @@
 //! JS Contexts related types.
 
+mod r#async;
 mod builder;
 mod ctx;
-mod owner;
-mod r#async;
 #[cfg(feature = "multi-ctx")]
 mod multi_with_impl;
+mod owner;
 
 /// A trait for using multiple contexts at the same time.
 #[cfg(feature = "multi-ctx")]

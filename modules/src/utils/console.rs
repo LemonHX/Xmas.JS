@@ -8,14 +8,14 @@ use std::{
     string::String,
 };
 
-use crate::utils::json::stringify::json_stringify;
-use crate::utils::numbers::float_to_string;
 use super::{
     class::get_class_name,
     error::ErrorExtensions,
     hash,
     primordials::{BasePrimordials, Primordial},
 };
+use crate::utils::json::stringify::json_stringify;
+use crate::utils::numbers::float_to_string;
 use rsquickjs::{
     atom::PredefinedAtom,
     function::This,
@@ -237,7 +237,7 @@ pub fn build_formatted_string<'js>(
                                     let str = next_value().get::<Coerced<String>>()?;
                                     result.push_str(str.as_str());
                                     continue;
-                                },
+                                }
                                 b'd' => options.number_function.call((next_value(),))?,
                                 b'i' => options.parse_int.call((next_value(),))?,
                                 b'f' => options.parse_float.call((next_value(),))?,
@@ -247,25 +247,25 @@ pub fn build_formatted_string<'js>(
                                             .unwrap_or("undefined".into()),
                                     );
                                     continue;
-                                },
+                                }
                                 b'O' => {
                                     options.object_filter = default_filter;
                                     next_value()
-                                },
+                                }
                                 b'o' => next_value(),
                                 b'c' => {
                                     // CSS is ignored
                                     continue;
-                                },
+                                }
                                 b'%' => {
                                     result.push_byte(byte);
                                     continue;
-                                },
+                                }
                                 _ => {
                                     result.push_byte(byte);
                                     result.push_byte(next_byte);
                                     continue;
-                                },
+                                }
                             };
                             options.color = false;
 
@@ -321,13 +321,13 @@ fn format_raw_inner<'js>(
                 Color::BOLD.push(result);
             }
             result.push_str("null")
-        },
+        }
         Type::Undefined => {
             if color_enabled {
                 Color::BLACK.push(result);
             }
             result.push_str("undefined")
-        },
+        }
         Type::Bool => {
             if color_enabled {
                 Color::YELLOW.push(result);
@@ -338,7 +338,7 @@ fn format_raw_inner<'js>(
                 "false"
             };
             result.push_str(bool_str);
-        },
+        }
         Type::BigInt => {
             if color_enabled {
                 Color::YELLOW.push(result);
@@ -347,14 +347,14 @@ fn format_raw_inner<'js>(
             let big_int = unsafe { value.as_big_int().unwrap_unchecked() };
             result.push_str(buffer.format(big_int.clone().to_i64().unwrap()));
             result.push('n');
-        },
+        }
         Type::Int => {
             if color_enabled {
                 Color::YELLOW.push(result);
             }
             let mut buffer = itoa::Buffer::new();
             result.push_str(buffer.format(unsafe { value.as_int().unwrap_unchecked() }));
-        },
+        }
         Type::Float => {
             if color_enabled {
                 Color::YELLOW.push(result);
@@ -362,12 +362,12 @@ fn format_raw_inner<'js>(
             result.push_str(&float_to_string(unsafe {
                 value.as_float().unwrap_unchecked()
             }));
-        },
+        }
         Type::String => {
             //FIXME can be removed if https://github.com/DelSkayn/rsquickjs/pull/447 is merged
             let lossy_string = get_lossy_string(value)?;
             format_raw_string_inner(result, lossy_string, !is_root, color_enabled);
-        },
+        }
         Type::Symbol => {
             if color_enabled {
                 Color::YELLOW.push(result);
@@ -376,7 +376,7 @@ fn format_raw_inner<'js>(
             result.push_str("Symbol(");
             result.push_str(&unsafe { description.get::<String>().unwrap_unchecked() });
             result.push(')');
-        },
+        }
         Type::Function | Type::Constructor => {
             if color_enabled {
                 Color::CYAN.push(result);
@@ -403,7 +403,7 @@ fn format_raw_inner<'js>(
             result.push_str(if is_class { "[class: " } else { "[function: " });
             result.push_str(&name);
             result.push(']');
-        },
+        }
         Type::Promise => {
             let promise = unsafe { value.as_promise().unwrap_unchecked() };
             let state = promise.state();
@@ -424,11 +424,11 @@ fn format_raw_inner<'js>(
                     if color_enabled {
                         Color::reset(result);
                     }
-                },
+                }
                 PromiseState::Resolved => {
                     let value: Value = unsafe { promise.result().unwrap_unchecked() }?;
                     format_raw_inner(result, value, options, visited, depth + 1)?;
-                },
+                }
                 PromiseState::Rejected => {
                     let value: Error =
                         unsafe { promise.result::<Value>().unwrap_unchecked() }.unwrap_err();
@@ -441,7 +441,7 @@ fn format_raw_inner<'js>(
                         Color::reset(result);
                     }
                     format_raw_inner(result, value, options, visited, depth + 1)?;
-                },
+                }
             }
             write_sep(result, false, apply_indentation, options.newline);
             if apply_indentation {
@@ -450,7 +450,7 @@ fn format_raw_inner<'js>(
 
             result.push('}');
             return Ok(());
-        },
+        }
         Type::Array | Type::Object | Type::Exception => {
             let hash = hash::default_hash(&value);
             if visited.contains(&hash) {
@@ -512,7 +512,7 @@ fn format_raw_inner<'js>(
                             Color::reset(result);
                         }
                         return Ok(());
-                    },
+                    }
                     Some("RegExp") => {
                         if color_enabled {
                             Color::RED.push(result);
@@ -527,11 +527,11 @@ fn format_raw_inner<'js>(
                             Color::reset(result);
                         }
                         return Ok(());
-                    },
+                    }
                     None | Some("") | Some("Object") => {
                         class_name = None;
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 }
             }
 
@@ -588,8 +588,8 @@ fn format_raw_inner<'js>(
                 }
                 result.push_str(if is_object { "[Object]" } else { "[Array]" });
             }
-        },
-        _ => {},
+        }
+        _ => {}
     }
 
     if color_enabled {
@@ -766,7 +766,7 @@ fn replace_invalid_utf8_and_utf16(bytes: &[u8]) -> String {
             0x00..=0x7F => {
                 result.push(current as char);
                 i += 1;
-            },
+            }
             // 2-byte UTF-8 sequence
             0xC0..=0xDF => {
                 if i + 1 < bytes.len() {
@@ -787,7 +787,7 @@ fn replace_invalid_utf8_and_utf16(bytes: &[u8]) -> String {
                     result.push('�');
                     i += 1;
                 }
-            },
+            }
             // 3-byte UTF-8 sequence
             0xE0..=0xEF => {
                 if i + 2 < bytes.len() {
@@ -811,7 +811,7 @@ fn replace_invalid_utf8_and_utf16(bytes: &[u8]) -> String {
                     result.push('�');
                     i += 1;
                 }
-            },
+            }
             // 4-byte UTF-8 sequence
             0xF0..=0xF7 => {
                 if i + 3 < bytes.len() {
@@ -837,12 +837,12 @@ fn replace_invalid_utf8_and_utf16(bytes: &[u8]) -> String {
                     result.push('�');
                     i += 1;
                 }
-            },
+            }
             // Invalid starting byte
             _ => {
                 result.push('�');
                 i += 1;
-            },
+            }
         }
     }
 

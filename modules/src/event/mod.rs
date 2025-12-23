@@ -305,7 +305,7 @@ where
                 is_new = true;
                 events.push((key.clone(), new_items));
                 &mut events.last_mut().unwrap().1
-            },
+            }
         };
 
         let item = EventItem {
