@@ -1,5 +1,5 @@
 [package]
-name = "xmas-js"
+name = "xmas"
 version = "0.10.0"
 authors = ["LemonHX <lemonhx@lemonhx.moe>"]
 edition = "2021"
@@ -31,7 +31,9 @@ xmas-js-modules = { path = "modules" }
 
 [dependencies]
 xmas-js-modules = { workspace = true }
-
+xmas-js-repl = { path = "repl" }
+tokio = { version = "1.36", features = ["full"] }
+anyhow = "1.0.100"
 
 [features]
 default = []

@@ -254,8 +254,7 @@ fn print_version() {
     );
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+pub async fn repl() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     let config = Config::builder()
         .history_ignore_space(true)

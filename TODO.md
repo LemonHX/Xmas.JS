@@ -43,6 +43,23 @@ and i also want to support jsr and http package sources.
 
 OXC is great!
 
+# sub commands
+xmas: start repl
+
+- [ ] run <file>.<js/ts/mjs/cjs/jsx/tsx>
+- [ ] run also could behave like npx if not running a file
+
+- [ ] add : in project add to project.json dependencies, else add to global cache
+- [ ] remove : in project remove from project.json dependencies, else remove from global cache
+- [ ] install i : install all dependencies in project.json
+- [ ] update u : update all dependencies in project.json
+- [ ] list ls : list all dependencies in project.json, or global cache if not in project
+- [ ] execute exec <script> [args...] : execute script from project.json scripts
+
+- [ ] compile <input> <output> (compile to quickjs bytecode)
+- [ ] init (project): create a new xmas project
+- [ ] bundle <input> <output>
+
 # Winter TC API
 
 [txiki.js](https://github.com/saghul/txiki.js) did a great job implementing TC API's,
