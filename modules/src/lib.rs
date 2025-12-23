@@ -16,7 +16,7 @@ pub mod event;
 pub mod console;
 
 #[cfg(feature = "source")]
-pub mod source;
+pub mod script;
 
 #[cfg(feature = "fs")]
 pub mod fs;
@@ -58,6 +58,10 @@ pub fn init(
     buffer::init(ctx)?;
     timers::init(ctx)?;
 
+    #[cfg(feature = "source")]
+    {
+        script::init(ctx)?;
+    }
     #[cfg(feature = "event")]
     {
         event::init(ctx)?;

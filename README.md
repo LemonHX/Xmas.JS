@@ -155,7 +155,7 @@ See [TODO.md](TODO.md) for detailed progress.
 - [x] Basic WinterTC APIs
 - [x] Async I/O with Tokio
 - [x] REPL implementation
-- [ ] TypeScript support
+- [x] TypeScript support **(repl also supports tsx/jsx)**
 - [ ] Bytecode compilation
 
 **2026 Q1**
