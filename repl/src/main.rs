@@ -57,6 +57,18 @@ impl Highlighter for JSHelper {
     }
 }
 
+fn print_version() {
+    println!("{}{}{}{}{}", " ██╗  ██╗".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "███╗   ███╗".color(Color::TrueColor { r: 153, g: 240, b: 0 }), " █████╗ ".color(Color::TrueColor { r: 102, g: 102, b: 255 }), "███████╗".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "         ██╗ ███████╗".color(Color::TrueColor { r: 255, g: 205, b: 51 }));
+    println!("{}{}{}{}{}", " ╚██╗██╔╝".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "████╗ ████║".color(Color::TrueColor { r: 153, g: 240, b: 0 }), "██╔══██╗".color(Color::TrueColor { r: 102, g: 102, b: 255 }), "██╔════╝".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "         ██║ ██╔════╝".color(Color::TrueColor { r: 255, g: 205, b: 51 }));
+    println!("{}{}{}{}{}", "  ╚███╔╝ ".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "██╔████╔██║".color(Color::TrueColor { r: 153, g: 240, b: 0 }), "███████║".color(Color::TrueColor { r: 102, g: 102, b: 255 }), "███████╗".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "         ██║ ███████╗".color(Color::TrueColor { r: 255, g: 205, b: 51 }));
+    println!("{}{}{}{}{}", "  ██╔██╗ ".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "██║╚██╔╝██║".color(Color::TrueColor { r: 153, g: 240, b: 0 }), "██╔══██║".color(Color::TrueColor { r: 102, g: 102, b: 255 }), "╚════██║".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "    ██   ██║ ╚════██║".color(Color::TrueColor { r: 255, g: 205, b: 51 }));
+    println!("{}{}{}{}{}", " ██╔╝ ██╗".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "██║ ╚═╝ ██║".color(Color::TrueColor { r: 153, g: 240, b: 0 }), "██║  ██║".color(Color::TrueColor { r: 102, g: 102, b: 255 }), "███████║".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "██╗ ╚█████╔╝ ███████║".color(Color::TrueColor { r: 255, g: 205, b: 51 }));
+    println!("{}{}{}{}{}", " ╚═╝  ╚═╝".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "╚═╝     ╚═╝".color(Color::TrueColor { r: 153, g: 240, b: 0 }), "╚═╝  ╚═╝".color(Color::TrueColor { r: 102, g: 102, b: 255 }), "╚══════╝".color(Color::TrueColor { r: 204, g: 0, b: 102 }), "╚═╝  ╚════╝  ╚══════╝".color(Color::TrueColor { r: 255, g: 205, b: 51 }));
+    println!("☃️\t{} {}", "Xmas.JS version".bold().cyan(), env!("CARGO_PKG_VERSION").cyan().italic());
+    println!("🛷\t{} {}", "/help".cyan().bold(), "for getting help".cyan());
+    println!("⛷️\t{}", "CTRL+D for save and exit, CTRL+C for interrupt exit".cyan());
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
@@ -82,10 +94,11 @@ async fn main() -> anyhow::Result<()> {
         }
     }));
     if rl.load_history("history.js").is_err() {
-        println!("No previous history.");
     }
     let runtime = AsyncRuntime::new()?;
     let context = AsyncContext::full(&runtime).await?;
+    print_version();
+
     rsquickjs::async_with!(context => |ctx| {
         xmas_js_modules::init(&ctx, Permissions::allow_all(), xmas_js_modules::console::LogType::Stdio)?;
         let t = ctx.get_background_task_poller();
@@ -93,6 +106,29 @@ async fn main() -> anyhow::Result<()> {
             let readline = rl.readline("🎄 >> ");
             match readline {
                 Ok(line) => {
+                    // Handle special commands
+                    if line.starts_with("/") && !line.starts_with("//") && !line.ends_with("/") {
+                        match line.strip_prefix("/").unwrap() {
+                            "help" => {
+                                println!("\n{}", "💡 Available commands:".bold().cyan());
+                                println!("❄️\t{} - Show this help message", "/help".cyan().bold());
+                                println!("❄️\t{} - Show version information", "/version".cyan().bold());
+                                println!("❄️\t{} - Clear the console", "/clear".cyan().bold());
+                            },
+                            "version" => {
+                                print_version();
+                            },
+                            "clear" => {
+                                // Clear the console
+                                println!("\x1B[2J\x1B[1;1H");
+                            },
+                            cmd => {
+                                eprintln!("{}: Unknown command '{}'", "Error".red().bold(), cmd);
+                            }
+                        }
+                        continue;
+                    }
+
                     rl.add_history_entry(line.as_str())?;
                     match ctx.eval_promise::<_>(line.as_bytes()) {
                         Ok(res) => {
@@ -117,12 +153,12 @@ async fn main() -> anyhow::Result<()> {
                 },
                 Err(ReadlineError::Interrupted) => {
                     t.abort();
-                    println!("CTRL-C received, exiting...");
+                    println!("{} {}", "CTRL-C".cyan().bold(),"received, exiting...".cyan());
                     break
                 },
                 Err(ReadlineError::Eof) => {
                     t.abort();
-                    println!("CTRL-D received, save and exiting...");
+                    println!("{} {}", "CTRL-D".cyan().bold(),"received, save and exiting...".cyan());
                     rl.save_history("history.js")?;
                     break
                 },
@@ -135,33 +171,3 @@ async fn main() -> anyhow::Result<()> {
         Ok(())
     }).await
 }
-
-// fn main() {
-//     let ps = SyntaxSet::load_defaults_newlines();
-//     let ts = ThemeSet::load_defaults();
-//     let theme = &ts.themes["base16-ocean.dark"];
-//     let syntaxdef = SyntaxDefinition::load_from_str(include_str!("../tsx.sublime-syntax"), true, Some("js")).unwrap();
-//     let mut syntaxset = SyntaxSetBuilder::new();
-//     syntaxset.add(syntaxdef);
-//     let syntaxset = syntaxset.build();
-//     let syntax: &SyntaxReference = syntaxset.find_syntax_by_extension("tsx").unwrap();
-
-//     let mut highlighter = HighlightLines::new(&syntax, &theme);
-//     let source = r#"
-// import { foo } from 'bar';
-// interface Person {
-//     name: string;
-// }
-// async function x*() {
-//     const element = <div>Hello, JSX!</div>;
-//     console.log(greet(user));
-//     yield await fetch('https://example.com');
-// }
-//     "#;
-//     let lines = LinesWithEndings::from(source);
-//     for line in lines {
-//         let ranges: Vec<(Style, &str)> = highlighter.highlight_line(line, &syntaxset).unwrap();
-//         let escaped = as_24_bit_terminal_escaped(&ranges[..], false);
-//         print!("{}", escaped);
-//     }
-// }
