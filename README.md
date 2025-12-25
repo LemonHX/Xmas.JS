@@ -219,7 +219,9 @@ Xmas.JS stands on the shoulders of giants:
 
 ## 🌟 Star History
 
-If you find Xmas.JS useful, please consider giving it a star! ⭐
+If you find Xmas.JS useful, please consider giving it a star! ✨
+
+[![Star History Chart](https://api.star-history.com/svg?repos=lemonhx/xmas.js&type=date&legend=top-left)](https://www.star-history.com/#lemonhx/xmas.js&type=date&legend=top-left)
 
 ---
 
