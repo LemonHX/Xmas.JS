@@ -36,6 +36,9 @@ pub mod fetch;
 #[cfg(feature = "url")]
 pub mod url;
 
+#[cfg(feature = "intl")]
+pub mod intl;
+
 pub mod async_hooks;
 pub mod hooking;
 pub mod module;
@@ -81,6 +84,10 @@ pub fn init(
     #[cfg(feature = "fetch")]
     {
         fetch::init(ctx)?;
+    }
+    #[cfg(feature = "intl")]
+    {
+        intl::init(ctx)?;
     }
     Ok(())
 }
