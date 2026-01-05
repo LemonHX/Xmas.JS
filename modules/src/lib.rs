@@ -46,6 +46,8 @@ pub mod async_hooks;
 pub mod hooking;
 pub mod module;
 pub mod navigator;
+pub mod serdeserclone;
+pub mod text;
 pub mod timers;
 pub mod utils;
 
@@ -59,7 +61,8 @@ pub fn init(
     permissions::init(ctx.clone(), permissions)?;
     exceptions::init(ctx)?;
     async_hooks::init(ctx)?;
-
+    text::init(ctx)?;
+    serdeserclone::init(ctx)?;
     module::module::init(ctx)?;
     buffer::init(ctx)?;
     timers::init(ctx)?;

@@ -85,25 +85,25 @@ i want to implement those API's as well.
     - [x] async
     - [x] sync
 
-- [ ] FormData
-- [ ] Headers
+- [x] FormData
+- [x] Headers
 - [ ] ReadableByteStreamController
 - [ ] ReadableStream
 - [ ] ReadableStreamBYOBReader
 - [ ] ReadableStreamBYOBRequest
 - [ ] ReadableStreamDefaultController
 - [ ] ReadableStreamDefaultReader
-- [ ] Request
-- [ ] Response
-- [ ] SubtleCrypto
-- [ ] TextDecoder
+- [x] Request
+- [x] Response
+- [x] SubtleCrypto
+- [x] TextDecoder
 - [ ] TextDecoderStream
-- [ ] TextEncoder
+- [x] TextEncoder
 - [ ] TextEncoderStream
 - [ ] TransformStream
 - [ ] TransformStreamDefaultController
-- [ ] URL
-- [ ] URLSearchParams
+- [x] URL
+- [x] URLSearchParams
 - [ ] WritableStream
 - [ ] WritableStreamDefaultController
 
@@ -127,12 +127,12 @@ Global methods / properties:
 - [x] globalThis.crypto
 - [x] globalThis.fetch()
 - [x] globalThis.navigator.userAgent
-- [ ] globalThis.performance.now()
-- [ ] globalThis.performance.timeOrigin
+- [x] globalThis.performance.now()
+- [x] globalThis.performance.timeOrigin
 - [x] globalThis.queueMicrotask()
 - [x] globalThis.setTimeout() / globalThis.clearTimeout()
 - [x] globalThis.setInterval() / globalThis.clearInterval()
-- [ ] globalThis.structuredClone()
+- [x] globalThis.structuredClone()
 
 - [ ] WASM
     - [ ] globalThis.WebAssembly.compile()
