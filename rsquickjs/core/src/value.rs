@@ -403,6 +403,11 @@ impl<'js> Value<'js> {
         unsafe { qjs::JS_IsArray(self.value) }
     }
 
+    #[inline]
+    pub fn is_array_buffer(&self) -> bool {
+        unsafe { qjs::JS_IsArrayBuffer(self.value) }
+    }
+
     /// Check if the value is a function
     #[inline]
     pub fn is_function(&self) -> bool {
