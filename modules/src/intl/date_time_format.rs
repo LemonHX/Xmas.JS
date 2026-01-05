@@ -1,6 +1,3 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 //! Minimal Intl.DateTimeFormat implementation for timezone support.
 //! This provides just enough functionality to support dayjs and similar libraries.
 
@@ -221,7 +218,7 @@ fn format_timezone_name(local_dt: &DateTime<Tz>, timezone: &Tz, style: &str) -> 
             }
 
             result
-        },
+        }
         "long" => timezone.name().to_string(),
         _ => timezone.name().to_string(),
     }

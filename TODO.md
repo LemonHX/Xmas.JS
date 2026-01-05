@@ -68,8 +68,8 @@ i want to implement those API's as well.
     - [x] AbortController
     - [x] AbortSignal
 
-- [ ] Crypto
-- [ ] CryptoKey
+- [x] Crypto
+- [x] CryptoKey
 
 - [x] Blob
 - [ ] ByteLengthQueuingStrategy
@@ -115,7 +115,7 @@ i want to implement those API's as well.
     - [ ] WebAssembly.Table
 
 Global methods / properties:
-- [ ] globalThis
+- [x] globalThis
 - [x] globalThis.atob()
 - [x] globalThis.btoa()
 - [x] globalThis.console
@@ -124,7 +124,7 @@ Global methods / properties:
     - and also easier to implement OTEL later
     - TODO: console.span(level: "info" | "debug" | "warn" | "error" | "trace", name: string, fn: (span) => void)
     - TODO: console.table
-- [ ] globalThis.crypto
+- [x] globalThis.crypto
 - [x] globalThis.fetch()
 - [x] globalThis.navigator.userAgent
 - [ ] globalThis.performance.now()
