@@ -9,6 +9,9 @@ pub mod buffer;
 pub mod path;
 pub mod permissions;
 
+#[cfg(feature = "crypto")]
+pub mod crypto;
+
 #[cfg(feature = "event")]
 pub mod event;
 
@@ -60,7 +63,10 @@ pub fn init(
     module::module::init(ctx)?;
     buffer::init(ctx)?;
     timers::init(ctx)?;
-
+    #[cfg(feature = "crypto")]
+    {
+        crypto::init(ctx)?;
+    }
     #[cfg(feature = "source")]
     {
         script::init(ctx)?;

@@ -61,7 +61,7 @@ impl Default for ModuleBuilder {
         }
         #[cfg(feature = "crypto")]
         {
-            builder = builder.with_module(crate::modules::crypto::CryptoModule);
+            builder = builder.with_module(crate::crypto::CryptoModule);
         }
         #[cfg(feature = "dgram")]
         {

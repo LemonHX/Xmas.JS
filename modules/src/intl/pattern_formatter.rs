@@ -1,6 +1,3 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 //! CLDR pattern parser and formatter.
 //!
 //! Parses Unicode CLDR date/time patterns and formats dates accordingly.
@@ -38,20 +35,20 @@ pub fn format_with_pattern(
                         result.push(c);
                     }
                 }
-            },
+            }
             // Pattern letters
             'y' | 'Y' => {
                 let count = 1 + consume_same(&mut chars, ch);
                 format_year(&mut result, dt.year(), count);
-            },
+            }
             'M' | 'L' => {
                 let count = 1 + consume_same(&mut chars, ch);
                 format_month(&mut result, dt.month() as usize, count, locale_data);
-            },
+            }
             'd' => {
                 let count = 1 + consume_same(&mut chars, ch);
                 format_day(&mut result, dt.day(), count);
-            },
+            }
             'E' | 'e' | 'c' => {
                 let count = 1 + consume_same(&mut chars, ch);
                 format_weekday(
@@ -60,7 +57,7 @@ pub fn format_with_pattern(
                     count,
                     locale_data,
                 );
-            },
+            }
             'a' => {
                 consume_same(&mut chars, ch);
                 // Only show AM/PM if we're using 12-hour format
@@ -73,7 +70,7 @@ pub fn format_with_pattern(
                         result.push_str(locale_data.pm);
                     }
                 }
-            },
+            }
             'h' => {
                 let count = 1 + consume_same(&mut chars, ch);
                 let hour = dt.hour();
@@ -91,7 +88,7 @@ pub fn format_with_pattern(
                     // 24-hour format (0-23)
                     format_number(&mut result, hour, count);
                 }
-            },
+            }
             'H' => {
                 let count = 1 + consume_same(&mut chars, ch);
                 let hour = dt.hour();
@@ -108,31 +105,31 @@ pub fn format_with_pattern(
                     // 24-hour format (0-23)
                     format_number(&mut result, hour, count);
                 }
-            },
+            }
             'm' => {
                 let count = 1 + consume_same(&mut chars, ch);
                 format_number(&mut result, dt.minute(), count);
-            },
+            }
             's' => {
                 let count = 1 + consume_same(&mut chars, ch);
                 format_number(&mut result, dt.second(), count);
-            },
+            }
             'z' => {
                 let count = 1 + consume_same(&mut chars, ch);
                 format_timezone(&mut result, dt, count);
-            },
+            }
             'Z' | 'O' | 'v' | 'V' | 'X' | 'x' => {
                 let count = 1 + consume_same(&mut chars, ch);
                 format_timezone(&mut result, dt, count);
-            },
+            }
             // Skip these pattern letters (not commonly needed)
             'G' | 'q' | 'Q' | 'w' | 'W' | 'D' | 'F' | 'g' | 'A' | 'S' => {
                 consume_same(&mut chars, ch);
-            },
+            }
             // Pass through literal characters
             _ => {
                 result.push(ch);
-            },
+            }
         }
     }
 
@@ -184,7 +181,7 @@ fn format_month(result: &mut String, month: usize, width: usize, locale_data: &L
             // Numeric, no padding
             let mut buf = itoa::Buffer::new();
             result.push_str(buf.format(month));
-        },
+        }
         2 => {
             // Numeric, zero-padded
             let mut buf = itoa::Buffer::new();
@@ -192,19 +189,19 @@ fn format_month(result: &mut String, month: usize, width: usize, locale_data: &L
                 result.push('0');
             }
             result.push_str(buf.format(month));
-        },
+        }
         3 => {
             // Abbreviated
             if (1..=12).contains(&month) {
                 result.push_str(locale_data.months_abbr[month - 1]);
             }
-        },
+        }
         _ => {
             // Wide (4+)
             if (1..=12).contains(&month) {
                 result.push_str(locale_data.months_wide[month - 1]);
             }
-        },
+        }
     }
 }
 
@@ -219,11 +216,11 @@ fn format_weekday(result: &mut String, weekday: usize, width: usize, locale_data
         1..=3 => {
             // Abbreviated
             result.push_str(locale_data.days_abbr[weekday]);
-        },
+        }
         _ => {
             // Wide (4+)
             result.push_str(locale_data.days_wide[weekday]);
-        },
+        }
     }
 }
 
