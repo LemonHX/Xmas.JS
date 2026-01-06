@@ -71,173 +71,74 @@ impl Highlighter for JSHelper {
 }
 
 fn print_version() {
+    let xcolor = Color::TrueColor {
+        r: 204,
+        g: 0,
+        b: 102,
+    };
+    let mcolor = Color::TrueColor {
+        r: 153,
+        g: 240,
+        b: 0,
+    };
+    let acolor = Color::TrueColor {
+        r: 102,
+        g: 102,
+        b: 255,
+    };
+    let jscolor = Color::TrueColor {
+        r: 255,
+        g: 205,
+        b: 51,
+    };
+
     println!(
         "{}{}{}{}{}",
-        " ██╗  ██╗".color(Color::TrueColor {
-            r: 204,
-            g: 0,
-            b: 102
-        }),
-        "███╗   ███╗".color(Color::TrueColor {
-            r: 153,
-            g: 240,
-            b: 0
-        }),
-        " █████╗ ".color(Color::TrueColor {
-            r: 102,
-            g: 102,
-            b: 255
-        }),
-        "███████╗".color(Color::TrueColor {
-            r: 204,
-            g: 0,
-            b: 102
-        }),
-        "         ██╗ ███████╗".color(Color::TrueColor {
-            r: 255,
-            g: 205,
-            b: 51
-        })
+        " ██╗  ██╗".color(xcolor),
+        "███╗   ███╗".color(mcolor),
+        " █████╗ ".color(acolor),
+        "███████╗".color(xcolor),
+        "         ██╗ ███████╗".color(jscolor)
     );
     println!(
         "{}{}{}{}{}",
-        " ╚██╗██╔╝".color(Color::TrueColor {
-            r: 204,
-            g: 0,
-            b: 102
-        }),
-        "████╗ ████║".color(Color::TrueColor {
-            r: 153,
-            g: 240,
-            b: 0
-        }),
-        "██╔══██╗".color(Color::TrueColor {
-            r: 102,
-            g: 102,
-            b: 255
-        }),
-        "██╔════╝".color(Color::TrueColor {
-            r: 204,
-            g: 0,
-            b: 102
-        }),
-        "         ██║ ██╔════╝".color(Color::TrueColor {
-            r: 255,
-            g: 205,
-            b: 51
-        })
+        " ╚██╗██╔╝".color(xcolor),
+        "████╗ ████║".color(mcolor),
+        "██╔══██╗".color(acolor),
+        "██╔════╝".color(xcolor),
+        "         ██║ ██╔════╝".color(jscolor)
     );
     println!(
         "{}{}{}{}{}",
-        "  ╚███╔╝ ".color(Color::TrueColor {
-            r: 204,
-            g: 0,
-            b: 102
-        }),
-        "██╔████╔██║".color(Color::TrueColor {
-            r: 153,
-            g: 240,
-            b: 0
-        }),
-        "███████║".color(Color::TrueColor {
-            r: 102,
-            g: 102,
-            b: 255
-        }),
-        "███████╗".color(Color::TrueColor {
-            r: 204,
-            g: 0,
-            b: 102
-        }),
-        "         ██║ ███████╗".color(Color::TrueColor {
-            r: 255,
-            g: 205,
-            b: 51
-        })
+        "  ╚███╔╝ ".color(xcolor),
+        "██╔████╔██║".color(mcolor),
+        "███████║".color(acolor),
+        "███████╗".color(xcolor),
+        "         ██║ ███████╗".color(jscolor)
     );
     println!(
         "{}{}{}{}{}",
-        "  ██╔██╗ ".color(Color::TrueColor {
-            r: 204,
-            g: 0,
-            b: 102
-        }),
-        "██║╚██╔╝██║".color(Color::TrueColor {
-            r: 153,
-            g: 240,
-            b: 0
-        }),
-        "██╔══██║".color(Color::TrueColor {
-            r: 102,
-            g: 102,
-            b: 255
-        }),
-        "╚════██║".color(Color::TrueColor {
-            r: 204,
-            g: 0,
-            b: 102
-        }),
-        "    ██   ██║ ╚════██║".color(Color::TrueColor {
-            r: 255,
-            g: 205,
-            b: 51
-        })
+        "  ██╔██╗ ".color(xcolor),
+        "██║╚██╔╝██║".color(mcolor),
+        "██╔══██║".color(acolor),
+        "╚════██║".color(xcolor),
+        "    ██   ██║ ╚════██║".color(jscolor)
     );
     println!(
         "{}{}{}{}{}",
-        " ██╔╝ ██╗".color(Color::TrueColor {
-            r: 204,
-            g: 0,
-            b: 102
-        }),
-        "██║ ╚═╝ ██║".color(Color::TrueColor {
-            r: 153,
-            g: 240,
-            b: 0
-        }),
-        "██║  ██║".color(Color::TrueColor {
-            r: 102,
-            g: 102,
-            b: 255
-        }),
-        "███████║".color(Color::TrueColor {
-            r: 204,
-            g: 0,
-            b: 102
-        }),
-        "██╗ ╚█████╔╝ ███████║".color(Color::TrueColor {
-            r: 255,
-            g: 205,
-            b: 51
-        })
+        " ██╔╝ ██╗".color(xcolor),
+        "██║ ╚═╝ ██║".color(mcolor),
+        "██║  ██║".color(acolor),
+        "███████║".color(xcolor),
+        "██╗ ╚█████╔╝ ███████║".color(jscolor)
     );
     println!(
         "{}{}{}{}{}",
-        " ╚═╝  ╚═╝".color(Color::TrueColor {
-            r: 204,
-            g: 0,
-            b: 102
-        }),
-        "╚═╝     ╚═╝".color(Color::TrueColor {
-            r: 153,
-            g: 240,
-            b: 0
-        }),
-        "╚═╝  ╚═╝".color(Color::TrueColor {
-            r: 102,
-            g: 102,
-            b: 255
-        }),
-        "╚══════╝".color(Color::TrueColor {
-            r: 204,
-            g: 0,
-            b: 102
-        }),
-        "╚═╝  ╚════╝  ╚══════╝".color(Color::TrueColor {
-            r: 255,
-            g: 205,
-            b: 51
-        })
+        " ╚═╝  ╚═╝".color(xcolor),
+        "╚═╝     ╚═╝".color(mcolor),
+        "╚═╝  ╚═╝".color(acolor),
+        "╚══════╝".color(xcolor),
+        "╚═╝  ╚════╝  ╚══════╝".color(jscolor)
     );
     println!(
         "☃️\t{} {}",
@@ -366,39 +267,4 @@ pub async fn repl() -> anyhow::Result<()> {
         }
         Ok(())
     }).await
-}
-
-#[tokio::test]
-async fn fuck() {
-    let runtime = AsyncRuntime::new().unwrap();
-    let context = AsyncContext::full(&runtime).await.unwrap();
-    let allocator = xmas_js_modules::script::allocator();
-    rsquickjs::async_with!(context => |ctx| {
-        xmas_js_modules::init(&ctx, Permissions::allow_all(), xmas_js_modules::console::LogType::Stdio).unwrap();
-
-    let t = ctx.get_background_task_poller();
-        let ast = xmas_js_modules::script::parse("tsx", "internalSerialize(1)", &allocator).or_throw(&ctx).unwrap();
-        let transformed = xmas_js_modules::script::transform(
-            &format!("<repl_input>.tsx"),
-            None,
-            false,
-            &allocator,
-            ast,
-        )
-        .or_throw(&ctx).unwrap();
-        ctx.eval_promise::<_>(transformed.as_bytes()).unwrap().into_future::<Value>().await
-                            .catch(&ctx)
-                            .and_then(|v| {
-                                let v = if v.is_object() {
-                                    v.as_object().unwrap().get("value").unwrap()
-                                } else {
-                                    v
-                                };
-                                let _ = write_log(stdout(), &ctx, Rest(vec![v]));
-                                Ok(())
-                            })
-                            .unwrap_or_else(|err| eprintln!("{}: {}", "Error".red().bold(), err));
-
-        })
-    .await
 }
