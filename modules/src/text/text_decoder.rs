@@ -1,0 +1,76 @@
+use crate::utils::encoding::Encoder;
+use crate::utils::{bytes::ObjectBytes, object::ObjectExt, result::ResultExt};
+use rsquickjs::{atom::PredefinedAtom, function::Opt, Ctx, Object, Result};
+
+#[rsquickjs::class]
+#[derive(rsquickjs::class::Trace, rsquickjs::JsLifetime)]
+pub struct TextDecoder {
+    #[qjs(skip_trace)]
+    encoder: Encoder,
+    fatal: bool,
+    ignore_bom: bool,
+}
+
+#[rsquickjs::methods]
+impl<'js> TextDecoder {
+    #[qjs(constructor)]
+    pub fn new(ctx: Ctx<'js>, label: Opt<String>, options: Opt<Object<'js>>) -> Result<Self> {
+        let mut fatal = false;
+        let mut ignore_bom = false;
+
+        let encoder = Encoder::from_optional_str(label.as_deref()).or_throw_range(&ctx, "")?;
+
+        if let Some(options) = options.0 {
+            if let Some(opt) = options.get_optional("fatal")? {
+                fatal = opt;
+            }
+            if let Some(opt) = options.get_optional("ignoreBOM")? {
+                ignore_bom = opt;
+            }
+        }
+
+        Ok(TextDecoder {
+            encoder,
+            fatal,
+            ignore_bom,
+        })
+    }
+
+    #[qjs(get)]
+    fn encoding(&self) -> &str {
+        self.encoder.as_label()
+    }
+
+    #[qjs(get)]
+    fn fatal(&self) -> bool {
+        self.fatal
+    }
+
+    #[qjs(get, rename = "ignoreBOM")]
+    fn ignore_bom(&self) -> bool {
+        self.ignore_bom
+    }
+
+    #[qjs(get, rename = PredefinedAtom::SymbolToStringTag)]
+    pub fn to_string_tag(&self) -> &'static str {
+        stringify!(TextDecoder)
+    }
+
+    pub fn decode(&self, ctx: Ctx<'js>, bytes: ObjectBytes<'js>) -> Result<String> {
+        let bytes = bytes.as_bytes(&ctx)?;
+        let start_pos = if !self.ignore_bom {
+            match (&self.encoder, bytes.get(..3)) {
+                (Encoder::Utf16le, Some([0xFF, 0xFE, ..])) => 2,
+                (Encoder::Utf16be, Some([0xFE, 0xFF, ..])) => 2,
+                (Encoder::Utf8, Some([0xEF, 0xBB, 0xBF])) => 3,
+                _ => 0,
+            }
+        } else {
+            0
+        };
+
+        self.encoder
+            .encode_to_string(&bytes[start_pos..], !self.fatal)
+            .or_throw_type(&ctx, "")
+    }
+}

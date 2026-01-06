@@ -68,8 +68,8 @@ i want to implement those API's as well.
     - [x] AbortController
     - [x] AbortSignal
 
-- [ ] Crypto
-- [ ] CryptoKey
+- [x] Crypto
+- [x] CryptoKey
 
 - [x] Blob
 - [ ] ByteLengthQueuingStrategy
@@ -85,25 +85,25 @@ i want to implement those API's as well.
     - [x] async
     - [x] sync
 
-- [ ] FormData
-- [ ] Headers
+- [x] FormData
+- [x] Headers
 - [ ] ReadableByteStreamController
 - [ ] ReadableStream
 - [ ] ReadableStreamBYOBReader
 - [ ] ReadableStreamBYOBRequest
 - [ ] ReadableStreamDefaultController
 - [ ] ReadableStreamDefaultReader
-- [ ] Request
-- [ ] Response
-- [ ] SubtleCrypto
-- [ ] TextDecoder
+- [x] Request
+- [x] Response
+- [x] SubtleCrypto
+- [x] TextDecoder
 - [ ] TextDecoderStream
-- [ ] TextEncoder
+- [x] TextEncoder
 - [ ] TextEncoderStream
 - [ ] TransformStream
 - [ ] TransformStreamDefaultController
-- [ ] URL
-- [ ] URLSearchParams
+- [x] URL
+- [x] URLSearchParams
 - [ ] WritableStream
 - [ ] WritableStreamDefaultController
 
@@ -115,7 +115,7 @@ i want to implement those API's as well.
     - [ ] WebAssembly.Table
 
 Global methods / properties:
-- [ ] globalThis
+- [x] globalThis
 - [x] globalThis.atob()
 - [x] globalThis.btoa()
 - [x] globalThis.console
@@ -124,15 +124,15 @@ Global methods / properties:
     - and also easier to implement OTEL later
     - TODO: console.span(level: "info" | "debug" | "warn" | "error" | "trace", name: string, fn: (span) => void)
     - TODO: console.table
-- [ ] globalThis.crypto
+- [x] globalThis.crypto
 - [x] globalThis.fetch()
 - [x] globalThis.navigator.userAgent
-- [ ] globalThis.performance.now()
-- [ ] globalThis.performance.timeOrigin
+- [x] globalThis.performance.now()
+- [x] globalThis.performance.timeOrigin
 - [x] globalThis.queueMicrotask()
 - [x] globalThis.setTimeout() / globalThis.clearTimeout()
 - [x] globalThis.setInterval() / globalThis.clearInterval()
-- [ ] globalThis.structuredClone()
+- [x] globalThis.structuredClone()
 
 - [ ] WASM
     - [ ] globalThis.WebAssembly.compile()

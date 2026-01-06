@@ -47,44 +47,70 @@ unsafe impl Send for Value<'_> {}
 unsafe impl Sync for Value<'_> {}
 
 impl<'js> Value<'js> {
-    /// Serialize a value to a byte array
-    pub fn serialize(&self) -> Result<Vec<u8>> {
-        unsafe {
-            let len_ptr: *mut usize = &mut 0;
-            let flags = qjs::JS_WRITE_OBJ_BYTECODE
-                | qjs::JS_WRITE_OBJ_REFERENCE
-                | qjs::JS_WRITE_OBJ_SAB
-                | qjs::JS_WRITE_OBJ_STRIP_SOURCE;
-            let buf = qjs::JS_WriteObject(
-                self.ctx.as_ptr(),
-                len_ptr as _,
-                self.as_js_value(),
-                flags as i32,
-            );
-            if buf.is_null() {
-                return Err(Error::new_from_js(
-                    "Failed to serialize object",
-                    "ArrayBuffer",
-                ));
-            }
-            let len = *len_ptr;
-            let vec = Vec::from_raw_parts(buf, len, len);
-            Ok(vec)
-        }
+    /// serialize the value into a byte vector
+    pub fn serialize(&self, ctx: Ctx<'js>) -> Result<Self> {
+        let mut len: u64 = 0;
+        let flags = qjs::JS_WRITE_OBJ_BYTECODE
+            | qjs::JS_WRITE_OBJ_REFERENCE
+            | qjs::JS_WRITE_OBJ_STRIP_SOURCE;
+        let buf = unsafe {
+            qjs::JS_WriteObject(ctx.as_ptr(), &mut len as *mut _, self.value, flags as i32)
+        };
+        if buf.is_null() {
+            return Err(Error::new_from_js(
+                "SerializationError",
+                "Failed to serialize value",
+            ));
+        };
+        let slice = unsafe { std::slice::from_raw_parts(buf as *const u8, len as usize) };
+        let typedarray = TypedArray::new_copy(ctx, slice)?;
+        Ok(typedarray.into_value())
     }
 
-    /// Deserialize a value from a byte array
-    pub fn deserialize(ctx: Ctx<'js>, data: &[u8]) -> Result<Self> {
-        unsafe {
-            let flags =
-                qjs::JS_READ_OBJ_BYTECODE | qjs::JS_READ_OBJ_REFERENCE | qjs::JS_READ_OBJ_SAB;
-            let value =
-                qjs::JS_ReadObject(ctx.as_ptr(), data.as_ptr(), data.len() as u64, flags as i32);
-            if qjs::JS_IsException(value) {
-                return Err(Error::new_from_js("Failed to deserialize object", "Value"));
-            }
-            Ok(Self::from_js_value(ctx, value))
+    pub fn deserialize(&self, ctx: Ctx<'js>) -> Result<Self> {
+        let typedarray: TypedArray<'js, u8> = TypedArray::from_value(self.clone())?;
+        let buf = typedarray.as_bytes().ok_or_else(|| {
+            Error::new_from_js(
+                "DeserializationError",
+                "Failed to get bytes from ArrayBuffer",
+            )
+        })?;
+        let flags = qjs::JS_READ_OBJ_BYTECODE | qjs::JS_READ_OBJ_REFERENCE;
+        let value = unsafe {
+            qjs::JS_ReadObject(ctx.as_ptr(), buf.as_ptr(), buf.len() as u64, flags as i32)
+        };
+        if unsafe { qjs::JS_IsException(value) } {
+            return Err(Error::new_from_js(
+                "DeserializationError",
+                "Failed to deserialize value",
+            ));
         }
+        Ok(unsafe { Value::from_js_value_const(ctx, value) })
+    }
+
+    pub fn structured_clone(&self, ctx: Ctx<'js>) -> Result<Self> {
+        let mut len: u64 = 0;
+        let flags = qjs::JS_WRITE_OBJ_BYTECODE
+            | qjs::JS_WRITE_OBJ_REFERENCE
+            | qjs::JS_WRITE_OBJ_STRIP_SOURCE;
+        let buf = unsafe {
+            qjs::JS_WriteObject(ctx.as_ptr(), &mut len as *mut _, self.value, flags as i32)
+        };
+        if buf.is_null() {
+            return Err(Error::new_from_js(
+                "SerializationError",
+                "Failed to serialize value",
+            ));
+        };
+        let flags = qjs::JS_READ_OBJ_BYTECODE | qjs::JS_READ_OBJ_REFERENCE;
+        let value = unsafe { qjs::JS_ReadObject(ctx.as_ptr(), buf, len as u64, flags as i32) };
+        if unsafe { qjs::JS_IsException(value) } {
+            return Err(Error::new_from_js(
+                "DeserializationError",
+                "Failed to deserialize value",
+            ));
+        }
+        Ok(unsafe { Value::from_js_value_const(ctx, value) })
     }
 }
 
@@ -401,6 +427,11 @@ impl<'js> Value<'js> {
     #[inline]
     pub fn is_array(&self) -> bool {
         unsafe { qjs::JS_IsArray(self.value) }
+    }
+
+    #[inline]
+    pub fn is_array_buffer(&self) -> bool {
+        unsafe { qjs::JS_IsArrayBuffer(self.value) }
     }
 
     /// Check if the value is a function

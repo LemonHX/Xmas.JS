@@ -47,6 +47,7 @@ impl Default for ModuleBuilder {
         builder = builder.with_module(crate::async_hooks::AsyncHooksModule);
         builder = builder.with_module(crate::timers::TimersModule);
         builder = builder.with_module(crate::buffer::BufferModule);
+        builder = builder.with_module(crate::text::TextModule);
         #[cfg(feature = "assert")]
         {
             builder = builder.with_module(crate::modules::assert::AssertModule);
@@ -61,7 +62,7 @@ impl Default for ModuleBuilder {
         }
         #[cfg(feature = "crypto")]
         {
-            builder = builder.with_module(crate::modules::crypto::CryptoModule);
+            builder = builder.with_module(crate::crypto::CryptoModule);
         }
         #[cfg(feature = "dgram")]
         {
