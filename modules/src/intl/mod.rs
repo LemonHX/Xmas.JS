@@ -1,6 +1,3 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 //! Minimal Intl module for LLRT.
 //!
 //! Provides a subset of the `Intl` API focused on timezone support,
@@ -121,7 +118,7 @@ fn date_to_locale_string<'js>(
                 &time_str,
                 locale_data.datetime_pattern,
             ))
-        },
+        }
         (Some(ds), None) => {
             // Date only
             let date_pattern = get_date_pattern(ds, locale_data);
@@ -131,7 +128,7 @@ fn date_to_locale_string<'js>(
                 locale_data,
                 hour12,
             ))
-        },
+        }
         (None, Some(ts)) => {
             // Time only
             let time_pattern = get_time_pattern(ts, locale_data);
@@ -141,7 +138,7 @@ fn date_to_locale_string<'js>(
                 locale_data,
                 hour12,
             ))
-        },
+        }
         (None, None) => {
             // Default: short date and medium time (matching browser behavior)
             let date_str = format_with_pattern(
@@ -161,7 +158,7 @@ fn date_to_locale_string<'js>(
                 &time_str,
                 locale_data.datetime_pattern,
             ))
-        },
+        }
     }
 }
 

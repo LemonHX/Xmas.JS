@@ -1,6 +1,3 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 //! Baked CLDR locale data for date/time formatting.
 //!
 //! This module contains pre-extracted patterns from the Unicode CLDR project
@@ -132,7 +129,7 @@ pub fn get_locale_data(locale: &str) -> &'static LocaleData {
             } else {
                 &EN_US
             }
-        },
+        }
     }
 }
 
