@@ -1,7 +1,7 @@
 use colored::*;
 use core::alloc;
 use rsquickjs::prelude::Rest;
-use rsquickjs::{AsyncContext, AsyncRuntime, CatchResultExt, Ctx, Value};
+use rsquickjs::{AsyncContext, AsyncRuntime, CatchResultExt, Ctx, TypedArray, Value};
 use rustyline::completion::FilenameCompleter;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
@@ -9,6 +9,7 @@ use rustyline::hint::HistoryHinter;
 use rustyline::validate::MatchingBracketValidator;
 use rustyline::{Completer, Helper, Hinter, Validator};
 use rustyline::{CompletionType, Config, EditMode, Editor};
+use std::any;
 use std::io::stdout;
 use std::ptr::NonNull;
 use syntect::easy::HighlightLines;
@@ -339,7 +340,6 @@ pub async fn repl() -> anyhow::Result<()> {
                                 let _ = write_log(stdout(), &ctx, Rest(vec![v]));
                                 Ok(())
                             })
-
                             .unwrap_or_else(|err| eprintln!("{}: {}", "Error".red().bold(), err));
                         },
                         Err(err) => {
@@ -366,4 +366,39 @@ pub async fn repl() -> anyhow::Result<()> {
         }
         Ok(())
     }).await
+}
+
+#[tokio::test]
+async fn fuck() {
+    let runtime = AsyncRuntime::new().unwrap();
+    let context = AsyncContext::full(&runtime).await.unwrap();
+    let allocator = xmas_js_modules::script::allocator();
+    rsquickjs::async_with!(context => |ctx| {
+        xmas_js_modules::init(&ctx, Permissions::allow_all(), xmas_js_modules::console::LogType::Stdio).unwrap();
+
+    let t = ctx.get_background_task_poller();
+        let ast = xmas_js_modules::script::parse("tsx", "internalSerialize(1)", &allocator).or_throw(&ctx).unwrap();
+        let transformed = xmas_js_modules::script::transform(
+            &format!("<repl_input>.tsx"),
+            None,
+            false,
+            &allocator,
+            ast,
+        )
+        .or_throw(&ctx).unwrap();
+        ctx.eval_promise::<_>(transformed.as_bytes()).unwrap().into_future::<Value>().await
+                            .catch(&ctx)
+                            .and_then(|v| {
+                                let v = if v.is_object() {
+                                    v.as_object().unwrap().get("value").unwrap()
+                                } else {
+                                    v
+                                };
+                                let _ = write_log(stdout(), &ctx, Rest(vec![v]));
+                                Ok(())
+                            })
+                            .unwrap_or_else(|err| eprintln!("{}: {}", "Error".red().bold(), err));
+
+        })
+    .await
 }
