@@ -207,6 +207,7 @@ Xmas.JS stands on the shoulders of giants:
 - **[rquickjs](https://github.com/DelSkayn/rquickjs)** - Rust bindings (we maintain a fork)
 - **[LLRT](https://github.com/awslabs/llrt)** - Inspiration and code for AWS Lambda optimization
 - **[Tokio](https://tokio.rs/)** - Async runtime that powers our I/O
+- **[Cotton](https://github.com/danielhuang/cotton)** - Package manager forked for our needs
 
 **Inspired by:**
 - [Deno](https://deno.land/) - Modern JavaScript runtime design

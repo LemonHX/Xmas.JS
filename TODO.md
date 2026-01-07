@@ -4,9 +4,6 @@ i decided to use WAMR,
 because it is more lightweight and mature than other runtimes like wasmtime or wasmer.
 in addition, WAMR has GC support and both JIT and AOT compilation modes.
 
-# shell for executing package.json scripts
-
-`deno_task_shell` is a great example
 
 # Networking API
 
@@ -32,13 +29,6 @@ and the host application can grant or deny those permissions.
 
 for both main thread and worker threads.
 
-# Package Manager
-
-i want to implement a fast and lightweight package manager,
-maybe i need to research at [cotton](https://github.com/danielhuang/cotton) which
-does not currently support Git repositories or local paths as dependencies;
-and i also want to support jsr and http package sources.
-
 # bundler / minifier / optimizer / typescript / lint / etc...
 
 OXC is great!
@@ -49,12 +39,11 @@ xmas: start repl
 - [ ] run <file>.<js/ts/mjs/cjs/jsx/tsx>
 - [ ] run also could behave like npx if not running a file
 
-- [ ] add : in project add to project.json dependencies, else add to global cache
-- [ ] remove : in project remove from project.json dependencies, else remove from global cache
-- [ ] install i : install all dependencies in project.json
-- [ ] update u : update all dependencies in project.json
-- [ ] list ls : list all dependencies in project.json, or global cache if not in project
-- [ ] execute exec <script> [args...] : execute script from project.json scripts
+- [x] add : in project add to project.json dependencies, else add to global cache
+- [x] install i : install all dependencies in project.json
+- [x] update u : update all dependencies in project.json
+- [x] list ls : list all dependencies in project.json, or global cache if not in project
+- [x] execute exec <script> [args...] : execute script from project.json scripts
 
 - [ ] compile <input> <output> (compile to quickjs bytecode)
 - [ ] init (project): create a new xmas project
@@ -107,12 +96,7 @@ i want to implement those API's as well.
 - [ ] WritableStream
 - [ ] WritableStreamDefaultController
 
-- [ ] WASM
-    - [ ] WebAssembly.Global
-    - [ ] WebAssembly.Instance
-    - [ ] WebAssembly.Memory
-    - [ ] WebAssembly.Module
-    - [ ] WebAssembly.Table
+
 
 Global methods / properties:
 - [x] globalThis
@@ -134,9 +118,30 @@ Global methods / properties:
 - [x] globalThis.setInterval() / globalThis.clearInterval()
 - [x] globalThis.structuredClone()
 
+---
+
 - [ ] WASM
+    - [ ] WebAssembly.Global
+    - [ ] WebAssembly.Instance
+    - [ ] WebAssembly.Memory
+    - [ ] WebAssembly.Module
+    - [ ] WebAssembly.Table
     - [ ] globalThis.WebAssembly.compile()
     - [ ] globalThis.WebAssembly.compileStreaming()
     - [ ] globalThis.WebAssembly.instantiate()
     - [ ] globalThis.WebAssembly.instantiateStreaming()
     - [ ] globalThis.WebAssembly.validate()
+
+---
+
+- [ ] globalThis
+  - [ ] $ for shell commands
+  - [ ] cli
+    - [ ] prompt
+    - [ ] ansi
+    - [ ] command
+
+- [x] Repl
+  - [ ] complete method/property name
+  - [ ] complete globalThis property name
+  - [x] package manager commands
