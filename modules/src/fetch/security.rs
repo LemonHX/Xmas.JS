@@ -4,38 +4,9 @@ use rsquickjs::{Ctx, Error, Exception, Result};
 use crate::permissions;
 
 pub fn ensure_url_access(ctx: &Ctx<'_>, uri: &Uri) -> Result<()> {
-    let permissions = ctx.userdata::<permissions::Permissions>().unwrap();
-    match &permissions.net {
-        permissions::BlackOrWhiteList::BlackList(items) => {
-            if url_match(
-                &items
-                    .iter()
-                    .map(|e| Uri::try_from(e))
-                    .filter_map(|ruri| match ruri {
-                        Ok(uri) => Some(uri),
-                        Err(_) => None,
-                    })
-                    .collect::<Vec<Uri>>(),
-                uri,
-            ) {
-                return Err(url_restricted_error(ctx, "URL denied", uri));
-            }
-        }
-        permissions::BlackOrWhiteList::WhiteList(items) => {
-            if !url_match(
-                &items
-                    .iter()
-                    .map(|e| Uri::try_from(e))
-                    .filter_map(|ruri| match ruri {
-                        Ok(uri) => Some(uri),
-                        Err(_) => None,
-                    })
-                    .collect::<Vec<Uri>>(),
-                uri,
-            ) {
-                return Err(url_restricted_error(ctx, "URL not allowed", uri));
-            }
-        }
+    let host = uri.host().unwrap_or_default();
+    if !permissions::check_net_permission(ctx, host) {
+        return Err(url_restricted_error(ctx, "URL not allowed", uri));
     }
     // if let Some(allow_list) = HTTP_ALLOW_LIST.get() {
     //     if !url_match(allow_list, uri) {

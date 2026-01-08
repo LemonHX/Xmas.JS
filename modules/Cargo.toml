@@ -10,6 +10,7 @@ keywords = ["quickjs", "ecmascript", "javascript", "es6", "es2020"]
 
 [dependencies]
 rsquickjs = { workspace = true, features = ["macro", "either", "phf"] }
+xmas-vsys = { path = "../vsys" }
 tracing = "0.1.44"
 itoa = "1.0.15"
 ryu = "1.0.20"
