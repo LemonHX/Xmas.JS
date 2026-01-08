@@ -53,12 +53,12 @@ pub mod utils;
 
 pub fn init(
     ctx: &rsquickjs::Ctx,
-    permissions: permissions::Permissions,
+    vsys: std::sync::Arc<xmas_vsys::Vsys>,
     #[cfg(feature = "console")] log_type: console::LogType,
 ) -> rsquickjs::Result<()> {
     navigator::init(ctx)?;
     utils::primordials::BasePrimordials::init(ctx)?;
-    permissions::init(ctx.clone(), permissions)?;
+    permissions::init(ctx.clone(), vsys)?;
     exceptions::init(ctx)?;
     async_hooks::init(ctx)?;
     text::init(ctx)?;
@@ -66,6 +66,7 @@ pub fn init(
     module::module::init(ctx)?;
     buffer::init(ctx)?;
     timers::init(ctx)?;
+
     #[cfg(feature = "crypto")]
     {
         crypto::init(ctx)?;

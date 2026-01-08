@@ -10,6 +10,7 @@ keywords = ["quickjs", "ecmascript", "javascript", "es6", "es2020"]
 
 [dependencies]
 rsquickjs = { workspace = true, features = ["macro"] }
+xmas-vsys = { workspace = true }
 xmas-js-modules = { workspace = true }
 xmas-package-manager = { workspace = true }
 clap = { version = "4.5.4", features = ["derive"] }
