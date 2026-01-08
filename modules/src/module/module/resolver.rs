@@ -10,7 +10,7 @@ use rsquickjs::{
     prelude::{Func, Opt},
     Ctx, Error, Object, Result, Value,
 };
-use tracing::trace;
+use tracing::{debug, info};
 
 use crate::module::CJS_IMPORT_PREFIX;
 
@@ -36,23 +36,23 @@ impl Resolver for ModuleResolver {
 
         let base = base.trim_start_matches(CJS_IMPORT_PREFIX);
 
-        trace!("Try resolve '{}' from '{}'", name, base);
+        debug!("Try resolve '{}' from '{}'", name, base);
 
         let (short_circuit, next_resolve, x) = module_hook_resolve(ctx, name, base)?;
 
         if short_circuit {
-            trace!("+- Resolved by `ShortCircuit`: {}", x);
+            info!("⛄🥕 Resolved by `ShortCircuit`: {}", x);
             return Ok(x);
         }
 
         if next_resolve {
-            trace!("|  Determined as `nextResolve`: {}", x);
+            info!("❄️  Determined as `nextResolve`: {}", x);
         } else {
-            trace!("|  Determined as `NormalCircuit`: {}", x);
+            info!("❄️  Determined as `NormalCircuit`: {}", x);
         }
 
         if self.modules.contains(&x) {
-            trace!("+- Resolved by `NativeModule`: {}", x);
+            info!("⛄🥕 Resolved by `NativeModule`: {}", x);
             Ok(x)
         } else {
             Err(Error::new_resolving(base, x))
@@ -61,7 +61,7 @@ impl Resolver for ModuleResolver {
 }
 
 pub fn module_hook_resolve<'js>(ctx: &Ctx<'js>, x: &str, y: &str) -> Result<(bool, bool, String)> {
-    trace!("|  module_hook_resolve(x, y):({}, {})", x, y);
+    info!("❄️  module_hook_resolve(x, y):({}, {})", x, y);
 
     let bind_state = ctx.userdata::<RefCell<ModuleHookState>>().or_throw(ctx)?;
     let hooks = Rc::new(bind_state.borrow().hooks.clone());

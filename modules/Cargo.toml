@@ -32,11 +32,13 @@ chrono-tz = { version = "0.10", default-features = false, optional = true }
 iana-time-zone = { version = "0.1", optional = true }
 
 # source
-oxc = { version = "0.105.0", optional = true, features = [
+oxc = { version = "^0.103.0", optional = true, features = [
     "transformer",
     "codegen",
     "semantic",
 ] }
+oxc_resolver = "=11.16.0"
+thiserror = "*"
 itertools = "0.14.0"
 either = "1.15.0"
 ring = "0.17.14"

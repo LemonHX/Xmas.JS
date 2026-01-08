@@ -11,7 +11,7 @@ use rsquickjs::{
     prelude::{Func, Opt},
     Ctx, Error, Module, Object, Result, Value,
 };
-use tracing::trace;
+use tracing::info;
 
 use super::{Hook, ModuleHookState};
 
@@ -42,11 +42,11 @@ impl ModuleLoader {
 
 impl Loader for ModuleLoader {
     fn load<'js>(&mut self, ctx: &Ctx<'js>, name: &str) -> Result<Module<'js>> {
-        trace!("Try load '{}'", name);
+        info!("Try load '{}'", name);
         let (short_circuit, next_load, source) = module_hook_load(ctx, name)?;
 
         if short_circuit {
-            trace!("+- Loading module via ShortCircuit: {}\n", name);
+            info!("⛄🥕 Loading module via ShortCircuit: {}\n", name);
             return match source {
                 AnyOf2::A(s) => Module::declare(ctx.clone(), name, s),
                 AnyOf2::B(b) => Module::declare(ctx.clone(), name, b.as_bytes(ctx)?),
@@ -59,12 +59,12 @@ impl Loader for ModuleLoader {
             .ok_or_else(|| Error::new_loading(name))?;
 
         if next_load {
-            trace!("|  Determined as `nextResolve`: {}", name);
+            info!("❄️  Determined as `nextResolve`: {}", name);
         } else {
-            trace!("|  Determined as `NormalCircuit`: {}", name);
+            info!("❄️  Determined as `NormalCircuit`: {}", name);
         }
 
-        trace!("+- Loading module: {}\n", name);
+        info!("⛄🥕 Loading module: {}\n", name);
         (load)(ctx.clone(), Vec::from(name))
     }
 }
