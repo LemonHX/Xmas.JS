@@ -1,3 +1,4 @@
+use clap::Parser;
 use colored::*;
 use core::alloc;
 use rsquickjs::prelude::Rest;
@@ -204,6 +205,8 @@ pub async fn repl() -> anyhow::Result<()> {
                                 println!("❄️\t{} - Show this help message", "/help".cyan().bold());
                                 println!("❄️\t{} - Show version information", "/version".cyan().bold());
                                 println!("❄️\t{} - Clear the console", "/clear".cyan().bold());
+                                println!("❄️\t{} - Package manager commands", "/pm".cyan().bold());
+                                println!("❄️\t{} - Cross platform shell commands", "/$".cyan().bold());
                             },
                             "version" => {
                                 print_version();
@@ -212,8 +215,39 @@ pub async fn repl() -> anyhow::Result<()> {
                                 // Clear the console
                                 println!("\x1B[2J\x1B[1;1H");
                             },
+                            // package manager commands
                             cmd => {
-                                eprintln!("{}: Unknown command '{}'", "Error".red().bold(), cmd);
+                                let args = cmd.split_ascii_whitespace().collect::<Vec<_>>();
+                                if args[0] == "pm" {
+                                    if let Ok(cmd) = xmas_package_manager::cli::Subcommand::try_parse_from(&args) {
+                                        let args = xmas_package_manager::Args {
+                                            verbose: true,
+                                            working_dir: std::env::current_dir().ok(),
+                                            immutable: false,
+                                            cmd
+                                        };
+                                        let _ = xmas_package_manager::execute_command(&args).await;
+                                    } else {
+                                        eprintln!("{}: Invalid package manager command", "Error".red().bold());
+                                    }
+                                }
+                                else if args[0] == "$" {
+                                    let shell_command = args[1..].join(" ");
+                                    let cwd = std::env::current_dir()?;
+                                    let mut new_env = std::collections::HashMap::new();
+                                    new_env.insert(std::ffi::OsString::from("PATH"), xmas_package_manager::commands::new_path().map_err(|e| {
+                                        anyhow::anyhow!("Failed to construct PATH: {}", e)
+                                    })?);
+                                    let exit_code = xmas_package_manager::commands::exec::shell(&shell_command, cwd, new_env, deno_task_shell::KillSignal::default()).await.map_err(|e| {
+                                        anyhow::anyhow!("Failed to execute shell command: {}", e)
+                                    })?;
+                                    if exit_code != 0 {
+                                        eprintln!("{}: Shell command exited with code {}", "Error".red().bold(), exit_code);
+                                    }
+                                }
+                                else {
+                                    eprintln!("{}: Unknown command '{}'", "Error".red().bold(), cmd);
+                                }
                             }
                         }
                         continue;
