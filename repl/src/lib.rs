@@ -13,6 +13,7 @@ use rustyline::{CompletionType, Config, EditMode, Editor};
 use std::any;
 use std::io::stdout;
 use std::ptr::NonNull;
+use std::sync::Arc;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Style, Theme, ThemeSet};
 use syntect::parsing::{SyntaxDefinition, SyntaxReference, SyntaxSet, SyntaxSetBuilder};
@@ -191,7 +192,10 @@ pub async fn repl() -> anyhow::Result<()> {
     print_version();
     let allocator = xmas_js_modules::script::allocator();
     rsquickjs::async_with!(context => |ctx| {
-        xmas_js_modules::init(&ctx, Permissions::allow_all(), xmas_js_modules::console::LogType::Stdio)?;
+        let vsys = xmas_vsys::Vsys::builder()
+            .permissions(Permissions::allow_all())
+            .build();
+        xmas_js_modules::init(&ctx, Arc::new(vsys), xmas_js_modules::console::LogType::Stdio)?;
         let t = ctx.get_background_task_poller();
         loop {
             let readline = rl.readline("🎄 >> ");
