@@ -1,4 +1,3 @@
-#![feature(iter_array_chunks)]
 use crate::utils::primordials::Primordial;
 
 #[cfg(feature = "abort")]
