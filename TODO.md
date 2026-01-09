@@ -1,3 +1,4 @@
+
 # WASM
 
 i decided to use WAMR,
@@ -145,3 +146,24 @@ Global methods / properties:
   - [ ] complete method/property name
   - [ ] complete globalThis property name
   - [x] package manager commands
+
+---
+
+# Vsys (Virtual System Layer)
+
+
+- [x] vsys crate 
+- [x] FsVTable 
+- [x] Permissions
+- [x] ModuleLoaderVTable
+- [x] modules/src/fs
+
+
+- [ ] modules/src/module/package/resolver.rs
+  - `fs::read`, `Path::is_file()`, `Path::is_dir()`, `Path::exists()`, `read_link()`
+- [ ] modules/src/module/package/loader.rs - `std::fs::read`, `File::open`
+- [ ] modules/src/module/module/require.rs - `fs::read_to_string`
+- [ ] NetVTable
+- [ ] EnvVTable
+
+---

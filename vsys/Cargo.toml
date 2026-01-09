@@ -1,0 +1,21 @@
+[package]
+name = "xmas-vsys"
+version = "0.1.0"
+edition = "2021"
+description = "Virtual System Layer for Xmas.JS - pluggable fs/net/module abstraction"
+license = "Apache-2.0 OR GPL-3.0"
+
+[dependencies]
+tracing = "0.1.40"
+simd-json = "0.14"
+serde_json = "1.0"
+uuid = { version = "1.0", features = ["v4"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3.10"
+
+[features]
+default = []

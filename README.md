@@ -90,6 +90,81 @@ Traditional System Scripts          Modern System Scripts with Xmas.JS
 
 ---
 
+## 🏗️ Virtual System Layer
+
+Xmas.JS uses a **pluggable virtual system layer** called `vsys` to abstract all system-level operations. This enables:
+
+- 🔒 **Sandboxed execution** for serverless/edge computing
+- 💾 **Custom filesystem** implementations (in-memory, virtual, restricted)
+- 🌐 **Custom network** implementations (proxied, restricted, mocked)
+- � **Custom module loading** (load from DB, bundle, remote URL)
+- 🔐 **Fine-grained permissions** control
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    modules (JS Binding Layer)                   │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────────────┐  │
+│  │ fs/mod   │ │http/mod  │ │module/   │ │Other JS Modules    │  │
+│  │(ModuleDef│ │(ModuleDef│ │loader    │ │(Only registration, │  │
+│  │  only)   │ │  only)   │ │resolver  │ │  calls vsys)       │  │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └─────────┬──────────┘  │
+└───────┼────────────┼────────────┼─────────────────┼─────────────┘
+        │            │            │                 │
+        ▼            ▼            ▼                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     vsys (Virtual System Layer)                 │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │  pub struct VsysVTable {                                    ││
+│  │      // Filesystem                                          ││
+│  │      pub fs_read, fs_write, fs_stat, fs_readdir, ...        ││
+│  │      // Network                                             ││
+│  │      pub http_request, dns_lookup, ...                      ││
+│  │      // Module Loading (key for serverless!)                ││
+│  │      pub module_resolve, module_load, module_exists, ...    ││
+│  │      // Permissions                                         ││
+│  │      pub check_fs_permission, check_net_permission, ...     ││
+│  │  }                                                          ││
+│  └─────────────────────────────────────────────────────────────┘│
+│              ┌───────────────┴───────────────┐                  │
+│              ▼                               ▼                  │
+│  ┌─────────────────────┐        ┌─────────────────────┐         │
+│  │  Default Impl       │        │  User Custom Impl   │         │
+│  │  (std::fs, tokio,   │   OR   │  (VFS, sandboxed,   │         │
+│  │   hyper, etc.)      │        │   in-memory, etc.)  │         │
+│  └─────────────────────┘        └─────────────────────┘         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### What Problems Does vsys Solve?
+
+| Scenario               | Problem Without vsys                                | With vsys                                         |
+| ---------------------- | --------------------------------------------------- | ------------------------------------------------- |
+| **Serverless/Edge**    | Runtime has full system access, security risk       | Sandboxed execution, only expose what you allow   |
+| **Multi-tenant SaaS**  | Tenant A can access Tenant B's files                | Each tenant gets isolated virtual filesystem      |
+| **Database Scripting** | Scripts need real filesystem, deployment complexity | Virtual FS backed by database, zero external deps |
+| **Bundled Deploy**     | Need node_modules on disk, slow cold start          | Load modules from single bundle or remote URL     |
+| **Testing**            | Need real network/files, slow and flaky tests       | Mock everything, fast and deterministic           |
+| **Embedded/IoT**       | Heavy system dependencies                           | Minimal footprint, platform-agnostic              |
+| **Game Scripting**     | Lua-style sandboxing is complex                     | Built-in isolation, expose only game APIs         |
+
+### Example: Secure Serverless Function
+
+```rust
+// User's untrusted code can only:
+// - Read from /app/data (virtual, mapped to S3)
+// - Make HTTP requests to allowlisted domains
+// - Load modules from pre-bundled package (no filesystem access)
+// - No filesystem writes, no arbitrary network access
+let runtime = XmasRuntime::new()
+    .with_vsys(VsysVTable::new()
+        .fs_read_only(s3_virtual_fs("/app/data"))
+        .module_loader(bundled_modules("app.bundle"))
+        .net_allowlist(&["api.example.com", "cdn.example.com"])
+        .deny_all_else()
+    );
+```
+---
+
 ## 📦 Installation
 
 ### 🚧 From Binary (Coming soon ❄️)
