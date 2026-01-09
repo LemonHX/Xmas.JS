@@ -179,6 +179,145 @@ We welcome contributions! Xmas.JS is in active development and needs help with:
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+
+---
+
+## ❓ FAQ
+
+### Is TypeScript support first-class or is there transpilation?
+
+**TypeScript/TSX/JSX is transpiled to JavaScript before execution.** Xmas.JS uses [OXC](https://oxc-project.github.io/) (a high-performance Rust-based toolchain) to transform TypeScript to JavaScript on-the-fly. This means:
+
+- ✅ **No separate build step required** - Just run `.ts`, `.tsx`, or `.jsx` files directly
+- ✅ **Instant transpilation** - OXC is extremely fast (~100x faster than tsc)
+- ✅ **Full TypeScript syntax support** - Including decorators, JSX, and modern features
+- ⚠️ **No type checking at runtime** - Types are stripped during transpilation (same as `tsc --transpileOnly`)
+
+```bash
+# Run TypeScript directly - transpilation happens automatically
+xmas script.ts
+
+# REPL also supports TypeScript/TSX
+🎄 >> const x: number = 42
+🎄 >> const element = <div>Hello</div>
+```
+
+For type checking, use your IDE's TypeScript integration or run `tsc --noEmit` separately.
+
+### How is Xmas.JS different from Node.js/Deno/Bun?
+
+| Aspect                       | Xmas.JS                                 | Node.js/Deno/Bun             |
+| ---------------------------- | --------------------------------------- | ---------------------------- |
+| **Primary Use Case**         | System scripting, CLI tools, serverless | Web servers, full-stack apps |
+| **JS Engine**                | QuickJS (interpreter)                   | V8/JSC (JIT compiler)        |
+| **Startup Time**             | ~5-15ms                                 | ~50-200ms                    |
+| **Memory Footprint**         | ~3-8MB                                  | ~25-60MB                     |
+| **Long-running Performance** | Slower (no JIT)                         | Faster (JIT optimized)       |
+| **Binary Size**              | ~5MB                                    | ~50-100MB                    |
+
+**Choose Xmas.JS when:** You need fast startup, low memory, or are replacing Python/Bash scripts.
+
+**Choose Node.js/Deno/Bun when:** You're building web servers or compute-intensive applications.
+
+### Can I use npm packages with Xmas.JS?
+
+**Yes, with some caveats:**
+
+- ✅ **Pure JavaScript/TypeScript packages** - Work out of the box
+- ✅ **Most polyfilled packages** - If they don't rely on Node.js internals
+- ⚠️ **Native addons (.node files)** - Not supported (C++ extensions compiled for Node.js)
+- ⚠️ **Node.js-specific APIs** - Some may not be implemented yet (check our compatibility table)
+
+```bash
+# Use the built-in package manager
+xmas install lodash
+xmas install zod
+```
+
+We're continuously improving Node.js API compatibility. Check [TODO.md](TODO.md) for current status.
+
+### Is Xmas.JS production-ready?
+
+**Not yet.** Xmas.JS is in active development (pre-1.0). We recommend:
+
+- ✅ **Use for:** Personal scripts, internal tools, prototyping, learning
+- ⚠️ **Evaluate for:** Non-critical production workloads with thorough testing
+- ❌ **Avoid for:** Mission-critical production systems (for now)
+
+We're targeting a stable 1.0 release in Q1 2026.
+
+### Why QuickJS instead of V8?
+
+**QuickJS was chosen deliberately for our use case:**
+
+| Feature           | QuickJS   | V8      |
+| ----------------- | --------- | ------- |
+| Startup time      | ~5ms      | ~100ms  |
+| Memory overhead   | ~3MB      | ~30MB   |
+| Binary size       | ~1MB      | ~30MB   |
+| JIT compilation   | ❌ No      | ✅ Yes   |
+| Long-running perf | Slower    | Faster  |
+| Embedding ease    | Very easy | Complex |
+
+For **short-lived scripts** (CLI tools, serverless, automation), the fast startup and low memory of QuickJS outweighs V8's JIT benefits. V8's JIT only helps after the code has run long enough to be optimized.
+
+### Does Xmas.JS support WebAssembly?
+
+**Planned for Q1 2026.** QuickJS has experimental WASM support, and we're working on integrating it with proper WinterTC-compatible APIs.
+
+### Can I embed Xmas.JS in my Rust application?
+
+**Yes!** Xmas.JS is designed to be embeddable:
+
+```rust
+use xmas_js_modules::prelude::*;
+
+// Create a runtime
+let runtime = AsyncRuntime::new()?;
+let context = AsyncContext::full(&runtime).await?;
+
+// Run JavaScript
+context.with(|ctx| {
+    ctx.eval("console.log('Hello from embedded JS!')")?;
+    Ok(())
+}).await?;
+```
+
+See our [embedding guide](docs/embedding.md) for detailed instructions.
+
+### How does Xmas.JS handle async/await?
+
+Xmas.JS uses **Tokio** for async I/O, providing:
+
+- ✅ Full `async/await` support in JavaScript
+- ✅ `Promise` API compatible with web standards
+- ✅ Concurrent I/O operations (file system, network, timers)
+- ✅ Top-level await in ES modules
+
+```javascript
+// Async operations work just like in Node.js/Deno
+const response = await fetch('https://api.example.com/data');
+const data = await response.json();
+
+// Parallel operations
+const [file1, file2] = await Promise.all([
+  fs.promises.readFile('a.txt'),
+  fs.promises.readFile('b.txt')
+]);
+```
+
+### What's the relationship with WinterTC?
+
+[WinterTC](https://wintertc.org/) (Web-interoperable Runtimes Community Group) defines standard APIs for non-browser JavaScript runtimes. Xmas.JS aims to be **WinterTC-compatible**, meaning:
+
+- ✅ Standard `fetch()`, `Request`, `Response` APIs
+- ✅ Web Crypto API (`crypto.subtle`)
+- ✅ Web Streams API
+- ✅ `URL`, `URLSearchParams`, `TextEncoder`, `TextDecoder`
+- ✅ `console`, `setTimeout`, `setInterval`
+
+This ensures code portability between Xmas.JS, Deno, Cloudflare Workers, and other WinterTC-compatible runtimes.
+
 ---
 
 ## 📄 License
