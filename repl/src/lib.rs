@@ -19,6 +19,8 @@ use syntect::highlighting::{Style, Theme, ThemeSet};
 use syntect::parsing::{SyntaxDefinition, SyntaxReference, SyntaxSet, SyntaxSetBuilder};
 use syntect::util::{as_24_bit_terminal_escaped, LinesWithEndings};
 use xmas_js_modules::console::write_log;
+use xmas_js_modules::module::package::loader::PackageLoader;
+use xmas_js_modules::module::package::resolver::PackageResolver;
 use xmas_js_modules::permissions::Permissions;
 use xmas_js_modules::utils::ctx::CtxExtension;
 use xmas_js_modules::utils::result::ResultExt;
@@ -153,13 +155,18 @@ fn print_version() {
         "for getting help".cyan()
     );
     println!(
-        "⛷️\t{}",
-        "CTRL+D for save and exit, CTRL+C for interrupt exit".cyan()
+        "⛷️\t{}{}{}{}\n",
+        "CTRL+D".cyan().bold(),
+        " for save and exit ".cyan(),
+        "CTRL+C".cyan().bold(),
+        " for interrupt exit".cyan()
     );
 }
 
 pub async fn repl() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt::Subscriber::builder()
+        .with_max_level(tracing::Level::WARN)
+        .init();
     let config = Config::builder()
         .history_ignore_space(true)
         .completion_type(CompletionType::List)
@@ -191,11 +198,17 @@ pub async fn repl() -> anyhow::Result<()> {
     let context = AsyncContext::full(&runtime).await?;
     print_version();
     let allocator = xmas_js_modules::script::allocator();
+    let (resolver, loader, ga) =
+        xmas_js_modules::module::module_builder::ModuleBuilder::default().build();
+    runtime
+        .set_loader((resolver, PackageResolver), (loader, PackageLoader))
+        .await;
     rsquickjs::async_with!(context => |ctx| {
         let vsys = xmas_vsys::Vsys::builder()
             .permissions(Permissions::allow_all())
             .build();
         xmas_js_modules::init(&ctx, Arc::new(vsys), xmas_js_modules::console::LogType::Stdio)?;
+        ga.attach(&ctx)?;
         let t = ctx.get_background_task_poller();
         loop {
             let readline = rl.readline("🎄 >> ");
@@ -211,6 +224,8 @@ pub async fn repl() -> anyhow::Result<()> {
                                 println!("❄️\t{} - Clear the console", "/clear".cyan().bold());
                                 println!("❄️\t{} - Package manager commands", "/pm".cyan().bold());
                                 println!("❄️\t{} - Cross platform shell commands", "/$".cyan().bold());
+                                println!("❄️\t{} - Bundle JavaScript/TypeScript files", "/bun".cyan().bold());
+
                             },
                             "version" => {
                                 print_version();
@@ -247,6 +262,13 @@ pub async fn repl() -> anyhow::Result<()> {
                                     })?;
                                     if exit_code != 0 {
                                         eprintln!("{}: Shell command exited with code {}", "Error".red().bold(), exit_code);
+                                    }
+                                }
+                                else if args[0] == "bun" {
+                                    if let Ok(cmd) = xmas_bundler::BundleConfig::try_parse_from(&args) {
+                                        let _ = xmas_bundler::bundle(cmd).await;
+                                    } else {
+                                        eprintln!("{}: Invalid bundler command", "Error".red().bold());
                                     }
                                 }
                                 else {

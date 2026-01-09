@@ -5,7 +5,7 @@ use crate::utils::json::parse::json_parse;
 use crate::utils::{ctx::CtxExt, io::BYTECODE_FILE_EXT, provider::ProviderType};
 use rsquickjs::{atom::PredefinedAtom, qjs, Ctx, Filter, Function, Module, Object, Result, Value};
 use tokio::time::Instant;
-use tracing::trace;
+use tracing::{debug, info};
 
 use crate::module::package::resolver::require_resolve;
 use crate::module::CJS_IMPORT_PREFIX;
@@ -15,7 +15,7 @@ use super::{ModuleNames, RequireState};
 
 pub fn require(ctx: Ctx<'_>, specifier: String) -> Result<Value<'_>> {
     let globals = ctx.globals();
-    let hooked_fn: Option<Function> = globals.get("__require_hook").ok();
+    // let hooked_fn: Option<Function> = globals.get("__require_hook").ok();
 
     struct Args<'js>(Ctx<'js>);
     let Args(ctx) = Args(ctx);
@@ -30,7 +30,7 @@ pub fn require(ctx: Ctx<'_>, specifier: String) -> Result<Value<'_>> {
 
     let is_json = specifier.ends_with(".json");
 
-    trace!("Before specifier: {}", specifier);
+    debug!("Before specifier: {}", specifier);
 
     let import_specifier: Rc<str> = if !is_cjs_import {
         let is_bytecode = specifier.ends_with(BYTECODE_FILE_EXT);
@@ -52,8 +52,7 @@ pub fn require(ctx: Ctx<'_>, specifier: String) -> Result<Value<'_>> {
             let module_name = module_name.trim_start_matches(CJS_IMPORT_PREFIX);
             let abs_path = resolve_path([module_name].iter())?;
 
-            let resolved_path =
-                require_resolve(&ctx, &specifier, &abs_path, hooked_fn, false)?.into_owned();
+            let resolved_path = require_resolve(&ctx, &specifier, &abs_path, false)?.into_owned();
             import_name = resolved_path.into();
             if is_bytecode_or_json {
                 import_name.clone()
@@ -66,7 +65,7 @@ pub fn require(ctx: Ctx<'_>, specifier: String) -> Result<Value<'_>> {
         specifier.into()
     };
 
-    trace!("After specifier: {}", import_specifier);
+    debug!("After specifier: {}", import_specifier);
 
     let binding = ctx.userdata::<RefCell<RequireState>>().unwrap();
     let mut state = binding.borrow_mut();
@@ -87,7 +86,7 @@ pub fn require(ctx: Ctx<'_>, specifier: String) -> Result<Value<'_>> {
         return Ok(value);
     }
 
-    trace!("Require: {}", import_specifier);
+    info!("Require: {}", import_specifier);
 
     let obj = Object::new(ctx.clone())?;
     state.progress.insert(import_name.clone(), obj.clone());

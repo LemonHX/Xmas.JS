@@ -17,6 +17,7 @@ members = [
 
   # xmas-js
   "package-manager",
+  "bundler",
   "modules",
   "vsys",
   "repl",
@@ -32,6 +33,7 @@ rsquickjs = { version = "0.10.0", path = "rsquickjs" }
 xmas-js-modules = { path = "modules" }
 xmas-package-manager = { path = "package-manager" }
 xmas-vsys = { path = "vsys" }
+xmas-bundler = { path = "bundler" }
 
 [dependencies]
 xmas-js-modules = { workspace = true }
