@@ -177,6 +177,142 @@ curl -fsSL https://xmas.js.org/install.ps1 | powershell
 # macOS / Linux
 curl -fsSL https://xmas.js.org/install.sh | sh
 ```
+
+---
+
+## 🚀 Quick Start
+
+### Running Scripts
+
+```bash
+# Run a TypeScript/JavaScript file directly
+xmas script.ts
+xmas app.js
+
+# Run with verbose output
+xmas -v script.ts
+
+# Run in a specific directory
+xmas --cwd ./my-project script.ts
+```
+
+### Interactive REPL
+
+```bash
+# Start the REPL (default when no arguments)
+xmas
+
+# Or explicitly
+xmas repl
+```
+
+The REPL supports TypeScript, TSX, and JSX syntax with syntax highlighting:
+
+```
+🎄 >> const x: number = 42
+🎄 >> console.log(`Hello, ${x}!`)
+Hello, 42!
+🎄 >> const element = <div>Hello World</div>
+```
+
+### Package Management
+
+Xmas.JS includes a built-in package manager (no need for npm/pnpm/yarn):
+
+```bash
+# Install dependencies from package.json
+xmas install
+xmas i              # shorthand
+
+# Add a package
+xmas add lodash
+xmas add -D vitest  # add as devDependency
+xmas add --pin zod  # pin to exact version
+
+# Remove a package
+xmas remove lodash
+xmas rm lodash      # shorthand
+
+# Run a script from package.json
+xmas run dev
+xmas run build --watch src/
+
+# Update lockfile
+xmas update
+
+# Upgrade packages to latest versions
+xmas upgrade
+xmas upgrade --pin  # pin upgraded versions
+
+# Clean node_modules and cache
+xmas clean
+
+# Execute a command
+xmas exec tsc --version
+
+# Find why a package is installed
+xmas why lodash
+xmas why lodash 4.17.21
+
+# Create new project from starter kit
+xmas create vite
+
+# Download and execute a package (like npx)
+xmas x create-react-app my-app
+```
+
+### Bundling
+
+Bundle TypeScript/JavaScript files using Rolldown:
+
+```bash
+# Basic bundle
+xmas bun src/index.ts
+
+# Bundle with options
+xmas bun src/index.ts -o build -n app.js
+
+# Bundle with minification and source maps
+xmas bun src/index.ts -m -s
+
+# Bundle multiple entry points
+xmas bun src/index.ts src/worker.ts
+
+# Bundle with custom format
+xmas bun src/index.ts -f cjs      # CommonJS
+xmas bun src/index.ts -f esm      # ES Modules (default)
+xmas bun src/index.ts -f iife     # Immediately Invoked Function Expression
+
+# Exclude packages from bundle
+xmas bun src/index.ts -e react -e react-dom
+```
+
+### CLI Reference
+
+```
+xmas [OPTIONS] [SCRIPT]... [COMMAND]
+
+Commands:
+  install (i)     Install packages defined in package.json
+  add (a)         Add package to package.json
+  remove (rm)     Remove package from package.json
+  run             Run a script defined in package.json
+  update          Prepare and save a newly planned lockfile
+  upgrade         Update packages to the latest available version
+  clean           Clean node_modules and cache
+  exec            Execute a command (not a script)
+  why             Find all uses of a given package
+  create          Create new project from a starter kit
+  x               Download and execute a package (like npx)
+  bun (bundle)    Bundle TypeScript/JavaScript files
+  repl            Start the interactive REPL
+
+Options:
+  -v, --verbose       Print verbose logs
+      --cwd <PATH>    Run in a custom working directory
+  -h, --help          Print help
+  -V, --version       Print version
+```
 ---
 
 ## 📊 Benchmarks

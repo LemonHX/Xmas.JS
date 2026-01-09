@@ -6,3 +6,5 @@ Cargo.lock
 .idea
 vendor
 history.js
+node_modules/
+.xmas/
