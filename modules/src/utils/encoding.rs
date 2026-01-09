@@ -197,16 +197,12 @@ pub fn bytes_to_utf16_string(bytes: &[u8], endian: Endian, lossy: bool) -> Resul
 
     let data16: Vec<u16> = match endian {
         Endian::Little => bytes
-            .iter()
-            .copied()
-            .array_chunks::<2>()
-            .map(|chunk| u16::from_le_bytes(chunk))
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
             .collect(),
         Endian::Big => bytes
-            .iter()
-            .copied()
-            .array_chunks::<2>()
-            .map(|chunk| u16::from_be_bytes(chunk))
+            .chunks_exact(2)
+            .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]]))
             .collect(),
     };
     if lossy {
