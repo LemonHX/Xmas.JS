@@ -37,8 +37,8 @@ OXC is great!
 # sub commands
 xmas: start repl
 
-- [ ] run <file>.<js/ts/mjs/cjs/jsx/tsx>
-- [ ] run also could behave like npx if not running a file
+- [x] run <file>.<js/ts/mjs/cjs/jsx/tsx>
+- [x] run also could behave like npx if not running a file
 
 - [x] add : in project add to project.json dependencies, else add to global cache
 - [x] install i : install all dependencies in project.json
@@ -46,9 +46,9 @@ xmas: start repl
 - [x] list ls : list all dependencies in project.json, or global cache if not in project
 - [x] execute exec <script> [args...] : execute script from project.json scripts
 
-- [ ] compile <input> <output> (compile to quickjs bytecode)
+- [x] compile <input> <output> (compile to quickjs bytecode)
 - [ ] init (project): create a new xmas project
-- [ ] bundle <input> <output>
+- [x] bundle <input> <output>
 
 # Winter TC API
 

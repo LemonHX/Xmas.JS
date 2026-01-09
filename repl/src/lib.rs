@@ -1,29 +1,85 @@
 use clap::Parser;
 use colored::*;
-use core::alloc;
 use rsquickjs::prelude::Rest;
-use rsquickjs::{AsyncContext, AsyncRuntime, CatchResultExt, Ctx, TypedArray, Value};
+use rsquickjs::{AsyncContext, AsyncRuntime, CatchResultExt, Value};
 use rustyline::completion::FilenameCompleter;
 use rustyline::error::ReadlineError;
-use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
+use rustyline::highlight::Highlighter;
 use rustyline::hint::HistoryHinter;
 use rustyline::validate::MatchingBracketValidator;
 use rustyline::{Completer, Helper, Hinter, Validator};
 use rustyline::{CompletionType, Config, EditMode, Editor};
-use std::any;
 use std::io::stdout;
-use std::ptr::NonNull;
 use std::sync::Arc;
 use syntect::easy::HighlightLines;
-use syntect::highlighting::{Style, Theme, ThemeSet};
-use syntect::parsing::{SyntaxDefinition, SyntaxReference, SyntaxSet, SyntaxSetBuilder};
-use syntect::util::{as_24_bit_terminal_escaped, LinesWithEndings};
+use syntect::highlighting::{Theme, ThemeSet};
+use syntect::parsing::{SyntaxDefinition, SyntaxSet, SyntaxSetBuilder};
+use syntect::util::LinesWithEndings;
 use xmas_js_modules::console::write_log;
 use xmas_js_modules::module::package::loader::PackageLoader;
 use xmas_js_modules::module::package::resolver::PackageResolver;
 use xmas_js_modules::permissions::Permissions;
 use xmas_js_modules::utils::ctx::CtxExtension;
 use xmas_js_modules::utils::result::ResultExt;
+
+/// Transform static import statements to dynamic import for REPL compatibility
+/// - `import * as name from "module"` -> `const name = await import("module")`
+/// - `import { a, b } from "module"` -> `const { a, b } = await import("module")`
+/// - `import name from "module"` -> `const { default: name } = await import("module")`
+/// - `import "module"` -> `await import("module")`
+fn transform_import_to_dynamic(input: &str) -> String {
+    let trimmed = input.trim();
+    
+    // Check if it starts with "import"
+    if !trimmed.starts_with("import ") && !trimmed.starts_with("import\t") {
+        return input.to_string();
+    }
+    
+    // Remove "import " prefix
+    let rest = trimmed.strip_prefix("import").unwrap().trim();
+    
+    // Find "from" keyword position
+    if let Some(from_pos) = rest.rfind(" from ") {
+        let imports_part = rest[..from_pos].trim();
+        let module_part = rest[from_pos + 6..].trim().trim_end_matches(';');
+        
+        // import * as name from "module"
+        if imports_part.starts_with("* as ") {
+            let name = imports_part.strip_prefix("* as ").unwrap().trim();
+            return format!("const {} = await import({})", name, module_part);
+        }
+        
+        // import { ... } from "module"
+        if imports_part.starts_with('{') && imports_part.ends_with('}') {
+            return format!("const {} = await import({})", imports_part, module_part);
+        }
+        
+        // import name from "module" (default import)
+        // Also handles: import name, { a, b } from "module"
+        if imports_part.contains(',') {
+            // import default, { named } from "module"
+            let parts: Vec<&str> = imports_part.splitn(2, ',').collect();
+            let default_name = parts[0].trim();
+            let rest_imports = parts[1].trim();
+            if rest_imports.starts_with('{') && rest_imports.ends_with('}') {
+                let inner = &rest_imports[1..rest_imports.len()-1];
+                return format!("const {{ default: {}, {} }} = await import({})", default_name, inner, module_part);
+            }
+        }
+        
+        // Simple default import: import name from "module"
+        return format!("const {{ default: {} }} = await import({})", imports_part, module_part);
+    }
+    
+    // Side-effect import: import "module"
+    let module_part = rest.trim().trim_end_matches(';');
+    if module_part.starts_with('"') || module_part.starts_with('\'') || module_part.starts_with('`') {
+        return format!("await import({})", module_part);
+    }
+    
+    // Can't parse, return as-is
+    input.to_string()
+}
 
 #[derive(Helper, Completer, Hinter, Validator)]
 struct JSHelper {
@@ -280,6 +336,13 @@ pub async fn repl() -> anyhow::Result<()> {
                     }
 
                     rl.add_history_entry(line.as_str())?;
+                    
+                    // Transform import statements to dynamic import for REPL compatibility
+                    // import * as name from "module" -> const name = await import("module")
+                    // import { a, b } from "module" -> const { a, b } = await import("module")
+                    // import name from "module" -> const { default: name } = await import("module")
+                    let line = transform_import_to_dynamic(&line);
+                    
                     let ast = xmas_js_modules::script::parse("tsx", &line, &allocator).or_throw(&ctx)?;
                     let transformed = xmas_js_modules::script::transform(
                         &format!("<repl_input>.tsx"),
@@ -301,10 +364,16 @@ pub async fn repl() -> anyhow::Result<()> {
                                 let _ = write_log(stdout(), &ctx, Rest(vec![v]));
                                 Ok(())
                             })
-                            .unwrap_or_else(|err| eprintln!("{}: {}", "Error".red().bold(), err));
+                            .unwrap_or_else(|err| {
+                                eprintln!("{}: {}", "Error".red().bold(), err);
+                                let err = ctx.catch();
+                                eprintln!("{}: {:?}", "Exception".red().bold(), err.into_exception().map(|e| e.to_string()));
+                        });
                         },
                         Err(err) => {
                             eprintln!("{}: {}", "Error".red().bold(), err);
+                            let err = ctx.catch();
+                            eprintln!("{}: {:?}", "Exception".red().bold(), err.into_exception().map(|e| e.to_string()));
                         }
                     }
                 },
