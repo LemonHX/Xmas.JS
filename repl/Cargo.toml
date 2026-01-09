@@ -13,6 +13,7 @@ rsquickjs = { workspace = true, features = ["macro"] }
 xmas-vsys = { workspace = true }
 xmas-js-modules = { workspace = true }
 xmas-package-manager = { workspace = true }
+xmas-bundler = { workspace = true }
 clap = { version = "4.5.4", features = ["derive"] }
 deno_task_shell = "0.26.1"
 tracing-subscriber = "0.3.17"
@@ -22,6 +23,7 @@ tokio = { version = "1", features = ["full"] }
 anyhow = "1.0.100"
 syntect = "5.3.0"
 colored = "3.0.0"
+
 # itoa = "1.0.15"
 # ryu = "1.0.20"
 # simd-json = "0.17.0"
