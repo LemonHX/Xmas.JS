@@ -1,0 +1,68 @@
+{
+  "@types/lodash!>=0.0.0": [
+    "4.17.21",
+    {
+      "name": "@types/lodash",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/@types/lodash/-/lodash-4.17.21.tgz"
+      }
+    }
+  ],
+  "@types/lodash-es!>=4.17.12 <5.0.0-0": [
+    "4.17.12",
+    {
+      "name": "@types/lodash-es",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/@types/lodash-es/-/lodash-es-4.17.12.tgz"
+      },
+      "dependencies": {
+        "@types/lodash": ">=0.0.0"
+      }
+    }
+  ],
+  "@types/node!>=25.0.3 <26.0.0-0": [
+    "25.0.3",
+    {
+      "name": "@types/node",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/@types/node/-/node-25.0.3.tgz"
+      },
+      "dependencies": {
+        "undici-types": ">=7.16.0 <7.17.0-0"
+      }
+    }
+  ],
+  "lodash!>=4.17.21 <5.0.0-0": [
+    "4.17.21",
+    {
+      "name": "lodash",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz"
+      },
+      "scripts": {
+        "test": "echo \"See https://travis-ci.org/lodash-archive/lodash-cli for testing details.\""
+      }
+    }
+  ],
+  "lodash-es!>=4.17.22 <5.0.0-0": [
+    "4.17.22",
+    {
+      "name": "lodash-es",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/lodash-es/-/lodash-es-4.17.22.tgz"
+      },
+      "scripts": {
+        "test": "echo \"See https://travis-ci.org/lodash-archive/lodash-cli for testing details.\""
+      }
+    }
+  ],
+  "undici-types!>=7.16.0 <7.17.0-0": [
+    "7.16.0",
+    {
+      "name": "undici-types",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/undici-types/-/undici-types-7.16.0.tgz"
+      }
+    }
+  ]
+}

@@ -20,7 +20,7 @@ use crate::{
 };
 
 /// Eval options.
-#[non_exhaustive]
+// #[non_exhaustive]
 pub struct EvalOptions {
     /// Global code.
     pub global: bool,

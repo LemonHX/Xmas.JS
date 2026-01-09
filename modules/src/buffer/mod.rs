@@ -65,12 +65,11 @@ pub fn init<'js>(ctx: &Ctx<'js>) -> Result<()> {
     let globals = ctx.globals();
     BasePrimordials::init(ctx)?;
 
-    // Buffer
+    // Buffer - use globalThis assignment to allow var redeclaration
     let buffer = ctx.eval::<Object<'js>, &str>(concat!(
-        "class ",
+        "(globalThis.",
         stringify!(Buffer),
-        " extends Uint8Array {}\n",
-        stringify!(Buffer),
+        " = class extends Uint8Array {})",
     ))?;
     set_prototype(ctx, buffer)?;
 

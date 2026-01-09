@@ -38,8 +38,18 @@ xmas-bundler = { path = "bundler" }
 [dependencies]
 xmas-js-modules = { workspace = true }
 xmas-js-repl = { path = "repl" }
+xmas-package-manager = { workspace = true }
+xmas-bundler = { workspace = true }
+xmas-vsys = { workspace = true }
+rsquickjs = { workspace = true }
 tokio = { version = "1.36", features = ["full"] }
 anyhow = "1.0.100"
+clap = { version = "4.5", features = ["derive"] }
+colored = "3"
+compact_str = { version = "0.9.0", features = ["serde"] }
+node-semver = { git = "https://github.com/danielhuang/node-semver-rs", rev = "bf4b103dc88b310c9dc049433aff1a14716e1e68" }
+tracing = "0.1"
+tracing-subscriber = "0.3"
 
 [features]
 default = []
