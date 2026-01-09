@@ -672,8 +672,11 @@ fn default_mkdtemp(prefix: &str) -> VsysResult<std::path::PathBuf> {
 #[cfg(unix)]
 fn default_chown(path: &Path, uid: u32, gid: u32) -> VsysResult<()> {
     use std::os::unix::ffi::OsStrExt;
-    let c_path = std::ffi::CString::new(path.as_os_str().as_bytes())
-        .map_err(|_| VsysError::Custom("invalid path".into()))?;
+    let c_path =
+        std::ffi::CString::new(path.as_os_str().as_bytes()).map_err(|_| VsysError::Custom {
+            code: 1,
+            message: "invalid path".into(),
+        })?;
     let result = unsafe { libc::chown(c_path.as_ptr(), uid, gid) };
     if result == 0 {
         Ok(())
