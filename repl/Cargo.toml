@@ -11,6 +11,9 @@ keywords = ["quickjs", "ecmascript", "javascript", "es6", "es2020"]
 [dependencies]
 rsquickjs = { workspace = true, features = ["macro"] }
 xmas-js-modules = { workspace = true }
+xmas-package-manager = { workspace = true }
+clap = { version = "4.5.4", features = ["derive"] }
+deno_task_shell = "0.26.1"
 tracing-subscriber = "0.3.17"
 tracing = "0.1.44"
 rustyline = { version = "17.0.1", features = ["derive"] }

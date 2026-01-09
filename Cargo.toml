@@ -16,6 +16,7 @@ members = [
   "rsquickjs",
 
   # xmas-js
+  "package-manager",
   "modules",
   "repl",
 ]
@@ -23,11 +24,12 @@ members = [
 [workspace.dependencies]
 # TODO: modify quickjs and rsquickjs-sys later
 rquickjs-sys = { version = "0.10.0", git = "https://github.com/DelSkayn/rquickjs", rev = "111951b1a31075bdff46684e0ff29f37ff2a04b2" }
-
 rsquickjs-core = { version = "0.10.0", path = "rsquickjs/core" }
 rsquickjs-macro = { version = "0.10.0", path = "rsquickjs/macro" }
 rsquickjs = { version = "0.10.0", path = "rsquickjs" }
+
 xmas-js-modules = { path = "modules" }
+xmas-package-manager = { path = "package-manager" }
 
 [dependencies]
 xmas-js-modules = { workspace = true }
