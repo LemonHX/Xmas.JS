@@ -15,7 +15,7 @@ tracing = "0.1.44"
 itoa = "1.0.15"
 ryu = "1.0.20"
 simd-json = "0.17.0"
-rand_core = { version = "=0.10.0-rc-2" }
+rand_core = { version = "=0.10.0-rc-3" }
 rand = { version = "0.10.0-rc.2", features = [
     "std",
     "std_rng",
