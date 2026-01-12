@@ -37,7 +37,7 @@ oxc = { version = "^0.103.0", optional = true, features = [
     "codegen",
     "semantic",
 ] }
-oxc_resolver = "=11.16.0"
+oxc_resolver = "=11.16.2"
 thiserror = "*"
 itertools = "0.14.0"
 either = "1.15.0"
