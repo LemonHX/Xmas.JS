@@ -48,14 +48,7 @@ impl Default for ModuleBuilder {
         builder = builder.with_module(crate::timers::TimersModule);
         builder = builder.with_module(crate::buffer::BufferModule);
         builder = builder.with_module(crate::text::TextModule);
-        #[cfg(feature = "assert")]
-        {
-            builder = builder.with_module(crate::modules::assert::AssertModule);
-        }
-        #[cfg(feature = "child-process")]
-        {
-            builder = builder.with_module(crate::modules::child_process::ChildProcessModule);
-        }
+
         #[cfg(feature = "console")]
         {
             builder = builder.with_module(crate::console::ConsoleModule);
@@ -64,22 +57,20 @@ impl Default for ModuleBuilder {
         {
             builder = builder.with_module(crate::crypto::CryptoModule);
         }
-        #[cfg(feature = "dgram")]
-        {
-            builder = builder.with_module(crate::modules::dgram::DgramModule);
-        }
+
         #[cfg(feature = "dns")]
         {
             builder = builder.with_module(crate::dns::DnsModule);
+        }
+        #[cfg(feature = "url")]
+        {
+            builder = builder.with_module(crate::url::UrlModule);
         }
         #[cfg(feature = "event")]
         {
             builder = builder.with_module(crate::event::EventsModule);
         }
-        #[cfg(feature = "exceptions")]
-        {
-            builder = builder.with_global(crate::modules::exceptions::init);
-        }
+
         #[cfg(feature = "http")]
         {
             builder = builder.with_module(crate::http::HttpsModule);
@@ -89,6 +80,11 @@ impl Default for ModuleBuilder {
             builder = builder
                 .with_module(crate::fs::FsPromisesModule)
                 .with_module(crate::fs::FsModule);
+            builder = builder.with_module(crate::path::PathModule);
+        }
+        #[cfg(feature = "exceptions")]
+        {
+            builder = builder.with_global(crate::modules::exceptions::init);
         }
         #[cfg(feature = "net")]
         {
@@ -97,10 +93,6 @@ impl Default for ModuleBuilder {
         #[cfg(feature = "os")]
         {
             builder = builder.with_module(crate::modules::os::OsModule);
-        }
-        #[cfg(feature = "path")]
-        {
-            builder = builder.with_module(crate::modules::path::PathModule);
         }
         #[cfg(feature = "perf-hooks")]
         {
@@ -128,21 +120,22 @@ impl Default for ModuleBuilder {
         {
             builder = builder.with_module(crate::modules::tty::TtyModule);
         }
-        #[cfg(feature = "url")]
-        {
-            builder = builder.with_module(crate::url::UrlModule);
-        }
-        #[cfg(feature = "util")]
-        {
-            builder = builder
-                .with_global(crate::modules::util::init)
-                .with_module(crate::modules::util::UtilModule);
-        }
         #[cfg(feature = "zlib")]
         {
             builder = builder.with_module(crate::modules::zlib::ZlibModule);
         }
-
+        #[cfg(feature = "dgram")]
+        {
+            builder = builder.with_module(crate::modules::dgram::DgramModule);
+        }
+        #[cfg(feature = "assert")]
+        {
+            builder = builder.with_module(crate::modules::assert::AssertModule);
+        }
+        #[cfg(feature = "child-process")]
+        {
+            builder = builder.with_module(crate::modules::child_process::ChildProcessModule);
+        }
         builder
     }
 }
@@ -166,11 +159,6 @@ impl ModuleBuilder {
         self.global_attachment = self.global_attachment.add_name(module_info.name);
         self
     }
-
-    // pub fn with_global(mut self, init: fn(&Ctx<'_>) -> Result<()>) -> Self {
-    //     self.global_attachment = self.global_attachment.add_function(init);
-    //     self
-    // }
 
     pub fn build(self) -> (ModuleResolver, ModuleLoader, GlobalAttachment) {
         (

@@ -8,3 +8,8 @@ vendor
 history.js
 node_modules/
 .xmas/
+.opencode/
+
+task_plan.md
+findings.md
+progress.md
