@@ -4,6 +4,7 @@ use rsquickjs::{loader::Loader, Ctx, Function, Module, Object, Result, Value};
 use tracing::info;
 
 use crate::module::{CJS_IMPORT_PREFIX, CJS_LOADER_PREFIX};
+use crate::permissions::get_vsys;
 
 #[derive(Debug, Default)]
 pub struct PackageLoader;
@@ -95,7 +96,23 @@ impl PackageLoader {
             }
         }
 
-        let bytes = std::fs::read(path)?;
+        let vsys = get_vsys(&ctx).ok_or_else(|| {
+            rsquickjs::Error::new_from_js("undefined", "Vsys not initialized in context")
+        })?;
+        let bytes = (vsys.fs.read)(std::path::Path::new(path)).map_err(|e| {
+            rsquickjs::Error::new_from_js_message(
+                "VfsError",
+                "Vec<u8>",
+                format!("Failed to read file: {}", e),
+            )
+        })?;
+        let bytes = (vsys.fs.read)(std::path::Path::new(path)).map_err(|e| {
+            rsquickjs::Error::new_from_js_message(
+                "VfsError",
+                "Vec<u8>",
+                format!("Failed to read file: {}", e),
+            )
+        })?;
         let mut bytes: &[u8] = &bytes;
 
         if !from_cjs_import && bytes.starts_with(b"#!") {

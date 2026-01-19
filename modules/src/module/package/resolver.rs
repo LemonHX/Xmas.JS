@@ -2,17 +2,17 @@ use std::{
     borrow::Cow,
     cell::RefCell,
     collections::HashMap,
-    fs,
     path::{Path, PathBuf},
     rc::Rc,
     sync::{LazyLock, Mutex},
 };
 
+use crate::permissions::get_vsys;
 use crate::utils::{
     io::{is_supported_ext, JS_EXTENSIONS, SUPPORTED_EXTENSIONS},
     result::ResultExt,
 };
-use rsquickjs::{loader::Resolver, Ctx, Error, Function, Result};
+use rsquickjs::{loader::Resolver, Ctx, Error, Result};
 use simd_json::{derived::ValueObjectAccessAsScalar, BorrowedValue};
 use tracing::{debug, info};
 
@@ -111,11 +111,14 @@ pub fn require_resolve<'a>(
     y: &str,
     is_esm: bool,
 ) -> Result<Cow<'a, str>> {
+    let vsys = get_vsys(ctx)
+        .ok_or_else(|| Error::new_from_js("undefined", "Vsys not initialized in context"))?;
+
     // trim schema
     let x = x.trim_start_matches("file://");
 
     // resolve symlink
-    let y = if let Ok(path) = Path::new(y).read_link() {
+    let y = if let Ok(path) = (vsys.fs.read_link)(Path::new(y)) {
         if path.is_absolute() {
             path.to_string_lossy().to_string()
         } else {
@@ -136,12 +139,13 @@ pub fn require_resolve<'a>(
     let x_starts_with_current_dir = x.starts_with("./");
     let x_starts_with_parent_dir = x.starts_with("..");
 
-    if is_supported_ext && Path::new(x).is_file() {
+    if is_supported_ext && (vsys.fs.is_file)(Path::new(x)) {
         return resolved_by_file_exists(x.into());
     }
 
     let x_normalized = path::normalize(x);
-    if !x_starts_with_parent_dir && is_supported_ext && Path::new(&x_normalized).is_file() {
+    if !x_starts_with_parent_dir && is_supported_ext && (vsys.fs.is_file)(Path::new(&x_normalized))
+    {
         return resolved_by_file_exists(x_normalized.into());
     }
 
@@ -154,7 +158,7 @@ pub fn require_resolve<'a>(
     };
 
     // Normalize path Y to generate dirname(Y)
-    let dirname_y = if Path::new(y).is_dir() {
+    let dirname_y = if (vsys.fs.is_dir)(Path::new(y)) {
         path::resolve_path([y].iter())?
     } else {
         let dirname_y = path::dirname(y);
@@ -237,10 +241,13 @@ fn to_abs_path(path: Cow<'_, str>) -> Result<Cow<'_, str>> {
 
 // LOAD_AS_FILE(X)
 fn load_as_file<'a>(ctx: &Ctx<'_>, x: Rc<String>) -> Result<Option<Cow<'a, str>>> {
+    let vsys = get_vsys(ctx)
+        .ok_or_else(|| Error::new_from_js("undefined", "Vsys not initialized in context"))?;
+
     info!("❄️  load_as_file(x): {}", x);
 
     // 1. If X is a file, load X as its file extension format. STOP
-    if Path::new(x.as_ref()).is_file() {
+    if (vsys.fs.is_file)(Path::new(x.as_ref())) {
         info!("❄️  load_as_file(1): {}", x);
         return Ok(Some(rc_string_to_cow(x)));
     }
@@ -257,7 +264,7 @@ fn load_as_file<'a>(ctx: &Ctx<'_>, x: Rc<String>) -> Result<Option<Cow<'a, str>>
             current_file.truncate(base_file_length);
             current_file.push_str(extension);
 
-            if Path::new(&current_file).is_file() {
+            if (vsys.fs.is_file)(Path::new(&current_file)) {
                 // a. Find the closest package scope SCOPE to X.
                 match find_the_closest_package_scope(&x) {
                     // b. If no scope was found
@@ -267,7 +274,8 @@ fn load_as_file<'a>(ctx: &Ctx<'_>, x: Rc<String>) -> Result<Option<Cow<'a, str>>
                         return Ok(Some(current_file.into()));
                     }
                     Some(path) => {
-                        let mut package_json = fs::read(path.as_ref()).or_throw(ctx)?;
+                        let mut package_json =
+                            (vsys.fs.read)(Path::new(path.as_ref())).or_throw(ctx)?;
                         let package_json =
                             simd_json::to_borrowed_value(&mut package_json).or_throw(ctx)?;
                         // c. If the SCOPE/package.json contains "type" field,
@@ -293,7 +301,7 @@ fn load_as_file<'a>(ctx: &Ctx<'_>, x: Rc<String>) -> Result<Option<Cow<'a, str>>
     if let Some(mut current_file) = base_file.take() {
         current_file.truncate(base_file_length);
         current_file.push_str(".json");
-        if Path::new(&current_file).is_file() {
+        if (vsys.fs.is_file)(Path::new(&current_file)) {
             info!("❄️  load_as_file(3): {}", current_file);
             return Ok(Some(current_file.into()));
         }
@@ -306,6 +314,9 @@ fn load_as_file<'a>(ctx: &Ctx<'_>, x: Rc<String>) -> Result<Option<Cow<'a, str>>
 
 // LOAD_INDEX(X)
 fn load_index<'a>(ctx: &Ctx<'_>, x: Rc<String>) -> Result<Option<Cow<'a, str>>> {
+    let vsys = get_vsys(ctx)
+        .ok_or_else(|| Error::new_from_js("undefined", "Vsys not initialized in context"))?;
+
     info!("❄️  load_index(x): {}", x);
 
     let mut base_file = String::with_capacity(x.len() + "/index".len() + 4);
@@ -320,7 +331,7 @@ fn load_index<'a>(ctx: &Ctx<'_>, x: Rc<String>) -> Result<Option<Cow<'a, str>>> 
         if let Some(mut file) = base_file.take() {
             file.truncate(base_file_length);
             file.push_str(extension);
-            if Path::new(&file).is_file() {
+            if (vsys.fs.is_file)(Path::new(&file)) {
                 // a. Find the closest package scope SCOPE to X.
                 match find_the_closest_package_scope(&x) {
                     // b. If no scope was found, load X/index.js as a CommonJS module. STOP.
@@ -330,7 +341,8 @@ fn load_index<'a>(ctx: &Ctx<'_>, x: Rc<String>) -> Result<Option<Cow<'a, str>>> 
                     }
                     // c. If the SCOPE/package.json contains "type" field,
                     Some(path) => {
-                        let mut package_json = fs::read(path.as_ref()).or_throw(ctx)?;
+                        let mut package_json =
+                            (vsys.fs.read)(Path::new(path.as_ref())).or_throw(ctx)?;
                         let package_json =
                             simd_json::to_borrowed_value(&mut package_json).or_throw(ctx)?;
                         if let Some(_type) = get_string_field(&package_json, "type") {
@@ -355,7 +367,7 @@ fn load_index<'a>(ctx: &Ctx<'_>, x: Rc<String>) -> Result<Option<Cow<'a, str>>> 
     if let Some(mut file) = base_file.take() {
         file.truncate(base_file_length);
         file.push_str(".json");
-        if Path::new(&file).is_file() {
+        if (vsys.fs.is_file)(Path::new(&file)) {
             info!("❄️  load_index(2): {}", file);
             return Ok(Some(file.into()));
         }
@@ -368,13 +380,16 @@ fn load_index<'a>(ctx: &Ctx<'_>, x: Rc<String>) -> Result<Option<Cow<'a, str>>> 
 
 // LOAD_AS_DIRECTORY(X)
 fn load_as_directory<'a>(ctx: &Ctx<'_>, x: Rc<String>) -> Result<Option<Cow<'a, str>>> {
+    let vsys = get_vsys(ctx)
+        .ok_or_else(|| Error::new_from_js("undefined", "Vsys not initialized in context"))?;
+
     info!("❄️  load_as_directory(x): {}", x);
 
     // 1. If X/package.json is a file,
     let file = [&x, "/package.json"].concat();
-    if Path::new(&file).is_file() {
+    if (vsys.fs.is_file)(Path::new(&file)) {
         // a. Parse X/package.json, and look for "main" field.
-        let mut package_json = fs::read(file).or_throw(ctx)?;
+        let mut package_json = (vsys.fs.read)(Path::new(&file)).or_throw(ctx)?;
         let package_json = simd_json::to_borrowed_value(&mut package_json).or_throw(ctx)?;
         // b. If "main" is a falsy value, GOTO 2.
         if let Some(main) = get_string_field(&package_json, "main") {
@@ -413,6 +428,8 @@ fn load_node_modules<'a>(
     start: String,
     is_esm: bool,
 ) -> Option<Cow<'a, str>> {
+    let vsys = get_vsys(ctx)?;
+
     info!("❄️  load_node_modules(x, start): ({}, {})", x, start);
 
     fn search_dir<'a>(ctx: &Ctx<'_>, dir: &str, x: &str, is_esm: bool) -> Option<Cow<'a, str>> {
@@ -472,7 +489,7 @@ fn load_node_modules<'a>(
         }
         if dir.file_name().is_some_and(|name| name != "node_modules") {
             let node_modules = dir.join("node_modules");
-            if node_modules.is_dir() {
+            if (vsys.fs.is_dir)(&node_modules) {
                 last_found_index = i;
                 results
                     .0
@@ -512,12 +529,15 @@ fn load_node_modules<'a>(
 
 // LOAD_PACKAGE_IMPORTS(X, DIR)
 fn load_package_imports(ctx: &Ctx<'_>, x: &str, dir: &str) -> Result<Option<String>> {
+    let vsys = get_vsys(ctx)
+        .ok_or_else(|| Error::new_from_js("undefined", "Vsys not initialized in context"))?;
+
     info!("❄️  load_package_imports(x, dir): ({}, {})", x, dir);
 
     // 1. Find the closest package scope SCOPE to DIR.
     // 2. If no scope was found, return.
     if let Some(path) = find_the_closest_package_scope(dir) {
-        let mut package_json_file = fs::read(path.as_ref()).or_throw(ctx)?;
+        let mut package_json_file = (vsys.fs.read)(Path::new(path.as_ref())).or_throw(ctx)?;
         let package_json: BorrowedValue =
             simd_json::to_borrowed_value(&mut package_json_file).or_throw(ctx)?;
 
@@ -531,7 +551,7 @@ fn load_package_imports(ctx: &Ctx<'_>, x: &str, dir: &str) -> Result<Option<Stri
         if let Some(module_path) = package_imports_resolve(&package_json, x) {
             info!("❄️  load_package_imports(6): {}", module_path);
             let dir = path.as_ref().trim_end_matches("package.json");
-            let module_path = to_abs_path(correct_extensions([dir, module_path].concat()))?;
+            let module_path = to_abs_path(correct_extensions(ctx, [dir, module_path].concat()))?;
             return Ok(Some(module_path.into()));
         }
     };
@@ -546,6 +566,9 @@ fn load_package_exports<'a>(
     dir: &str,
     is_esm: bool,
 ) -> Result<Cow<'a, str>> {
+    let vsys = get_vsys(ctx)
+        .ok_or_else(|| Error::new_from_js("undefined", "Vsys not initialized in context"))?;
+
     info!("❄️  load_package_exports(x, dir): ({}, {})", x, dir);
     //1. Try to interpret X as a combination of NAME and SUBPATH where the name
     //   may have a @scope/ prefix and the subpath begins with a slash (`/`).
@@ -569,7 +592,7 @@ fn load_package_exports<'a>(
         package_json_path.push_str(scope);
         package_json_path.push_str("/package.json");
 
-        package_json_exists = Path::new(&package_json_path).exists();
+        package_json_exists = (vsys.fs.exists)(Path::new(&package_json_path));
 
         if package_json_exists || is_last {
             break;
@@ -585,7 +608,7 @@ fn load_package_exports<'a>(
         package_json_path.truncate(base_path_length);
         package_json_path.push_str(x);
         package_json_path.push_str("/package.json");
-        if !Path::new(&package_json_path).exists() {
+        if !(vsys.fs.exists)(Path::new(&package_json_path)) {
             return Err(Error::new_resolving(dir.to_string(), x.to_string()));
         }
         (x, ".")
@@ -611,7 +634,7 @@ fn load_package_exports<'a>(
                 current_path.truncate(base_path_length);
                 current_path.push_str(ext);
 
-                if Path::new(&current_path).exists() {
+                if (vsys.fs.exists)(Path::new(&current_path)) {
                     if *ext == ".mjs" {
                         //we know its an ESM module
                         return Ok(current_path.into());
@@ -630,7 +653,7 @@ fn load_package_exports<'a>(
     //5. let MATCH = PACKAGE_EXPORTS_RESOLVE(pathToFileURL(DIR/NAME), "." + SUBPATH,
     //   `package.json` "exports", ["node", "require"]) <a href="esm.md#resolver-algorithm-specification">defined in the ESM resolver</a>.
     //6. RESOLVE_ESM_MATCH(MATCH)
-    let mut package_json = fs::read(&package_json_path).or_throw(ctx)?;
+    let mut package_json = (vsys.fs.read)(Path::new(&package_json_path)).or_throw(ctx)?;
     let package_json = simd_json::to_borrowed_value(&mut package_json).or_throw(ctx)?;
 
     if let Some(sub_module) = sub_module {
@@ -647,6 +670,7 @@ fn load_package_exports<'a>(
     let (module_path, resolve_path, is_cjs) = package_exports_resolve(&package_json, name, is_esm)?;
     let module_path = resolve_path.unwrap_or_else(|| module_path.to_string());
     let module_path = to_abs_path(correct_extensions(
+        ctx,
         [dir, "/", scope, "/", &module_path].concat(),
     ))?;
 
@@ -659,6 +683,9 @@ fn load_package_exports<'a>(
 
 // LOAD_PACKAGE_SELF(X, DIR)
 fn load_package_self(ctx: &Ctx<'_>, x: &str, dir: &str, is_esm: bool) -> Result<Option<String>> {
+    let vsys = get_vsys(ctx)
+        .ok_or_else(|| Error::new_from_js("undefined", "Vsys not initialized in context"))?;
+
     info!("❄️  load_package_self(x, dir): ({}, {})", x, dir);
     let mut n = 1;
     let (mut name, mut scope, mut is_last) = get_name_and_scope(x, n);
@@ -672,7 +699,7 @@ fn load_package_self(ctx: &Ctx<'_>, x: &str, dir: &str, is_esm: bool) -> Result<
             return Ok(None);
         }
         Some(path) => {
-            package_json_file = fs::read(path.as_ref()).or_throw(ctx)?;
+            package_json_file = (vsys.fs.read)(Path::new(path.as_ref())).or_throw(ctx)?;
             package_json = simd_json::to_borrowed_value(&mut package_json_file).or_throw(ctx)?;
             // 3. If the SCOPE/package.json "exports" is null or undefined, return.
             loop {
@@ -704,7 +731,7 @@ fn load_package_self(ctx: &Ctx<'_>, x: &str, dir: &str, is_esm: bool) -> Result<
         let path = resolve_path.unwrap_or_else(|| path.to_string());
         info!("❄️  load_package_self(2.c): {}", path);
         let dir = package_json_path.trim_end_matches("package.json");
-        let module_path = correct_extensions([dir, &path].concat());
+        let module_path = correct_extensions(ctx, [dir, &path].concat());
         return Ok(Some(module_path.into()));
     }
 
@@ -910,9 +937,17 @@ fn is_exports_field_exists<'a>(package_json: &'a BorrowedValue<'a>) -> bool {
     false
 }
 
-fn correct_extensions<'a>(x: String) -> Cow<'a, str> {
-    let (x_is_file, x_is_dir) = if let Ok(md) = fs::metadata(&x) {
-        (md.is_file(), md.is_dir())
+fn correct_extensions<'a>(ctx: &Ctx<'_>, x: String) -> Cow<'a, str> {
+    let vsys = match get_vsys(ctx) {
+        Some(v) => v,
+        None => {
+            return x.into();
+        }
+    };
+
+    let stat = (vsys.fs.stat)(Path::new(&x));
+    let (x_is_file, x_is_dir) = if let Ok(stat) = stat {
+        (stat.is_file(), stat.is_dir())
     } else {
         (false, false)
     };
@@ -934,7 +969,8 @@ fn correct_extensions<'a>(x: String) -> Cow<'a, str> {
         if let Some(mut current_path) = path.take() {
             current_path.truncate(base_path_length);
             current_path.push_str(extension);
-            if Path::new(&current_path).is_file() {
+
+            if (vsys.fs.is_file)(Path::new(&current_path)) {
                 return current_path.into();
             }
             path = Some(current_path);

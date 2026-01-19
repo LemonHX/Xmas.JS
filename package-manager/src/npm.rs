@@ -110,11 +110,12 @@ pub async fn fetch_package(name: &str) -> Result<Arc<RegistryResponse>> {
         .await
     }
 
-    static CACHE: LazyLock<Cache<CompactString, ArcResult<Arc<RegistryResponse>>>> = LazyLock::new(|| {
-        Cache::new(|key: CompactString| async move {
-            fetch_package(&key).await.map(Arc::new).map_err(Arc::new)
-        })
-    });
+    static CACHE: LazyLock<Cache<CompactString, ArcResult<Arc<RegistryResponse>>>> =
+        LazyLock::new(|| {
+            Cache::new(|key: CompactString| async move {
+                fetch_package(&key).await.map(Arc::new).map_err(Arc::new)
+            })
+        });
 
     CACHE
         .get(name.to_compact_string())

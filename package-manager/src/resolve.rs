@@ -1,8 +1,8 @@
+use crate::npm;
 use crate::npm::{Dependency, DependencyTree};
 use crate::package::{PackageInfo, PackageSpecifier, VersionedPackageInfo};
 use crate::plan::download_package_shared;
 use crate::progress::log_verbose;
-use crate::{npm};
 use color_eyre::eyre::ContextCompat;
 use color_eyre::{Report, Section};
 use compact_str::{CompactString, ToCompactString};
