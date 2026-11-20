@@ -31,7 +31,7 @@ pub async fn cmd_run(arg: &crate::Args, name: &CompactString, watch: &[PathBuf])
             });
             PROGRESS_BAR.finish_and_clear();
 
-            Ok(()) as Result<_>
+            Ok::<(), color_eyre::eyre::Report>(())
         };
 
         let install = async {
@@ -54,7 +54,7 @@ pub async fn cmd_run(arg: &crate::Args, name: &CompactString, watch: &[PathBuf])
                 exit(exit_code);
             }
 
-            Ok(()) as Result<_>
+            Ok::<(), color_eyre::eyre::Report>(())
         };
 
         tokio::select! {

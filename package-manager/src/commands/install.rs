@@ -1,6 +1,5 @@
 //! Install command implementation.
 
-use async_recursion::async_recursion;
 use color_eyre::eyre::{eyre, Result};
 use color_eyre::owo_colors::OwoColorize;
 use compact_str::{CompactString, ToCompactString};
@@ -14,7 +13,6 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::time::Instant;
 use tokio::fs::{create_dir_all, read_to_string};
-use tokio::process::Command;
 
 use crate::commands::exec::shell;
 use crate::config::read_config;

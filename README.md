@@ -84,85 +84,9 @@ Traditional System Scripts          Modern System Scripts with Xmas.JS
 ### In Development
 - 🚧 **Package Manager** - Built-in dependency management (no need for npm/pnpm)
 - 🚧 **Cross-Platform Shell** - Execute package.json scripts anywhere
-- 🚧 **Built-in Toolchain** - Bundler, minifier, TypeScript compiler, linter (powered by [OXC](https://oxc-project.github.io/))
-- 🚧 **Bytecode Compilation** - Bundle scripts as bytecode for security and performance
+- 🚧 **Built-in Toolchain** - TypeScript and TSX compilation, powered by [OXC](https://oxc-project.github.io/)
 - 🚧 **Full WinterTC Coverage** - Complete Web API compatibility
 
----
-
-## 🏗️ Virtual System Layer
-
-Xmas.JS uses a **pluggable virtual system layer** called `vsys` to abstract all system-level operations. This enables:
-
-- 🔒 **Sandboxed execution** for serverless/edge computing
-- 💾 **Custom filesystem** implementations (in-memory, virtual, restricted)
-- 🌐 **Custom network** implementations (proxied, restricted, mocked)
-- � **Custom module loading** (load from DB, bundle, remote URL)
-- 🔐 **Fine-grained permissions** control
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    modules (JS Binding Layer)                   │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────────────┐  │
-│  │ fs/mod   │ │http/mod  │ │module/   │ │Other JS Modules    │  │
-│  │(ModuleDef│ │(ModuleDef│ │loader    │ │(Only registration, │  │
-│  │  only)   │ │  only)   │ │resolver  │ │  calls vsys)       │  │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └─────────┬──────────┘  │
-└───────┼────────────┼────────────┼─────────────────┼─────────────┘
-        │            │            │                 │
-        ▼            ▼            ▼                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     vsys (Virtual System Layer)                 │
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │  pub struct VsysVTable {                                    ││
-│  │      // Filesystem                                          ││
-│  │      pub fs_read, fs_write, fs_stat, fs_readdir, ...        ││
-│  │      // Network                                             ││
-│  │      pub http_request, dns_lookup, ...                      ││
-│  │      // Module Loading (key for serverless!)                ││
-│  │      pub module_resolve, module_load, module_exists, ...    ││
-│  │      // Permissions                                         ││
-│  │      pub check_fs_permission, check_net_permission, ...     ││
-│  │  }                                                          ││
-│  └─────────────────────────────────────────────────────────────┘│
-│              ┌───────────────┴───────────────┐                  │
-│              ▼                               ▼                  │
-│  ┌─────────────────────┐        ┌─────────────────────┐         │
-│  │  Default Impl       │        │  User Custom Impl   │         │
-│  │  (std::fs, tokio,   │   OR   │  (VFS, sandboxed,   │         │
-│  │   hyper, etc.)      │        │   in-memory, etc.)  │         │
-│  └─────────────────────┘        └─────────────────────┘         │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### What Problems Does vsys Solve?
-
-| Scenario               | Problem Without vsys                                | With vsys                                         |
-| ---------------------- | --------------------------------------------------- | ------------------------------------------------- |
-| **Serverless/Edge**    | Runtime has full system access, security risk       | Sandboxed execution, only expose what you allow   |
-| **Multi-tenant SaaS**  | Tenant A can access Tenant B's files                | Each tenant gets isolated virtual filesystem      |
-| **Database Scripting** | Scripts need real filesystem, deployment complexity | Virtual FS backed by database, zero external deps |
-| **Bundled Deploy**     | Need node_modules on disk, slow cold start          | Load modules from single bundle or remote URL     |
-| **Testing**            | Need real network/files, slow and flaky tests       | Mock everything, fast and deterministic           |
-| **Embedded/IoT**       | Heavy system dependencies                           | Minimal footprint, platform-agnostic              |
-| **Game Scripting**     | Lua-style sandboxing is complex                     | Built-in isolation, expose only game APIs         |
-
-### Example: Secure Serverless Function
-
-```rust
-// User's untrusted code can only:
-// - Read from /app/data (virtual, mapped to S3)
-// - Make HTTP requests to allowlisted domains
-// - Load modules from pre-bundled package (no filesystem access)
-// - No filesystem writes, no arbitrary network access
-let runtime = XmasRuntime::new()
-    .with_vsys(VsysVTable::new()
-        .fs_read_only(s3_virtual_fs("/app/data"))
-        .module_loader(bundled_modules("app.bundle"))
-        .net_allowlist(&["api.example.com", "cdn.example.com"])
-        .deny_all_else()
-    );
-```
 ---
 
 ## 📦 Installation
@@ -261,32 +185,6 @@ xmas create vite
 xmas x create-react-app my-app
 ```
 
-### Bundling
-
-Bundle TypeScript/JavaScript files using Rolldown:
-
-```bash
-# Basic bundle
-xmas bun src/index.ts
-
-# Bundle with options
-xmas bun src/index.ts -o build -n app.js
-
-# Bundle with minification and source maps
-xmas bun src/index.ts -m -s
-
-# Bundle multiple entry points
-xmas bun src/index.ts src/worker.ts
-
-# Bundle with custom format
-xmas bun src/index.ts -f cjs      # CommonJS
-xmas bun src/index.ts -f esm      # ES Modules (default)
-xmas bun src/index.ts -f iife     # Immediately Invoked Function Expression
-
-# Exclude packages from bundle
-xmas bun src/index.ts -e react -e react-dom
-```
-
 ### CLI Reference
 
 ```
@@ -304,8 +202,6 @@ Commands:
   why             Find all uses of a given package
   create          Create new project from a starter kit
   x               Download and execute a package (like npx)
-  bun (bundle)    Bundle TypeScript/JavaScript files
-  repl            Start the interactive REPL
 
 Options:
   -v, --verbose       Print verbose logs

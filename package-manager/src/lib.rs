@@ -30,6 +30,7 @@ pub async fn package_manager(args: &Args) -> Result<()> {
     if let Some(cwd) = &args.working_dir {
         set_current_dir(cwd)?;
     }
+    progress::set_verbose(args.verbose);
     execute_command(&args).await?;
     PROGRESS_BAR.finish_and_clear();
     Ok(())

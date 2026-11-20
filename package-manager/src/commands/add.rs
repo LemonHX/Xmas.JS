@@ -7,7 +7,7 @@ use futures::future::try_join_all;
 use serde_json::Value;
 
 use crate::npm::fetch_package;
-use crate::progress::{log_progress, PROGRESS_BAR};
+use crate::progress::PROGRESS_BAR;
 use crate::util::{read_package_or_default, save_package};
 
 /// Execute the add command.

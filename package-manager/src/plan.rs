@@ -1,16 +1,15 @@
 use async_compression::tokio::bufread::GzipDecoder;
 use color_eyre::{
-    eyre::{eyre, Context, Result},
-    Report, Section,
+    eyre::{eyre, Result},
+    Report,
 };
 use compact_str::{CompactString, ToCompactString};
 use futures::{StreamExt, TryStreamExt};
 use owo_colors::OwoColorize;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-use std::fs::{create_dir_all, exists, metadata, read_dir, remove_dir_all, set_permissions, File};
+use std::fs::{create_dir_all, exists, metadata, read_dir, remove_dir_all, File};
 use std::{
-    fs::Permissions,
     io::{self, ErrorKind},
     path::{Path, PathBuf},
     sync::{Arc, LazyLock},
@@ -219,17 +218,19 @@ pub async fn execute_plan(plan: Plan) -> Result<()> {
         tree: DependencyTree,
         prefix: Vec<CompactString>,
     ) -> Result<()> {
-        send.clone().send(tokio::spawn(async move {
-            install_package(&prefix, &tree.root).await?;
+        send.clone()
+            .try_send(tokio::spawn(async move {
+                install_package(&prefix, &tree.root).await?;
 
-            for (_, dep) in tree.children {
-                let mut prefix = prefix.clone();
-                prefix.push(tree.root.name.clone());
-                queue_install(send.clone(), dep, prefix)?;
-            }
+                for (_, dep) in tree.children {
+                    let mut prefix = prefix.clone();
+                    prefix.push(tree.root.name.clone());
+                    queue_install(send.clone(), dep, prefix)?;
+                }
 
-            Result::Ok(())
-        }));
+                Result::Ok(())
+            }))
+            .map_err(|_| eyre!("could not queue an install task"))?;
 
         Ok(())
     }

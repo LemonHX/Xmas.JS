@@ -1,4 +1,10 @@
-use std::{sync::LazyLock, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        LazyLock,
+    },
+    time::Duration,
+};
 
 use indicatif::{ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize;
@@ -24,8 +30,17 @@ pub fn inc_progress() {
     PROGRESS_BAR.inc(1);
 }
 
+static VERBOSE: AtomicBool = AtomicBool::new(false);
+
+/// Turn verbose logging on, from the command line flag.
+pub fn set_verbose(on: bool) {
+    VERBOSE.store(on, Ordering::Relaxed);
+}
+
 pub fn log_verbose(text: &str) {
-    // PROGRESS_BAR.suspend(|| println!("{} {}", " VERBOSE ".on_white(), text));
+    if VERBOSE.load(Ordering::Relaxed) {
+        PROGRESS_BAR.suspend(|| println!("{} {}", " VERBOSE ".on_white(), text));
+    }
 }
 
 pub fn log_warning(text: &str) {

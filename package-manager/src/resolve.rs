@@ -54,39 +54,41 @@ impl Graph {
                 return Ok(());
             }
 
-            send.clone().send(tokio::spawn(async move {
-                let (version, subpackage) = npm::fetch_versioned_package(req.clone()).await?;
+            send.clone()
+                .try_send(tokio::spawn(async move {
+                    let (version, subpackage) = npm::fetch_versioned_package(req.clone()).await?;
 
-                if download && subpackage.supported() {
-                    tokio::spawn(download_package_shared(Dependency {
-                        name: req.name.to_compact_string(),
-                        version: version.clone(),
-                        dist: subpackage.dist.clone(),
-                        bins: subpackage.bins().into_iter().collect(),
-                        scripts: subpackage.scripts.clone(),
-                    }));
-                }
+                    if download && subpackage.supported() {
+                        tokio::spawn(download_package_shared(Dependency {
+                            name: req.name.to_compact_string(),
+                            version: version.clone(),
+                            dist: subpackage.dist.clone(),
+                            bins: subpackage.bins().into_iter().collect(),
+                            scripts: subpackage.scripts.clone(),
+                        }));
+                    }
 
-                relations.insert(
-                    req.clone(),
-                    VersionedPackageInfo {
-                        package: subpackage.clone(),
-                        version,
-                    },
-                );
+                    relations.insert(
+                        req.clone(),
+                        VersionedPackageInfo {
+                            package: subpackage.clone(),
+                            version,
+                        },
+                    );
 
-                for child_req in subpackage.iter() {
-                    queue_resolve(
-                        send.clone(),
-                        child_req,
-                        relations.clone(),
-                        seen.clone(),
-                        download,
-                    )?;
-                }
+                    for child_req in subpackage.iter() {
+                        queue_resolve(
+                            send.clone(),
+                            child_req,
+                            relations.clone(),
+                            seen.clone(),
+                            download,
+                        )?;
+                    }
 
-                Ok(()) as color_eyre::Result<_>
-            }));
+                    Ok(()) as color_eyre::Result<_>
+                }))
+                .map_err(|_| color_eyre::eyre::eyre!("could not queue a resolve task"))?;
 
             Ok(())
         }

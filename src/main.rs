@@ -103,38 +103,6 @@ enum Commands {
         /// Arguments to pass
         args: Vec<OsString>,
     },
-
-    // ==================== Bundler ====================
-    /// Bundle TypeScript/JavaScript files (powered by Rolldown)
-    #[command(alias = "bundle")]
-    Bun {
-        /// Entry point(s) for the bundle
-        entry: Vec<PathBuf>,
-
-        /// Output directory
-        #[arg(short = 'o', long, default_value = "dist")]
-        output_dir: PathBuf,
-
-        /// Output filename
-        #[arg(short = 'n', long)]
-        output_filename: Option<String>,
-
-        /// Enable minification
-        #[arg(short = 'm', long)]
-        minify: bool,
-
-        /// Enable source maps
-        #[arg(short = 's', long)]
-        source_map: bool,
-
-        /// Target format (esm, cjs, iife)
-        #[arg(short = 'f', long, default_value = "esm")]
-        format: xmas_bundler::BundleFormat,
-
-        /// External modules (won't be bundled)
-        #[arg(short = 'e', long)]
-        external: Vec<String>,
-    },
 }
 
 #[tokio::main]
@@ -147,7 +115,7 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         None => {
-            anyhow::bail!("the runtime is being rewritten; only package manager and bundler work")
+            anyhow::bail!("the runtime is being rewritten; only the package manager works")
         }
 
         Some(Commands::Install) => {
@@ -212,30 +180,6 @@ async fn main() -> anyhow::Result<()> {
                 cli.verbose,
             )
             .await
-        }
-
-        Some(Commands::Bun {
-            entry,
-            output_dir,
-            output_filename,
-            minify,
-            source_map,
-            format,
-            external,
-        }) => {
-            let config = xmas_bundler::BundleConfig {
-                entry,
-                output_dir,
-                output_filename,
-                minify,
-                source_map,
-                format,
-                tree_shake: true,
-                external,
-            };
-            xmas_bundler::bundle(config)
-                .await
-                .map_err(|e| anyhow::anyhow!("{}", e))
         }
     }
 }
