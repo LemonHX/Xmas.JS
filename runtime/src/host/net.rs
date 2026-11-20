@@ -48,6 +48,10 @@ impl Net {
         };
         let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
         socket.set_reuse_address(true)?;
+        // Windows has no SO_REUSEPORT. Its SO_REUSEADDR is a different animal
+        // that lets two sockets steal each other's connections, so it is not a
+        // stand-in; there, per-thread listeners are not how you scale.
+        #[cfg(unix)]
         socket.set_reuse_port(true)?;
         socket.set_nonblocking(true)?;
         socket.bind(&addr.into())?;
