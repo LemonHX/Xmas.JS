@@ -13,7 +13,7 @@
 
 use std::{
     borrow::Cow,
-    path::{Component, Path, PathBuf, MAIN_SEPARATOR, MAIN_SEPARATOR_STR},
+    path::{Component, MAIN_SEPARATOR, MAIN_SEPARATOR_STR, Path, PathBuf},
 };
 
 use quickjs_oxide::engine::api::core::{Js, JsString, RuntimeError, Scope, Value};
@@ -583,10 +583,10 @@ where
                         result.push_str("..");
                         result.push(sep);
                     }
-                },
+                }
                 "" | "." => {
                     //ignore
-                },
+                }
                 sub_part => {
                     let len = result.len();
                     if !result.ends_with(sep) && !result.is_empty() {
@@ -595,7 +595,7 @@ where
                     result.push_str(sub_part);
                     result.push(sep);
                     index_stack.push(len);
-                },
+                }
             }
             start = end + 1;
         }
@@ -667,88 +667,123 @@ pub fn install(driver: &mut Driver) -> std::result::Result<(), String> {
     {
         let context = driver.context();
         context
-            .define_function(&global, "__path_dirname", 1, |_: &mut Scope<'_>, path: String| {
-                text(&dirname(path))
-            })
+            .define_function(
+                &global,
+                "__path_dirname",
+                1,
+                |_: &mut Scope<'_>, path: String| text(&dirname(path)),
+            )
             .map_err(|error| format!("__path_dirname: {error}"))?;
     }
 
     {
         let context = driver.context();
         context
-            .define_function(&global, "__path_basename", 2, |_: &mut Scope<'_>, path: String, suffix: String| {
-                let suffix = if suffix.is_empty() { Opt(None) } else { Opt(Some(suffix)) };
-                text(&basename(path, suffix))
-            })
+            .define_function(
+                &global,
+                "__path_basename",
+                2,
+                |_: &mut Scope<'_>, path: String, suffix: String| {
+                    let suffix = if suffix.is_empty() {
+                        Opt(None)
+                    } else {
+                        Opt(Some(suffix))
+                    };
+                    text(&basename(path, suffix))
+                },
+            )
             .map_err(|error| format!("__path_basename: {error}"))?;
     }
 
     {
         let context = driver.context();
         context
-            .define_function(&global, "__path_extname", 1, |_: &mut Scope<'_>, path: String| {
-                text(&extname(path))
-            })
+            .define_function(
+                &global,
+                "__path_extname",
+                1,
+                |_: &mut Scope<'_>, path: String| text(&extname(path)),
+            )
             .map_err(|error| format!("__path_extname: {error}"))?;
     }
 
     {
         let context = driver.context();
         context
-            .define_function(&global, "__path_join", 1, |_: &mut Scope<'_>, joined: String| {
-                text(&join(&split(&joined)))
-            })
+            .define_function(
+                &global,
+                "__path_join",
+                1,
+                |_: &mut Scope<'_>, joined: String| text(&join(&split(&joined))),
+            )
             .map_err(|error| format!("__path_join: {error}"))?;
     }
 
     {
         let context = driver.context();
         context
-            .define_function(&global, "__path_resolve", 1, |scope: &mut Scope<'_>, joined: String| {
-                match resolve(&split(&joined)) {
+            .define_function(
+                &global,
+                "__path_resolve",
+                1,
+                |scope: &mut Scope<'_>, joined: String| match resolve(&split(&joined)) {
                     Ok(answer) => text(&answer),
                     Err(error) => Err(super::throw(scope, &error.0)),
-                }
-            })
+                },
+            )
             .map_err(|error| format!("__path_resolve: {error}"))?;
     }
 
     {
         let context = driver.context();
         context
-            .define_function(&global, "__path_relative", 2, |scope: &mut Scope<'_>, from: String, to: String| {
-                match relative(from, to) {
+            .define_function(
+                &global,
+                "__path_relative",
+                2,
+                |scope: &mut Scope<'_>, from: String, to: String| match relative(from, to) {
                     Ok(answer) => text(&answer),
                     Err(error) => Err(super::throw(scope, &error.0)),
-                }
-            })
+                },
+            )
             .map_err(|error| format!("__path_relative: {error}"))?;
     }
 
     {
         let context = driver.context();
         context
-            .define_function(&global, "__path_normalize", 1, |_: &mut Scope<'_>, path: String| {
-                text(&normalize(path))
-            })
+            .define_function(
+                &global,
+                "__path_normalize",
+                1,
+                |_: &mut Scope<'_>, path: String| text(&normalize(path)),
+            )
             .map_err(|error| format!("__path_normalize: {error}"))?;
     }
 
     {
         let context = driver.context();
         context
-            .define_function(&global, "__path_is_absolute", 1, |_: &mut Scope<'_>, path: String| {
-                Ok::<Value, RuntimeError>(Value::Bool(is_absolute(&path)))
-            })
+            .define_function(
+                &global,
+                "__path_is_absolute",
+                1,
+                |_: &mut Scope<'_>, path: String| {
+                    Ok::<Value, RuntimeError>(Value::Bool(is_absolute(&path)))
+                },
+            )
             .map_err(|error| format!("__path_is_absolute: {error}"))?;
     }
 
     {
         let context = driver.context();
         context
-            .define_function(&global, "__path_parse", 1, |_: &mut Scope<'_>, path: String| {
-                text(&parse(&path))
-            })
+            .define_function(
+                &global,
+                "__path_parse",
+                1,
+                |_: &mut Scope<'_>, path: String| text(&parse(&path)),
+            )
             .map_err(|error| format!("__path_parse: {error}"))?;
     }
 
@@ -759,9 +794,12 @@ pub fn install(driver: &mut Driver) -> std::result::Result<(), String> {
                 &global,
                 "__path_format",
                 5,
-                |_: &mut Scope<'_>, dir: String, root: String, base: String, name: String, ext: String| {
-                    text(&format(&dir, &root, &base, &name, &ext))
-                },
+                |_: &mut Scope<'_>,
+                 dir: String,
+                 root: String,
+                 base: String,
+                 name: String,
+                 ext: String| { text(&format(&dir, &root, &base, &name, &ext)) },
             )
             .map_err(|error| format!("__path_format: {error}"))?;
     }
@@ -792,8 +830,21 @@ pub fn install(driver: &mut Driver) -> std::result::Result<(), String> {
         .eval("globalThis.path")
         .map_err(|error| format!("path object: {error}"))?;
     let names = [
-        "basename", "dirname", "extname", "format", "parse", "join", "resolve", "relative",
-        "normalize", "isAbsolute", "toNamespacedPath", "matchesGlob", "sep", "delimiter", "posix",
+        "basename",
+        "dirname",
+        "extname",
+        "format",
+        "parse",
+        "join",
+        "resolve",
+        "relative",
+        "normalize",
+        "isAbsolute",
+        "toNamespacedPath",
+        "matchesGlob",
+        "sep",
+        "delimiter",
+        "posix",
         "win32",
     ];
     let mut exports = vec![("default".to_string(), path.clone())];
@@ -803,8 +854,8 @@ pub fn install(driver: &mut Driver) -> std::result::Result<(), String> {
 }
 
 fn text(body: &str) -> std::result::Result<Value, RuntimeError> {
-    let body = JsString::try_from_utf8(body)
-        .map_err(|error| RuntimeError::Internal(error.to_string()))?;
+    let body =
+        JsString::try_from_utf8(body).map_err(|error| RuntimeError::Internal(error.to_string()))?;
     Ok(Value::String(body))
 }
 

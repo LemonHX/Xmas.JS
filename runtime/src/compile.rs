@@ -92,8 +92,8 @@ pub fn compile(path: &str, source: &str) -> Result<String, String> {
         .semantic
         .into_scoping();
     let options = transform_options();
-    let transformed =
-        Transformer::new(&allocator, Path::new(path), &options).build_with_scoping(scoping, &mut program);
+    let transformed = Transformer::new(&allocator, Path::new(path), &options)
+        .build_with_scoping(scoping, &mut program);
     if let Some(error) = transformed.errors.first() {
         return Err(format!("{path}: {error:?}"));
     }

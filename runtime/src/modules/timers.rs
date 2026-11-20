@@ -9,9 +9,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use quickjs_oxide::engine::api::core::{
-    Js, RuntimeError, Scope, Value,
-};
+use quickjs_oxide::engine::api::core::{Js, RuntimeError, Scope, Value};
 
 use crate::driver::Driver;
 use crate::host::{Console, Level, TimerId, Timers};
@@ -64,8 +62,14 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
                 &global,
                 "__timer_set",
                 4,
-                move |scope: &mut Scope<'_>, callback: Value, ms: f64, args: Value, repeat: bool| {
-                    set(&timers, &console, &state, scope, &invoke, callback, ms, args, repeat)
+                move |scope: &mut Scope<'_>,
+                      callback: Value,
+                      ms: f64,
+                      args: Value,
+                      repeat: bool| {
+                    set(
+                        &timers, &console, &state, scope, &invoke, callback, ms, args, repeat,
+                    )
                 },
             )
             .map_err(|error| format!("__timer_set: {error}"))?;
@@ -157,10 +161,7 @@ fn set(
         let every = Duration::from_secs_f64(ms / 1000.0);
         (Instant::now() + every, Some(every))
     } else {
-        (
-            Instant::now() + Duration::from_secs_f64(ms / 1000.0),
-            None,
-        )
+        (Instant::now() + Duration::from_secs_f64(ms / 1000.0), None)
     };
 
     let plan = Rc::new(Plan {
@@ -204,7 +205,13 @@ fn arm(
                     // otherwise this rescheduling will revive the interval that was just cleared.
                     if state_next.borrow().handles.contains_key(&plan_next.handle) {
                         plan_next.next_at.set(Instant::now() + every);
-                        arm(&timers_next, &state_next, &console_next, &invoke_next, &plan_next);
+                        arm(
+                            &timers_next,
+                            &state_next,
+                            &console_next,
+                            &invoke_next,
+                            &plan_next,
+                        );
                     }
                 }
                 None => {

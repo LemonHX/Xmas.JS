@@ -16,7 +16,13 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     let module = driver
         .eval("globalThis.__events_module")
         .map_err(|error| format!("events module: {error}"))?;
-    let names = ["default", "EventEmitter", "Event", "CustomEvent", "EventTarget"];
+    let names = [
+        "default",
+        "EventEmitter",
+        "Event",
+        "CustomEvent",
+        "EventTarget",
+    ];
     let exports = super::collect(driver, &module, &names)?;
     super::define_with_alias(driver, "events", exports)
 }

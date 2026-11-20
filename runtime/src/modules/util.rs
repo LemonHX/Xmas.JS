@@ -74,7 +74,9 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
                     }
                     None => Err(scope.throw_error(
                         quickjs_oxide::engine::api::core::NativeErrorKind::Type,
-                        &format!("The argument 'format' must be a valid style. Received '{format}'"),
+                        &format!(
+                            "The argument 'format' must be a valid style. Received '{format}'"
+                        ),
                     )),
                 },
             )
@@ -127,7 +129,9 @@ fn text(body: &str) -> Result<Value, RuntimeError> {
 }
 
 fn key(text: &str) -> Option<PropertyKey> {
-    JsString::try_from_utf8(text).ok().map(PropertyKey::from_js_string)
+    JsString::try_from_utf8(text)
+        .ok()
+        .map(PropertyKey::from_js_string)
 }
 
 fn key_text(property: &PropertyKey) -> Option<String> {
@@ -326,7 +330,16 @@ fn write_value(
     if !compact {
         let mut scratch = String::with_capacity(32);
         visited.push(object.clone());
-        let one_line = write_members(js, &mut scratch, object, color, visited, depth, is_array, true);
+        let one_line = write_members(
+            js,
+            &mut scratch,
+            object,
+            color,
+            visited,
+            depth,
+            is_array,
+            true,
+        );
         visited.pop();
         one_line?;
         if !scratch.contains('\n') && out.len() + scratch.len() <= 72 {

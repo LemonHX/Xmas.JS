@@ -39,9 +39,7 @@ pub struct Console {
 
 impl Console {
     pub fn stdout() -> Self {
-        Console {
-            sink: Sink::Stdout,
-        }
+        Console { sink: Sink::Stdout }
     }
 
     pub fn capture() -> Self {

@@ -91,8 +91,22 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         .eval("globalThis.__os")
         .map_err(|error| format!("os object: {error}"))?;
     let names = [
-        "platform", "arch", "type", "release", "machine", "hostname", "homedir", "tmpdir",
-        "endianness", "cpus", "totalmem", "freemem", "uptime", "loadavg", "userInfo", "EOL",
+        "platform",
+        "arch",
+        "type",
+        "release",
+        "machine",
+        "hostname",
+        "homedir",
+        "tmpdir",
+        "endianness",
+        "cpus",
+        "totalmem",
+        "freemem",
+        "uptime",
+        "loadavg",
+        "userInfo",
+        "EOL",
         "constants",
     ];
     let mut exports = vec![("default".to_string(), os.clone())];
@@ -102,8 +116,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
 }
 
 fn text(body: &str) -> Result<Value, RuntimeError> {
-    let body = JsString::try_from_utf8(body)
-        .map_err(|error| RuntimeError::Internal(error.to_string()))?;
+    let body =
+        JsString::try_from_utf8(body).map_err(|error| RuntimeError::Internal(error.to_string()))?;
     Ok(Value::String(body))
 }
 
@@ -113,11 +127,8 @@ fn text(body: &str) -> Result<Value, RuntimeError> {
 /// not std::env, so an embedder that injects a fake environment gets a matching
 /// os module.
 fn snapshot(env: &Env) -> String {
-    let first = |keys: &[&str]| -> String {
-        keys.iter()
-            .find_map(|key| env.get(key))
-            .unwrap_or_default()
-    };
+    let first =
+        |keys: &[&str]| -> String { keys.iter().find_map(|key| env.get(key)).unwrap_or_default() };
     let homedir = first(&["HOME", "USERPROFILE"]);
     let user = first(&["USER", "USERNAME", "LOGNAME"]);
     let shell = first(&["SHELL", "COMSPEC"]);

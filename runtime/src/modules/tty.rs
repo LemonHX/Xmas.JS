@@ -28,9 +28,14 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
 
     driver
         .context()
-        .define_function(&global, "__tty_isatty", 1, move |_: &mut Scope<'_>, fd: f64| {
-            Ok::<Value, RuntimeError>(Value::Bool(is_terminal(fd as i32)))
-        })
+        .define_function(
+            &global,
+            "__tty_isatty",
+            1,
+            move |_: &mut Scope<'_>, fd: f64| {
+                Ok::<Value, RuntimeError>(Value::Bool(is_terminal(fd as i32)))
+            },
+        )
         .map_err(|error| format!("__tty_isatty: {error}"))?;
 
     {
@@ -39,11 +44,16 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let body = format!("[{columns},{rows}]");
         driver
             .context()
-            .define_function(&global, "__tty_size", 1, move |_: &mut Scope<'_>, _fd: f64| {
-                let body = JsString::try_from_utf8(&body)
-                    .map_err(|error| RuntimeError::Internal(error.to_string()))?;
-                Ok::<Value, RuntimeError>(Value::String(body))
-            })
+            .define_function(
+                &global,
+                "__tty_size",
+                1,
+                move |_: &mut Scope<'_>, _fd: f64| {
+                    let body = JsString::try_from_utf8(&body)
+                        .map_err(|error| RuntimeError::Internal(error.to_string()))?;
+                    Ok::<Value, RuntimeError>(Value::String(body))
+                },
+            )
             .map_err(|error| format!("__tty_size: {error}"))?;
     }
 

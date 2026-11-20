@@ -10,7 +10,9 @@ fn measure(harness: &mut Harness, label: &str, body: &str, calls: u32) {
     harness.eval(body).unwrap();
     let started = Instant::now();
     harness
-        .eval(&format!("for (let i = 0; i < {calls}; i += 1) {{ __bench(); }}"))
+        .eval(&format!(
+            "for (let i = 0; i < {calls}; i += 1) {{ __bench(); }}"
+        ))
         .unwrap();
     let ns = started.elapsed().as_secs_f64() * 1e9 / f64::from(calls);
     println!("{label:<40} {ns:>8.1} ns/call");
@@ -26,8 +28,18 @@ fn main() {
         )
         .unwrap();
 
-    measure(&mut harness, "empty call (the floor)", "globalThis.__bench = () => 0;", 500_000);
-    measure(&mut harness, "performance.now()", "const now = performance.now; globalThis.__bench = () => now();", 500_000);
+    measure(
+        &mut harness,
+        "empty call (the floor)",
+        "globalThis.__bench = () => 0;",
+        500_000,
+    );
+    measure(
+        &mut harness,
+        "performance.now()",
+        "const now = performance.now; globalThis.__bench = () => now();",
+        500_000,
+    );
     // The entry lists grow with every call, and a lookup walks them, so the
     // loop clears what it added: what is timed is one call on a short list.
     measure(

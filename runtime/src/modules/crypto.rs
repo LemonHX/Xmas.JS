@@ -144,15 +144,20 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let state = state.clone();
         driver
             .context()
-            .define_function(&global, "__hash_new", 1, move |_scope: &mut Scope<'_>, algorithm: String| {
-                let Some(hasher) = Hasher::new(&algorithm) else {
-                    return Ok(0.0);
-                };
-                let mut state = state.borrow_mut();
-                let id = state.take();
-                state.hashes.insert(id, hasher);
-                Ok(id as f64)
-            })
+            .define_function(
+                &global,
+                "__hash_new",
+                1,
+                move |_scope: &mut Scope<'_>, algorithm: String| {
+                    let Some(hasher) = Hasher::new(&algorithm) else {
+                        return Ok(0.0);
+                    };
+                    let mut state = state.borrow_mut();
+                    let id = state.take();
+                    state.hashes.insert(id, hasher);
+                    Ok(id as f64)
+                },
+            )
             .map_err(|error| format!("__hash_new: {error}"))?;
     }
 
@@ -160,14 +165,19 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let state = state.clone();
         driver
             .context()
-            .define_function(&global, "__hash_update", 2, move |scope: &mut Scope<'_>, id: f64, data: Value| {
-                let mut state = state.borrow_mut();
-                let Some(hasher) = state.hashes.get_mut(&(id as u64)) else {
-                    return Err(unknown(scope, "hash is gone"));
-                };
-                bytes::with_bytes(scope, &data, |bytes| hasher.update(bytes))?;
-                Ok(true)
-            })
+            .define_function(
+                &global,
+                "__hash_update",
+                2,
+                move |scope: &mut Scope<'_>, id: f64, data: Value| {
+                    let mut state = state.borrow_mut();
+                    let Some(hasher) = state.hashes.get_mut(&(id as u64)) else {
+                        return Err(unknown(scope, "hash is gone"));
+                    };
+                    bytes::with_bytes(scope, &data, |bytes| hasher.update(bytes))?;
+                    Ok(true)
+                },
+            )
             .map_err(|error| format!("__hash_update: {error}"))?;
     }
 
@@ -175,14 +185,19 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let state = state.clone();
         driver
             .context()
-            .define_function(&global, "__hash_digest", 1, move |scope: &mut Scope<'_>, id: f64| {
-                let mut state = state.borrow_mut();
-                let Some(hasher) = state.hashes.remove(&(id as u64)) else {
-                    return Err(unknown(scope, "hash is gone"));
-                };
-                let digest = hasher.finish();
-                bytes::give(scope, &digest)
-            })
+            .define_function(
+                &global,
+                "__hash_digest",
+                1,
+                move |scope: &mut Scope<'_>, id: f64| {
+                    let mut state = state.borrow_mut();
+                    let Some(hasher) = state.hashes.remove(&(id as u64)) else {
+                        return Err(unknown(scope, "hash is gone"));
+                    };
+                    let digest = hasher.finish();
+                    bytes::give(scope, &digest)
+                },
+            )
             .map_err(|error| format!("__hash_digest: {error}"))?;
     }
 
@@ -190,30 +205,43 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let state = state.clone();
         driver
             .context()
-            .define_function(&global, "__hash_copy", 1, move |scope: &mut Scope<'_>, id: f64| {
-                let mut state = state.borrow_mut();
-                let Some(hasher) = state.hashes.get(&(id as u64)) else {
-                    return Err(unknown(scope, "hash is gone"));
-                };
-                let copy = hasher.clone_state();
-                let new_id = state.take();
-                state.hashes.insert(new_id, copy);
-                Ok(new_id as f64)
-            })
+            .define_function(
+                &global,
+                "__hash_copy",
+                1,
+                move |scope: &mut Scope<'_>, id: f64| {
+                    let mut state = state.borrow_mut();
+                    let Some(hasher) = state.hashes.get(&(id as u64)) else {
+                        return Err(unknown(scope, "hash is gone"));
+                    };
+                    let copy = hasher.clone_state();
+                    let new_id = state.take();
+                    state.hashes.insert(new_id, copy);
+                    Ok(new_id as f64)
+                },
+            )
             .map_err(|error| format!("__hash_copy: {error}"))?;
     }
 
     {
         driver
             .context()
-            .define_function(&global, "__hash_once", 2, move |scope: &mut Scope<'_>, algorithm: String, data: Value| {
-                let Some(mut hasher) = Hasher::new(&algorithm) else {
-                    return Err(unknown(scope, &format!("Digest method not supported: {algorithm}")));
-                };
-                bytes::with_bytes(scope, &data, |bytes| hasher.update(bytes))?;
-                let digest = hasher.finish();
-                bytes::give(scope, &digest)
-            })
+            .define_function(
+                &global,
+                "__hash_once",
+                2,
+                move |scope: &mut Scope<'_>, algorithm: String, data: Value| {
+                    let Some(mut hasher) = Hasher::new(&algorithm) else {
+                        return Err(unknown(
+                            scope,
+                            &format!("Digest method not supported: {algorithm}"),
+                        ));
+                    };
+                    bytes::with_bytes(scope, &data, |bytes| hasher.update(bytes))?;
+                    let digest = hasher.finish();
+                    bytes::give(scope, &digest)
+                },
+            )
             .map_err(|error| format!("__hash_once: {error}"))?;
     }
 
@@ -221,16 +249,21 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let state = state.clone();
         driver
             .context()
-            .define_function(&global, "__hmac_new", 2, move |scope: &mut Scope<'_>, algorithm: String, key: Value| {
-                let key = bytes::take(scope, &key)?;
-                let Some(mac) = Macer::new(&algorithm, &key) else {
-                    return Ok(0.0);
-                };
-                let mut state = state.borrow_mut();
-                let id = state.take();
-                state.macs.insert(id, mac);
-                Ok(id as f64)
-            })
+            .define_function(
+                &global,
+                "__hmac_new",
+                2,
+                move |scope: &mut Scope<'_>, algorithm: String, key: Value| {
+                    let key = bytes::take(scope, &key)?;
+                    let Some(mac) = Macer::new(&algorithm, &key) else {
+                        return Ok(0.0);
+                    };
+                    let mut state = state.borrow_mut();
+                    let id = state.take();
+                    state.macs.insert(id, mac);
+                    Ok(id as f64)
+                },
+            )
             .map_err(|error| format!("__hmac_new: {error}"))?;
     }
 
@@ -238,14 +271,19 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let state = state.clone();
         driver
             .context()
-            .define_function(&global, "__hmac_update", 2, move |scope: &mut Scope<'_>, id: f64, data: Value| {
-                let mut state = state.borrow_mut();
-                let Some(mac) = state.macs.get_mut(&(id as u64)) else {
-                    return Err(unknown(scope, "hmac is gone"));
-                };
-                bytes::with_bytes(scope, &data, |bytes| mac.update(bytes))?;
-                Ok(true)
-            })
+            .define_function(
+                &global,
+                "__hmac_update",
+                2,
+                move |scope: &mut Scope<'_>, id: f64, data: Value| {
+                    let mut state = state.borrow_mut();
+                    let Some(mac) = state.macs.get_mut(&(id as u64)) else {
+                        return Err(unknown(scope, "hmac is gone"));
+                    };
+                    bytes::with_bytes(scope, &data, |bytes| mac.update(bytes))?;
+                    Ok(true)
+                },
+            )
             .map_err(|error| format!("__hmac_update: {error}"))?;
     }
 
@@ -253,51 +291,72 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let state = state.clone();
         driver
             .context()
-            .define_function(&global, "__hmac_digest", 1, move |scope: &mut Scope<'_>, id: f64| {
-                let mut state = state.borrow_mut();
-                let Some(mac) = state.macs.remove(&(id as u64)) else {
-                    return Err(unknown(scope, "hmac is gone"));
-                };
-                let digest = mac.finish();
-                bytes::give(scope, &digest)
-            })
+            .define_function(
+                &global,
+                "__hmac_digest",
+                1,
+                move |scope: &mut Scope<'_>, id: f64| {
+                    let mut state = state.borrow_mut();
+                    let Some(mac) = state.macs.remove(&(id as u64)) else {
+                        return Err(unknown(scope, "hmac is gone"));
+                    };
+                    let digest = mac.finish();
+                    bytes::give(scope, &digest)
+                },
+            )
             .map_err(|error| format!("__hmac_digest: {error}"))?;
     }
 
     driver
         .context()
-        .define_function(&global, "__random_bytes", 1, move |scope: &mut Scope<'_>, length: f64| {
-            let length = length.max(0.0) as usize;
-            let mut bytes = vec![0u8; length];
-            if let Err(error) = getrandom::fill(&mut bytes) {
-                return Err(unknown(scope, &format!("random numbers unavailable: {error}")));
-            }
-            bytes::give(scope, &bytes)
-        })
+        .define_function(
+            &global,
+            "__random_bytes",
+            1,
+            move |scope: &mut Scope<'_>, length: f64| {
+                let length = length.max(0.0) as usize;
+                let mut bytes = vec![0u8; length];
+                if let Err(error) = getrandom::fill(&mut bytes) {
+                    return Err(unknown(
+                        scope,
+                        &format!("random numbers unavailable: {error}"),
+                    ));
+                }
+                bytes::give(scope, &bytes)
+            },
+        )
         .map_err(|error| format!("__random_bytes: {error}"))?;
 
     driver
         .context()
-        .define_function(&global, "__random_int", 2, move |scope: &mut Scope<'_>, low: f64, high: f64| {
-            let (low, high) = (low as i64, high as i64);
-            let span = (high as i128 - low as i128) as u128;
-            if span == 0 {
-                return Ok(Value::Float(low as f64));
-            }
-            // Rejection sampling，discard the bias on these numbers just like Node
-            let limit = u128::MAX - (u128::MAX % span);
-            for _ in 0..64 {
-                let mut bytes = [0u8; 16];
-                if let Err(error) = getrandom::fill(&mut bytes) {
-                    return Err(unknown(scope, &format!("random numbers unavailable: {error}")));
+        .define_function(
+            &global,
+            "__random_int",
+            2,
+            move |scope: &mut Scope<'_>, low: f64, high: f64| {
+                let (low, high) = (low as i64, high as i64);
+                let span = (high as i128 - low as i128) as u128;
+                if span == 0 {
+                    return Ok(Value::Float(low as f64));
                 }
-                let sample = u128::from_le_bytes(bytes);
-                if sample < limit {
-                    return Ok(Value::Float((low as i128 + (sample % span) as i128) as f64));
+                // Rejection sampling，discard the bias on these numbers just like Node
+                let limit = u128::MAX - (u128::MAX % span);
+                for _ in 0..64 {
+                    let mut bytes = [0u8; 16];
+                    if let Err(error) = getrandom::fill(&mut bytes) {
+                        return Err(unknown(
+                            scope,
+                            &format!("random numbers unavailable: {error}"),
+                        ));
+                    }
+                    let sample = u128::from_le_bytes(bytes);
+                    if sample < limit {
+                        return Ok(Value::Float((low as i128 + (sample % span) as i128) as f64));
+                    }
                 }
-            }
-            Err(unknown(scope, "randomInt: unable to sample"))
-        })
+                Err(unknown(scope, "randomInt: unable to sample"))
+            },
+        )
         .map_err(|error| format!("__random_int: {error}"))?;
 
     driver
@@ -305,7 +364,10 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         .define_function(&global, "__random_uuid", 0, move |scope: &mut Scope<'_>| {
             let mut bytes = [0u8; 16];
             if let Err(error) = getrandom::fill(&mut bytes) {
-                return Err(unknown(scope, &format!("random numbers unavailable: {error}")));
+                return Err(unknown(
+                    scope,
+                    &format!("random numbers unavailable: {error}"),
+                ));
             }
             bytes[6] = (bytes[6] & 0x0f) | 0x40;
             bytes[8] = (bytes[8] & 0x3f) | 0x80;

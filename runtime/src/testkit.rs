@@ -58,7 +58,10 @@ impl ModuleLoader for TableLoader {
         match self.modules.get(name) {
             Some(module) => Ok(ModuleSource::source(module.code.clone().into_bytes())),
             None => Err(scope
-                .new_native_error(NativeErrorKind::Type, &format!("Cannot find module '{name}'"))
+                .new_native_error(
+                    NativeErrorKind::Type,
+                    &format!("Cannot find module '{name}'"),
+                )
                 .unwrap_or(Value::Undefined)),
         }
     }
@@ -109,7 +112,6 @@ impl Harness {
         harness
     }
 
-
     pub fn driver(&mut self) -> &mut Driver {
         &mut self.driver
     }
@@ -126,14 +128,18 @@ impl Harness {
 
     pub fn expect_number(&mut self, source: &str) -> f64 {
         match self.eval(source) {
-            Ok(value) => number_of(&value).unwrap_or_else(|| panic!("{source} is not a number: {value:?}")),
+            Ok(value) => {
+                number_of(&value).unwrap_or_else(|| panic!("{source} is not a number: {value:?}"))
+            }
             Err(error) => panic!("{source} failed: {error}"),
         }
     }
 
     pub fn expect_text(&mut self, source: &str) -> String {
         match self.eval(source) {
-            Ok(value) => text_of(&value).unwrap_or_else(|| panic!("{source} is not a string: {value:?}")),
+            Ok(value) => {
+                text_of(&value).unwrap_or_else(|| panic!("{source} is not a string: {value:?}"))
+            }
             Err(error) => panic!("{source} failed: {error}"),
         }
     }
@@ -179,7 +185,9 @@ impl Harness {
     /// so here a bootstrap module attaches import * as ns to global.
     pub fn module(&mut self, name: &str, source: &str) -> Result<Value, String> {
         if name.contains('\'') {
-            return Err(format!("module name must not contain single quotes: {name}"));
+            return Err(format!(
+                "module name must not contain single quotes: {name}"
+            ));
         }
         let module = self
             .driver
@@ -216,7 +224,12 @@ impl Harness {
     }
 
     /// Get a function from a module and call it. The old call_test spot.
-    pub fn call(&mut self, namespace: &Value, function: &str, args: &[Value]) -> Result<Value, String> {
+    pub fn call(
+        &mut self,
+        namespace: &Value,
+        function: &str,
+        args: &[Value],
+    ) -> Result<Value, String> {
         let this = namespace.clone();
         let value = self.property(&this, function)?;
         let context = self.driver.context();
@@ -348,15 +361,14 @@ static COUNTER: AtomicU64 = AtomicU64::new(0);
 /// Old given_file: write a temporary file and leave it alone after the test.
 pub fn given_file(content: &str) -> PathBuf {
     let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!(
-        "xmas-test-{}-{unique}",
-        std::process::id()
-    ));
+    let path = std::env::temp_dir().join(format!("xmas-test-{}-{unique}", std::process::id()));
     std::fs::write(&path, content).expect("write temporary file");
     path
 }
 
 /// A minimal Rust module function, used as a fixture for define_module.
-pub fn constant(_scope: &mut Scope<'_>) -> Result<Value, quickjs_oxide::engine::api::core::RuntimeError> {
+pub fn constant(
+    _scope: &mut Scope<'_>,
+) -> Result<Value, quickjs_oxide::engine::api::core::RuntimeError> {
     Ok(Value::Int(42))
 }

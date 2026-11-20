@@ -68,6 +68,10 @@ impl Modules {
     }
 
     pub fn total_bytes(&self) -> usize {
-        self.0.borrow().values().map(|module| module.code.len()).sum()
+        self.0
+            .borrow()
+            .values()
+            .map(|module| module.code.len())
+            .sum()
     }
 }

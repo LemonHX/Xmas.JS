@@ -9,7 +9,8 @@ fn eval_number() {
     let mut h = Harness::new();
     assert_eq!(h.expect_number("1 + 1"), 2.0);
     assert_eq!(h.expect_text("'abc'.toUpperCase()"), "ABC");
-    h.eval("globalThis.acc = 0; for (let i = 0; i < 10; i++) acc += i;").unwrap();
+    h.eval("globalThis.acc = 0; for (let i = 0; i < 10; i++) acc += i;")
+        .unwrap();
     assert_eq!(h.expect_number("acc"), 45.0);
 }
 
@@ -30,7 +31,10 @@ fn rust_module_by_name() {
     });
     h.define_module("adder", vec![("add".to_string(), add)]);
     let namespace = h
-        .module("main", "import { add } from 'adder'; export function test() { return add(2, 3); }")
+        .module(
+            "main",
+            "import { add } from 'adder'; export function test() { return add(2, 3); }",
+        )
         .unwrap();
     let value = h.call(&namespace, "test", &[]).unwrap();
     assert_eq!(number_of(&value), Some(5.0));
@@ -102,7 +106,10 @@ fn promise_chain_settles() {
 fn error_from_module_call() {
     let mut h = Harness::new();
     let namespace = h
-        .module("failing", "export function test() { throw new TypeError('bad input'); }")
+        .module(
+            "failing",
+            "export function test() { throw new TypeError('bad input'); }",
+        )
         .unwrap();
     let thrown = h.call_err(&namespace, "test", &[]);
     assert_eq!(thrown.name, "TypeError");
@@ -112,8 +119,13 @@ fn error_from_module_call() {
 #[test]
 fn broken_module_fails_to_compile() {
     let mut h = Harness::new();
-    let error = h.module("broken.ts", "export function f(: number { return 1; }").unwrap_err();
-    assert!(error.contains("broken.ts"), "The error should include the module name: {error}");
+    let error = h
+        .module("broken.ts", "export function f(: number { return 1; }")
+        .unwrap_err();
+    assert!(
+        error.contains("broken.ts"),
+        "The error should include the module name: {error}"
+    );
 }
 
 #[test]

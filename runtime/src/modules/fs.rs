@@ -12,7 +12,8 @@ use std::time::UNIX_EPOCH;
 
 use futures_lite::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use quickjs_oxide::engine::api::core::{
-    Context, Js, JsString, NativeErrorKind, ObjectRef, PromiseCapability, RuntimeError, Scope, Value,
+    Context, Js, JsString, NativeErrorKind, ObjectRef, PromiseCapability, RuntimeError, Scope,
+    Value,
 };
 
 use crate::driver::Driver;
@@ -36,14 +37,19 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let pending = pending.clone();
         driver
             .context()
-            .define_function(&global, "__fs_read_file", 1, move |scope: &mut Scope<'_>, path: String| {
-                start(scope, &pending, async move {
-                    smol::fs::read(path)
-                        .await
-                        .map(Payload::Bytes)
-                        .map_err(|error| describe(&error))
-                })
-            })
+            .define_function(
+                &global,
+                "__fs_read_file",
+                1,
+                move |scope: &mut Scope<'_>, path: String| {
+                    start(scope, &pending, async move {
+                        smol::fs::read(path)
+                            .await
+                            .map(Payload::Bytes)
+                            .map_err(|error| describe(&error))
+                    })
+                },
+            )
             .map_err(|error| format!("__fs_read_file: {error}"))?;
     }
 
@@ -55,7 +61,11 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
                 &global,
                 "__fs_write_file",
                 4,
-                move |scope: &mut Scope<'_>, path: String, data: Value, append: bool, _encoding: String| {
+                move |scope: &mut Scope<'_>,
+                      path: String,
+                      data: Value,
+                      append: bool,
+                      _encoding: String| {
                     let bytes = bytes::take(scope, &data)?;
                     start(scope, &pending, async move {
                         if append {
@@ -66,10 +76,14 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
                                 .open(path)
                                 .await
                                 .map_err(|error| describe(&error))?;
-                            file.write_all(&bytes).await.map_err(|error| describe(&error))?;
+                            file.write_all(&bytes)
+                                .await
+                                .map_err(|error| describe(&error))?;
                             file.flush().await.map_err(|error| describe(&error))?;
                         } else {
-                            smol::fs::write(path, bytes).await.map_err(|error| describe(&error))?;
+                            smol::fs::write(path, bytes)
+                                .await
+                                .map_err(|error| describe(&error))?;
                         }
                         Ok(Payload::Bytes(Vec::new()))
                     })
@@ -82,18 +96,23 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let pending = pending.clone();
         driver
             .context()
-            .define_function(&global, "__fs_mkdir", 2, move |scope: &mut Scope<'_>, path: String, recursive: bool| {
-                start(scope, &pending, async move {
-                    let outcome = if recursive {
-                        smol::fs::create_dir_all(path).await
-                    } else {
-                        smol::fs::create_dir(path).await
-                    };
-                    outcome
-                        .map(|()| Payload::Bytes(Vec::new()))
-                        .map_err(|error| describe(&error))
-                })
-            })
+            .define_function(
+                &global,
+                "__fs_mkdir",
+                2,
+                move |scope: &mut Scope<'_>, path: String, recursive: bool| {
+                    start(scope, &pending, async move {
+                        let outcome = if recursive {
+                            smol::fs::create_dir_all(path).await
+                        } else {
+                            smol::fs::create_dir(path).await
+                        };
+                        outcome
+                            .map(|()| Payload::Bytes(Vec::new()))
+                            .map_err(|error| describe(&error))
+                    })
+                },
+            )
             .map_err(|error| format!("__fs_mkdir: {error}"))?;
     }
 
@@ -135,14 +154,19 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let pending = pending.clone();
         driver
             .context()
-            .define_function(&global, "__fs_rename", 2, move |scope: &mut Scope<'_>, from: String, to: String| {
-                start(scope, &pending, async move {
-                    smol::fs::rename(from, to)
-                        .await
-                        .map(|()| Payload::Bytes(Vec::new()))
-                        .map_err(|error| describe(&error))
-                })
-            })
+            .define_function(
+                &global,
+                "__fs_rename",
+                2,
+                move |scope: &mut Scope<'_>, from: String, to: String| {
+                    start(scope, &pending, async move {
+                        smol::fs::rename(from, to)
+                            .await
+                            .map(|()| Payload::Bytes(Vec::new()))
+                            .map_err(|error| describe(&error))
+                    })
+                },
+            )
             .map_err(|error| format!("__fs_rename: {error}"))?;
     }
 
@@ -150,15 +174,27 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let pending = pending.clone();
         driver
             .context()
-            .define_function(&global, "__fs_copy", 2, move |scope: &mut Scope<'_>, from: String, to: String| {
-                start(scope, &pending, async move {
-                    let mut source = smol::fs::File::open(from).await.map_err(|error| describe(&error))?;
-                    let mut bytes = Vec::new();
-                    source.read_to_end(&mut bytes).await.map_err(|error| describe(&error))?;
-                    smol::fs::write(to, bytes).await.map_err(|error| describe(&error))?;
-                    Ok(Payload::Bytes(Vec::new()))
-                })
-            })
+            .define_function(
+                &global,
+                "__fs_copy",
+                2,
+                move |scope: &mut Scope<'_>, from: String, to: String| {
+                    start(scope, &pending, async move {
+                        let mut source = smol::fs::File::open(from)
+                            .await
+                            .map_err(|error| describe(&error))?;
+                        let mut bytes = Vec::new();
+                        source
+                            .read_to_end(&mut bytes)
+                            .await
+                            .map_err(|error| describe(&error))?;
+                        smol::fs::write(to, bytes)
+                            .await
+                            .map_err(|error| describe(&error))?;
+                        Ok(Payload::Bytes(Vec::new()))
+                    })
+                },
+            )
             .map_err(|error| format!("__fs_copy: {error}"))?;
     }
 
@@ -166,12 +202,19 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let pending = pending.clone();
         driver
             .context()
-            .define_function(&global, "__fs_realpath", 1, move |scope: &mut Scope<'_>, path: String| {
-                start(scope, &pending, async move {
-                    let real = smol::fs::canonicalize(path).await.map_err(|error| describe(&error))?;
-                    Ok(Payload::Text(real.to_string_lossy().into_owned()))
-                })
-            })
+            .define_function(
+                &global,
+                "__fs_realpath",
+                1,
+                move |scope: &mut Scope<'_>, path: String| {
+                    start(scope, &pending, async move {
+                        let real = smol::fs::canonicalize(path)
+                            .await
+                            .map_err(|error| describe(&error))?;
+                        Ok(Payload::Text(real.to_string_lossy().into_owned()))
+                    })
+                },
+            )
             .map_err(|error| format!("__fs_realpath: {error}"))?;
     }
 
@@ -179,32 +222,39 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let pending = pending.clone();
         driver
             .context()
-            .define_function(&global, "__fs_readdir", 1, move |scope: &mut Scope<'_>, path: String| {
-                start(scope, &pending, async move {
-                    let mut dir = smol::fs::read_dir(path).await.map_err(|error| describe(&error))?;
-                    let mut out = String::from("[");
-                    let mut first = true;
-                    while let Some(entry) = dir.next().await {
-                        let entry = entry.map_err(|error| describe(&error))?;
-                        let name = entry.file_name().to_string_lossy().into_owned();
-                        let kind = entry.file_type().await.ok();
-                        let is_dir = kind.map(|kind| kind.is_dir()).unwrap_or(false);
-                        let is_link = kind.map(|kind| kind.is_symlink()).unwrap_or(false);
-                        if !first {
-                            out.push(',');
+            .define_function(
+                &global,
+                "__fs_readdir",
+                1,
+                move |scope: &mut Scope<'_>, path: String| {
+                    start(scope, &pending, async move {
+                        let mut dir = smol::fs::read_dir(path)
+                            .await
+                            .map_err(|error| describe(&error))?;
+                        let mut out = String::from("[");
+                        let mut first = true;
+                        while let Some(entry) = dir.next().await {
+                            let entry = entry.map_err(|error| describe(&error))?;
+                            let name = entry.file_name().to_string_lossy().into_owned();
+                            let kind = entry.file_type().await.ok();
+                            let is_dir = kind.map(|kind| kind.is_dir()).unwrap_or(false);
+                            let is_link = kind.map(|kind| kind.is_symlink()).unwrap_or(false);
+                            if !first {
+                                out.push(',');
+                            }
+                            first = false;
+                            out.push_str(&format!(
+                                "{{\"name\":{},\"dir\":{},\"link\":{}}}",
+                                quote(&name),
+                                is_dir,
+                                is_link
+                            ));
                         }
-                        first = false;
-                        out.push_str(&format!(
-                            "{{\"name\":{},\"dir\":{},\"link\":{}}}",
-                            quote(&name),
-                            is_dir,
-                            is_link
-                        ));
-                    }
-                    out.push(']');
-                    Ok(Payload::Text(out))
-                })
-            })
+                        out.push(']');
+                        Ok(Payload::Text(out))
+                    })
+                },
+            )
             .map_err(|error| format!("__fs_readdir: {error}"))?;
     }
 
@@ -212,24 +262,31 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let pending = pending.clone();
         driver
             .context()
-            .define_function(&global, "__fs_stat", 1, move |scope: &mut Scope<'_>, path: String| {
-                start(scope, &pending, async move {
-                    let meta = smol::fs::metadata(path).await.map_err(|error| describe(&error))?;
-                    let mtime = meta
-                        .modified()
-                        .ok()
-                        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-                        .map(|since| since.as_secs_f64() * 1000.0)
-                        .unwrap_or(0.0);
-                    Ok(Payload::Text(format!(
-                        "{{\"size\":{},\"dir\":{},\"link\":{},\"mtimeMs\":{}}}",
-                        meta.len(),
-                        meta.is_dir(),
-                        meta.file_type().is_symlink(),
-                        mtime
-                    )))
-                })
-            })
+            .define_function(
+                &global,
+                "__fs_stat",
+                1,
+                move |scope: &mut Scope<'_>, path: String| {
+                    start(scope, &pending, async move {
+                        let meta = smol::fs::metadata(path)
+                            .await
+                            .map_err(|error| describe(&error))?;
+                        let mtime = meta
+                            .modified()
+                            .ok()
+                            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                            .map(|since| since.as_secs_f64() * 1000.0)
+                            .unwrap_or(0.0);
+                        Ok(Payload::Text(format!(
+                            "{{\"size\":{},\"dir\":{},\"link\":{},\"mtimeMs\":{}}}",
+                            meta.len(),
+                            meta.is_dir(),
+                            meta.file_type().is_symlink(),
+                            mtime
+                        )))
+                    })
+                },
+            )
             .map_err(|error| format!("__fs_stat: {error}"))?;
     }
 
@@ -244,8 +301,19 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         .map_err(|error| format!("fs.promises: {error}"))?;
     let mut names = vec!["promises", "default"];
     names.extend([
-        "readFile", "writeFile", "appendFile", "mkdir", "rm", "unlink", "rmdir", "rename",
-        "copyFile", "realpath", "readdir", "stat", "exists",
+        "readFile",
+        "writeFile",
+        "appendFile",
+        "mkdir",
+        "rm",
+        "unlink",
+        "rmdir",
+        "rename",
+        "copyFile",
+        "realpath",
+        "readdir",
+        "stat",
+        "exists",
     ]);
     let exports = super::collect(driver, &module, &names)?;
     super::define_with_alias(driver, "fs", exports)?;
@@ -304,7 +372,12 @@ fn label(context: &mut Context, error: ObjectRef, code: &str) -> Value {
             let _ = context.set_property(object, &PropertyKey::from_js_string(name), value);
         }
     }
-    put(context, &error, "name", Value::String(JsString::from_static("Error")));
+    put(
+        context,
+        &error,
+        "name",
+        Value::String(JsString::from_static("Error")),
+    );
     if let Ok(code) = JsString::try_from_utf8(code) {
         put(context, &error, "code", Value::String(code));
     }
@@ -331,4 +404,3 @@ fn describe(error: &std::io::Error) -> String {
     };
     format!("{code}: {error}")
 }
-

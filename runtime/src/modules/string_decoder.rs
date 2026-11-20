@@ -262,8 +262,7 @@ impl Decoder {
     }
 
     fn flush(&mut self) -> String {
-        let odd_utf16_byte =
-            self.encoding == Encoding::Utf16le && self.buffered_bytes % 2 == 1;
+        let odd_utf16_byte = self.encoding == Encoding::Utf16le && self.buffered_bytes % 2 == 1;
 
         if odd_utf16_byte {
             // Ignore a single trailing byte, like the JS decoder does.
@@ -303,9 +302,9 @@ impl Decoder {
 
 /// A Rust String as a JS value.
 fn text_value(text: &str) -> Result<Value, RuntimeError> {
-    Ok(Value::String(
-        JsString::try_from_utf8(text).map_err(|error| RuntimeError::Internal(error.to_string()))?,
-    ))
+    Ok(Value::String(JsString::try_from_utf8(text).map_err(
+        |error| RuntimeError::Internal(error.to_string()),
+    )?))
 }
 
 #[derive(Default)]
@@ -334,17 +333,22 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let state = state.clone();
         driver
             .context()
-            .define_function(&global, "__sd_create", 1, move |scope: &mut Scope<'_>, label: String| {
-                let Some(encoding) = canonical(&label) else {
-                    return Err(super::throw(scope, &format!("Unknown encoding: {label}")));
-                };
-                let mut state = state.borrow_mut();
-                let id = state.take_id();
-                state.decoders.insert(id, Decoder::new(encoding));
-                // One string instead of two calls: the label the decoder reports
-                // and the handle it keeps.
-                Ok(format!("{}\u{0}{id}", encoding.label()))
-            })
+            .define_function(
+                &global,
+                "__sd_create",
+                1,
+                move |scope: &mut Scope<'_>, label: String| {
+                    let Some(encoding) = canonical(&label) else {
+                        return Err(super::throw(scope, &format!("Unknown encoding: {label}")));
+                    };
+                    let mut state = state.borrow_mut();
+                    let id = state.take_id();
+                    state.decoders.insert(id, Decoder::new(encoding));
+                    // One string instead of two calls: the label the decoder reports
+                    // and the handle it keeps.
+                    Ok(format!("{}\u{0}{id}", encoding.label()))
+                },
+            )
             .map_err(|error| format!("__sd_create: {error}"))?;
     }
 
@@ -352,14 +356,19 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let state = state.clone();
         driver
             .context()
-            .define_function(&global, "__sd_write", 2, move |scope: &mut Scope<'_>, id: f64, data: Value| {
-                let mut state = state.borrow_mut();
-                let Some(decoder) = state.decoders.get_mut(&(id as u64)) else {
-                    return Err(super::throw(scope, "decoder is gone"));
-                };
-                let text = bytes::with_bytes(scope, &data, |bytes| decoder.decode_data(bytes))?;
-                text_value(&text)
-            })
+            .define_function(
+                &global,
+                "__sd_write",
+                2,
+                move |scope: &mut Scope<'_>, id: f64, data: Value| {
+                    let mut state = state.borrow_mut();
+                    let Some(decoder) = state.decoders.get_mut(&(id as u64)) else {
+                        return Err(super::throw(scope, "decoder is gone"));
+                    };
+                    let text = bytes::with_bytes(scope, &data, |bytes| decoder.decode_data(bytes))?;
+                    text_value(&text)
+                },
+            )
             .map_err(|error| format!("__sd_write: {error}"))?;
     }
 
@@ -367,20 +376,25 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let state = state.clone();
         driver
             .context()
-            .define_function(&global, "__sd_end", 2, move |scope: &mut Scope<'_>, id: f64, data: Value| {
-                let mut state = state.borrow_mut();
-                // end() flushes what is left but does not destroy the decoder:
-                // Node lets you keep writing to it afterwards.
-                let Some(decoder) = state.decoders.get_mut(&(id as u64)) else {
-                    return Err(super::throw(scope, "decoder is gone"));
-                };
-                let text = if matches!(data, Value::Undefined) {
-                    decoder.end(None)
-                } else {
-                    bytes::with_bytes(scope, &data, |bytes| decoder.end(Some(bytes)))?
-                };
-                text_value(&text)
-            })
+            .define_function(
+                &global,
+                "__sd_end",
+                2,
+                move |scope: &mut Scope<'_>, id: f64, data: Value| {
+                    let mut state = state.borrow_mut();
+                    // end() flushes what is left but does not destroy the decoder:
+                    // Node lets you keep writing to it afterwards.
+                    let Some(decoder) = state.decoders.get_mut(&(id as u64)) else {
+                        return Err(super::throw(scope, "decoder is gone"));
+                    };
+                    let text = if matches!(data, Value::Undefined) {
+                        decoder.end(None)
+                    } else {
+                        bytes::with_bytes(scope, &data, |bytes| decoder.end(Some(bytes)))?
+                    };
+                    text_value(&text)
+                },
+            )
             .map_err(|error| format!("__sd_end: {error}"))?;
     }
 

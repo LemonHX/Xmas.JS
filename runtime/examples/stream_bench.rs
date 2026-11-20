@@ -129,7 +129,11 @@ fn main() {
             format!("__bench.viewCost({n})")
         };
         h.eval(&call).expect("cost");
-        let label = if name == "emit" { "__bench.emit_us" } else { "__bench.view_us" };
+        let label = if name == "emit" {
+            "__bench.emit_us"
+        } else {
+            "__bench.view_us"
+        };
         let micros = h.expect_number(label);
         line(name, micros, n, 0.0);
     }
@@ -144,7 +148,8 @@ fn main() {
 
     println!("== allocation control");
     for (n, size) in [(20_000.0_f64, 4096.0_f64)] {
-        h.eval(&format!("__bench.allocate({n}, {size})")).expect("allocate");
+        h.eval(&format!("__bench.allocate({n}, {size})"))
+            .expect("allocate");
         let alloc_us = h.expect_number("__bench.alloc_us");
         println!("--- {n:.0} fresh Buffers of {size:.0} B");
         line("alloc", alloc_us, n, n * size);

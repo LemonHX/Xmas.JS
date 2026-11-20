@@ -55,7 +55,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
              component: String,
              value: String|
              -> Result<Value, RuntimeError> {
-                let mut url = Url::parse(&href).map_err(|error| super::throw(scope, &error.to_string()))?;
+                let mut url =
+                    Url::parse(&href).map_err(|error| super::throw(scope, &error.to_string()))?;
                 set(&mut url, &component, &value).map_err(|error| super::throw(scope, &error))?;
                 Ok(Value::String(text(&parts(&url))?))
             },
@@ -86,8 +87,14 @@ fn parts(url: &Url) -> String {
         format!("{host}:{port}")
     };
     let path = url.path();
-    let search = url.query().map(|query| format!("?{query}")).unwrap_or_default();
-    let hash = url.fragment().map(|fragment| format!("#{fragment}")).unwrap_or_default();
+    let search = url
+        .query()
+        .map(|query| format!("?{query}"))
+        .unwrap_or_default();
+    let hash = url
+        .fragment()
+        .map(|fragment| format!("#{fragment}"))
+        .unwrap_or_default();
     format!(
         "{{\"href\":{},\"protocol\":{},\"username\":{},\"password\":{},\"host\":{},\"hostname\":{},\"port\":{},\"pathname\":{},\"search\":{},\"hash\":{},\"origin\":{}}}",
         quote(url.as_str()),
@@ -127,7 +134,9 @@ fn set(url: &mut Url, component: &str, value: &str) -> Result<(), String> {
         "protocol" => url
             .set_scheme(value.trim_end_matches(':'))
             .map_err(|_| "protocol is invalid".to_string()),
-        "username" => url.set_username(value).map_err(|_| "username is invalid".to_string()),
+        "username" => url
+            .set_username(value)
+            .map_err(|_| "username is invalid".to_string()),
         "password" => url
             .set_password(if value.is_empty() { None } else { Some(value) })
             .map_err(|_| "password is invalid".to_string()),
@@ -138,7 +147,11 @@ fn set(url: &mut Url, component: &str, value: &str) -> Result<(), String> {
             .set_port(if value.is_empty() {
                 None
             } else {
-                Some(value.parse::<u16>().map_err(|_| "port is invalid".to_string())?)
+                Some(
+                    value
+                        .parse::<u16>()
+                        .map_err(|_| "port is invalid".to_string())?,
+                )
             })
             .map_err(|_| "port is invalid".to_string()),
         "pathname" => {
@@ -152,7 +165,11 @@ fn set(url: &mut Url, component: &str, value: &str) -> Result<(), String> {
         }
         "hash" => {
             let fragment = value.strip_prefix('#').unwrap_or(value);
-            url.set_fragment(if fragment.is_empty() { None } else { Some(fragment) });
+            url.set_fragment(if fragment.is_empty() {
+                None
+            } else {
+                Some(fragment)
+            });
             Ok(())
         }
         other => Err(format!("unknown field: {other}")),

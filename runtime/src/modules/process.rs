@@ -48,13 +48,18 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let env = env.clone();
         driver
             .context()
-            .define_function(&global, "__process_chdir", 1, move |scope: &mut Scope<'_>, path: String| {
-                let target = std::path::PathBuf::from(&path);
-                std::env::set_current_dir(&target)
-                    .map_err(|error| super::throw(scope, &error.to_string()))?;
-                env.set_cwd(std::env::current_dir().unwrap_or(target));
-                Ok(Value::Undefined)
-            })
+            .define_function(
+                &global,
+                "__process_chdir",
+                1,
+                move |scope: &mut Scope<'_>, path: String| {
+                    let target = std::path::PathBuf::from(&path);
+                    std::env::set_current_dir(&target)
+                        .map_err(|error| super::throw(scope, &error.to_string()))?;
+                    env.set_cwd(std::env::current_dir().unwrap_or(target));
+                    Ok(Value::Undefined)
+                },
+            )
             .map_err(|error| format!("__process_chdir: {error}"))?;
     }
 
@@ -62,10 +67,15 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let env = env.clone();
         driver
             .context()
-            .define_function(&global, "__process_set_env", 2, move |_: &mut Scope<'_>, key: String, value: String| {
-                env.set(&key, &value);
-                Ok::<Value, RuntimeError>(Value::Undefined)
-            })
+            .define_function(
+                &global,
+                "__process_set_env",
+                2,
+                move |_: &mut Scope<'_>, key: String, value: String| {
+                    env.set(&key, &value);
+                    Ok::<Value, RuntimeError>(Value::Undefined)
+                },
+            )
             .map_err(|error| format!("__process_set_env: {error}"))?;
     }
 
@@ -73,10 +83,15 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let env = env.clone();
         driver
             .context()
-            .define_function(&global, "__process_del_env", 1, move |_: &mut Scope<'_>, key: String| {
-                env.remove(&key);
-                Ok::<Value, RuntimeError>(Value::Undefined)
-            })
+            .define_function(
+                &global,
+                "__process_del_env",
+                1,
+                move |_: &mut Scope<'_>, key: String| {
+                    env.remove(&key);
+                    Ok::<Value, RuntimeError>(Value::Undefined)
+                },
+            )
             .map_err(|error| format!("__process_del_env: {error}"))?;
     }
 
@@ -115,11 +130,20 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let console = driver.host.console.clone();
         driver
             .context()
-            .define_function(&global, "__process_write", 2, move |_: &mut Scope<'_>, stream: String, body: String| {
-                let stream = if stream == "stderr" { Stream::Stderr } else { Stream::Stdout };
-                console.raw(stream, body.as_bytes());
-                Ok::<Value, RuntimeError>(Value::Bool(true))
-            })
+            .define_function(
+                &global,
+                "__process_write",
+                2,
+                move |_: &mut Scope<'_>, stream: String, body: String| {
+                    let stream = if stream == "stderr" {
+                        Stream::Stderr
+                    } else {
+                        Stream::Stdout
+                    };
+                    console.raw(stream, body.as_bytes());
+                    Ok::<Value, RuntimeError>(Value::Bool(true))
+                },
+            )
             .map_err(|error| format!("__process_write: {error}"))?;
     }
 
@@ -127,15 +151,20 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         use std::io::IsTerminal;
         driver
             .context()
-            .define_function(&global, "__process_isatty", 1, move |_: &mut Scope<'_>, fd: f64| {
-                let answer = match fd as i32 {
-                    0 => std::io::stdin().is_terminal(),
-                    1 => std::io::stdout().is_terminal(),
-                    2 => std::io::stderr().is_terminal(),
-                    _ => false,
-                };
-                Ok::<Value, RuntimeError>(Value::Bool(answer))
-            })
+            .define_function(
+                &global,
+                "__process_isatty",
+                1,
+                move |_: &mut Scope<'_>, fd: f64| {
+                    let answer = match fd as i32 {
+                        0 => std::io::stdin().is_terminal(),
+                        1 => std::io::stdout().is_terminal(),
+                        2 => std::io::stderr().is_terminal(),
+                        _ => false,
+                    };
+                    Ok::<Value, RuntimeError>(Value::Bool(answer))
+                },
+            )
             .map_err(|error| format!("__process_isatty: {error}"))?;
     }
 
@@ -143,16 +172,21 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         let console = driver.host.console.clone();
         driver
             .context()
-            .define_function(&global, "__process_exit", 1, move |scope: &mut Scope<'_>, code: f64| -> Result<Value, RuntimeError> {
-                let code = code as i32;
-                // Under a capturing host (tests, benchmarks) exiting would take
-                // the harness with it, so it raises instead and the test can
-                // assert on it. A real run exits the process.
-                if console.is_captured() {
-                    return Err(super::throw(scope, &format!("process.exit({code})")));
-                }
-                std::process::exit(code);
-            })
+            .define_function(
+                &global,
+                "__process_exit",
+                1,
+                move |scope: &mut Scope<'_>, code: f64| -> Result<Value, RuntimeError> {
+                    let code = code as i32;
+                    // Under a capturing host (tests, benchmarks) exiting would take
+                    // the harness with it, so it raises instead and the test can
+                    // assert on it. A real run exits the process.
+                    if console.is_captured() {
+                        return Err(super::throw(scope, &format!("process.exit({code})")));
+                    }
+                    std::process::exit(code);
+                },
+            )
             .map_err(|error| format!("__process_exit: {error}"))?;
     }
 
@@ -164,9 +198,29 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         .eval("globalThis.process")
         .map_err(|error| format!("process object: {error}"))?;
     let names = [
-        "env", "argv", "argv0", "execPath", "platform", "arch", "pid", "ppid", "version",
-        "versions", "cwd", "chdir", "nextTick", "hrtime", "uptime", "memoryUsage", "exit",
-        "stdout", "stderr", "on", "off", "once", "emit",
+        "env",
+        "argv",
+        "argv0",
+        "execPath",
+        "platform",
+        "arch",
+        "pid",
+        "ppid",
+        "version",
+        "versions",
+        "cwd",
+        "chdir",
+        "nextTick",
+        "hrtime",
+        "uptime",
+        "memoryUsage",
+        "exit",
+        "stdout",
+        "stderr",
+        "on",
+        "off",
+        "once",
+        "emit",
     ];
     let mut exports = vec![("default".to_string(), process.clone())];
     exports.extend(super::collect(driver, &process, &names)?);
@@ -175,8 +229,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
 }
 
 fn text(body: &str) -> Result<Value, RuntimeError> {
-    let body = JsString::try_from_utf8(body)
-        .map_err(|error| RuntimeError::Internal(error.to_string()))?;
+    let body =
+        JsString::try_from_utf8(body).map_err(|error| RuntimeError::Internal(error.to_string()))?;
     Ok(Value::String(body))
 }
 
@@ -225,7 +279,6 @@ fn meta(env: &Env) -> String {
     out.push('}');
     out
 }
-
 
 /// memoryUsage: the heap numbers come from the engine's own report, the
 /// resident part from the kernel. external and arrayBuffers are reported as

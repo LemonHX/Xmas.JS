@@ -69,7 +69,12 @@ impl Clock {
 
     /// The statement called inside interrupt: either a timeout or an external stop request counts as stopping.
     pub fn stop_requested(&self) -> bool {
-        self.cancelled() || self.0.deadline.get().is_some_and(|deadline| Instant::now() >= deadline)
+        self.cancelled()
+            || self
+                .0
+                .deadline
+                .get()
+                .is_some_and(|deadline| Instant::now() >= deadline)
     }
 
     pub fn cancelled(&self) -> bool {

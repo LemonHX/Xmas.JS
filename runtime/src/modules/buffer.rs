@@ -27,8 +27,12 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             &global,
             "__text_to_bytes",
             2,
-            |scope: &mut Scope<'_>, text: String, encoding: String| -> Result<Value, RuntimeError> {
-                let encoded = encode(&text, &encoding).map_err(|error| super::throw(scope, &error))?;
+            |scope: &mut Scope<'_>,
+             text: String,
+             encoding: String|
+             -> Result<Value, RuntimeError> {
+                let encoded =
+                    encode(&text, &encoding).map_err(|error| super::throw(scope, &error))?;
                 bytes::give(scope, &encoded)
             },
         )
@@ -40,13 +44,15 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             &global,
             "__bytes_to_text",
             2,
-            |scope: &mut Scope<'_>, value: Value, encoding: String| -> Result<Value, RuntimeError> {
+            |scope: &mut Scope<'_>,
+             value: Value,
+             encoding: String|
+             -> Result<Value, RuntimeError> {
                 let decoded = bytes::with_bytes(scope, &value, |raw| decode(raw, &encoding))?;
                 let text = decoded.map_err(|error| super::throw(scope, &error))?;
-                Ok(Value::String(
-                    JsString::try_from_utf8(&text)
-                        .map_err(|error| RuntimeError::Internal(error.to_string()))?,
-                ))
+                Ok(Value::String(JsString::try_from_utf8(&text).map_err(
+                    |error| RuntimeError::Internal(error.to_string()),
+                )?))
             },
         )
         .map_err(|error| format!("__bytes_to_text: {error}"))?;
@@ -57,7 +63,11 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     let module = driver
         .eval("globalThis.__buffer_module")
         .map_err(|error| format!("buffer module: {error}"))?;
-    let exports = super::collect(driver, &module, &["Buffer", "Blob", "atob", "btoa", "default"])?;
+    let exports = super::collect(
+        driver,
+        &module,
+        &["Buffer", "Blob", "atob", "btoa", "default"],
+    )?;
     super::define_with_alias(driver, "buffer", exports.clone())?;
     let blob = super::collect(driver, &module, &["Blob"])?;
     super::define_with_alias(driver, "blob", blob)
@@ -114,7 +124,11 @@ pub(crate) fn decode(bytes: &[u8], encoding: &str) -> Result<String, String> {
             Ok(out)
         }
         "base64" => Ok(base64_encode(bytes)),
-        "base64url" => Ok(base64_encode(bytes).replace('+', "-").replace('/', "_").trim_end_matches('=').to_string()),
+        "base64url" => Ok(base64_encode(bytes)
+            .replace('+', "-")
+            .replace('/', "_")
+            .trim_end_matches('=')
+            .to_string()),
         other => Err(format!("unknown encoding: {other}")),
     }
 }

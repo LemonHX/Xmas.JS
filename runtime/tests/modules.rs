@@ -144,7 +144,10 @@ fn queue_microtask_runs_before_timers() {
 fn timer_handle_is_a_number() {
     let mut h = Harness::with_modules();
     let handle = h.eval("setTimeout(() => {}, 1000)").unwrap();
-    assert!(number_of(&handle).is_some(), "the handle must be a number: {handle:?}");
+    assert!(
+        number_of(&handle).is_some(),
+        "the handle must be a number: {handle:?}"
+    );
     h.eval("clearTimeout(0)").unwrap();
 }
 
@@ -247,8 +250,7 @@ fn abort_controller_fires_abort_event() {
 #[test]
 fn abort_signal_throw_if_aborted() {
     let mut h = Harness::with_modules();
-    let error = h
-        .eval_err("AbortSignal.abort(new Error('nope')).throwIfAborted();");
+    let error = h.eval_err("AbortSignal.abort(new Error('nope')).throwIfAborted();");
     assert!(error.text.contains("nope"), "{error:?}");
 }
 
@@ -463,7 +465,12 @@ fn fs_write_read_round_trip() {
     ))
     .unwrap();
     idle(&mut h);
-    assert_eq!(h.expect_number("done ? 1 : 0"), 1.0, "{:?}", h.eval("String(globalThis.failure)").ok());
+    assert_eq!(
+        h.expect_number("done ? 1 : 0"),
+        1.0,
+        "{:?}",
+        h.eval("String(globalThis.failure)").ok()
+    );
     assert_eq!(h.expect_text("text"), "hello fs");
 }
 
@@ -557,7 +564,10 @@ fn fs_missing_file_rejects_with_enoent() {
     idle(&mut h);
     assert_eq!(h.expect_number("step"), 1.0);
     assert_eq!(h.expect_text("code"), "ENOENT");
-    assert!(h.expect_text("message").contains("No such file") || h.expect_text("message").contains("os error"));
+    assert!(
+        h.expect_text("message").contains("No such file")
+            || h.expect_text("message").contains("os error")
+    );
 }
 
 #[test]
@@ -622,11 +632,20 @@ fn crypto_hash_streams_and_copies() {
          globalThis.once = crypto.hash('sha256', 'abc', 'hex');",
     )
     .unwrap();
-    assert_eq!(h.expect_text("streamed"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    assert_eq!(
+        h.expect_text("streamed"),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
     // the one after copy only consumed 'a' + 'bd'
-    assert_eq!(h.expect_text("copied"), "a52d159f262b2c6ddb724a61840befc36eb30c88877a4030b65cbe86298449c9");
+    assert_eq!(
+        h.expect_text("copied"),
+        "a52d159f262b2c6ddb724a61840befc36eb30c88877a4030b65cbe86298449c9"
+    );
     assert_eq!(h.expect_number("bufferOut ? 1 : 0"), 1.0);
-    assert_eq!(h.expect_text("once"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    assert_eq!(
+        h.expect_text("once"),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
 }
 
 #[test]
@@ -641,7 +660,10 @@ fn crypto_hmac_matches_known_digests() {
         h.expect_text("hex"),
         "9c196e32dc0175f86f4b1cb89289d6619de6bee699e4c378e68309ed97a1a6ab"
     );
-    assert_eq!(h.expect_text("b64"), "nBluMtwBdfhvSxy4konWYZ3mvuaZ5MN45oMJ7Zehpqs=");
+    assert_eq!(
+        h.expect_text("b64"),
+        "nBluMtwBdfhvSxy4konWYZ3mvuaZ5MN45oMJ7Zehpqs="
+    );
 }
 
 #[test]
@@ -808,7 +830,6 @@ fn write_returns_false_over_high_water_mark_and_drains() {
     assert_eq!(h.expect_text("String(drains >= 1)"), "true");
 }
 
-
 #[test]
 fn process_exposes_the_run() {
     let mut h = Harness::with_modules();
@@ -833,7 +854,10 @@ fn process_env_reads_without_a_host_call() {
     // The write reached the native side, which is where a child process reads it.
     assert_eq!(h.host().env.get("XMAS_TEST_TOKEN").as_deref(), Some("abc"));
     h.eval("delete process.env.XMAS_TEST_TOKEN").unwrap();
-    assert_eq!(h.expect_text("String(process.env.XMAS_TEST_TOKEN)"), "undefined");
+    assert_eq!(
+        h.expect_text("String(process.env.XMAS_TEST_TOKEN)"),
+        "undefined"
+    );
     assert!(h.host().env.get("XMAS_TEST_TOKEN").is_none());
 }
 
@@ -842,7 +866,8 @@ fn process_chdir_moves_the_working_directory() {
     let mut h = Harness::with_modules();
     let before = h.expect_text("process.cwd()");
     let target = std::env::temp_dir();
-    h.eval(&format!("process.chdir({:?})", target.to_string_lossy())).unwrap();
+    h.eval(&format!("process.chdir({:?})", target.to_string_lossy()))
+        .unwrap();
     let after = h.expect_text("process.cwd()");
     assert_ne!(before, after);
     h.eval(&format!("process.chdir({:?})", before)).unwrap();
@@ -861,7 +886,8 @@ fn process_next_tick_runs_before_a_settled_promise() {
 #[test]
 fn process_next_tick_takes_arguments() {
     let mut h = Harness::with_modules();
-    h.eval("globalThis.seen = null; process.nextTick((a, b) => { seen = a + b; }, 2, 3);").unwrap();
+    h.eval("globalThis.seen = null; process.nextTick((a, b) => { seen = a + b; }, 2, 3);")
+        .unwrap();
     idle(&mut h);
     assert_eq!(h.expect_number("seen"), 5.0);
 }
@@ -869,8 +895,7 @@ fn process_next_tick_takes_arguments() {
 #[test]
 fn process_hrtime_counts_forward() {
     let mut h = Harness::with_modules();
-    h.eval("globalThis.first = process.hrtime();")
-        .unwrap();
+    h.eval("globalThis.first = process.hrtime();").unwrap();
     let seconds = h.expect_number("first[0]");
     let nanos = h.expect_number("first[1]");
     assert!(seconds >= 0.0 && nanos >= 0.0 && nanos < 1e9);
@@ -892,9 +917,13 @@ fn process_memory_usage_reports_the_heap() {
 #[test]
 fn process_exit_raises_under_a_capturing_host() {
     let mut h = Harness::with_modules();
-    h.eval("process.on('exit', (code) => { globalThis.exitCode = code; })").unwrap();
+    h.eval("process.on('exit', (code) => { globalThis.exitCode = code; })")
+        .unwrap();
     let thrown = h.eval_err("process.exit(3)");
-    assert!(format!("{thrown:?}").contains("process.exit(3)"), "{thrown:?}");
+    assert!(
+        format!("{thrown:?}").contains("process.exit(3)"),
+        "{thrown:?}"
+    );
     assert_eq!(h.expect_number("exitCode"), 3.0);
 }
 
@@ -943,17 +972,32 @@ fn os_is_a_module_too() {
 #[test]
 fn path_strings_behave_like_node() {
     let mut h = Harness::with_modules();
-    assert_eq!(h.expect_text("path.dirname('/usr/local/bin')"), "/usr/local");
+    assert_eq!(
+        h.expect_text("path.dirname('/usr/local/bin')"),
+        "/usr/local"
+    );
     assert_eq!(h.expect_text("path.dirname('/')"), "/");
     assert_eq!(h.expect_text("path.dirname('')"), ".");
-    assert_eq!(h.expect_text("path.basename('/usr/local/bin.txt')"), "bin.txt");
-    assert_eq!(h.expect_text("path.basename('/usr/local/bin.txt', '.txt')"), "bin");
+    assert_eq!(
+        h.expect_text("path.basename('/usr/local/bin.txt')"),
+        "bin.txt"
+    );
+    assert_eq!(
+        h.expect_text("path.basename('/usr/local/bin.txt', '.txt')"),
+        "bin"
+    );
     assert_eq!(h.expect_text("path.extname('/usr/local/bin.txt')"), ".txt");
     assert_eq!(h.expect_text("path.extname('.bashrc')"), "");
-    assert_eq!(h.expect_text("path.join('/usr', 'local', 'bin')"), "/usr/local/bin");
+    assert_eq!(
+        h.expect_text("path.join('/usr', 'local', 'bin')"),
+        "/usr/local/bin"
+    );
     assert_eq!(h.expect_text("path.join('/usr', '..', 'local')"), "/local");
     assert_eq!(h.expect_text("path.join('a', '/b')"), "a/b");
-    assert_eq!(h.expect_text("path.normalize('/foo//bar/../baz')"), "/foo/baz");
+    assert_eq!(
+        h.expect_text("path.normalize('/foo//bar/../baz')"),
+        "/foo/baz"
+    );
     assert_eq!(h.expect_text("path.relative('/a/b/c', '/a/d')"), "../../d");
     assert_eq!(h.expect_text("String(path.isAbsolute('/usr'))"), "true");
     assert_eq!(h.expect_text("String(path.isAbsolute('usr'))"), "false");
@@ -965,14 +1009,18 @@ fn path_strings_behave_like_node() {
 fn path_resolve_walks_from_the_working_directory() {
     let mut h = Harness::with_modules();
     h.eval("globalThis.dir = process.cwd()").unwrap();
-    assert_eq!(h.expect_text("path.resolve('foo', 'bar')"), format!("{}/foo/bar", h.expect_text("dir")));
+    assert_eq!(
+        h.expect_text("path.resolve('foo', 'bar')"),
+        format!("{}/foo/bar", h.expect_text("dir"))
+    );
     assert_eq!(h.expect_text("path.resolve('/a', 'b', '..', 'c')"), "/a/c");
 }
 
 #[test]
 fn path_parse_and_format_round_trip() {
     let mut h = Harness::with_modules();
-    h.eval("globalThis.parts = path.parse('/home/user/app.ts')").unwrap();
+    h.eval("globalThis.parts = path.parse('/home/user/app.ts')")
+        .unwrap();
     assert_eq!(h.expect_text("parts.dir"), "/home/user");
     assert_eq!(h.expect_text("parts.base"), "app.ts");
     assert_eq!(h.expect_text("parts.ext"), ".ts");
@@ -999,13 +1047,31 @@ fn inspect_writes_values_the_way_node_does() {
     let mut h = Harness::with_modules();
     assert_eq!(h.expect_text("util.inspect(1)"), "1");
     assert_eq!(h.expect_text("util.inspect('text')"), "text");
-    assert_eq!(h.expect_text("util.inspect([1, 'a', true])"), "[ 1, 'a', true ]");
-    assert_eq!(h.expect_text("util.inspect({ a: 1, b: 'x' })"), "{ a: 1, b: 'x' }");
-    assert_eq!(h.expect_text("util.inspect({ a: { b: { c: 1 } } })"), "{ a: { b: { c: 1 } } }");
-    assert_eq!(h.expect_text("util.inspect(function named() {})"), "[function: named]");
-    assert_eq!(h.expect_text("util.inspect(class Thing {})"), "[class: Thing]");
+    assert_eq!(
+        h.expect_text("util.inspect([1, 'a', true])"),
+        "[ 1, 'a', true ]"
+    );
+    assert_eq!(
+        h.expect_text("util.inspect({ a: 1, b: 'x' })"),
+        "{ a: 1, b: 'x' }"
+    );
+    assert_eq!(
+        h.expect_text("util.inspect({ a: { b: { c: 1 } } })"),
+        "{ a: { b: { c: 1 } } }"
+    );
+    assert_eq!(
+        h.expect_text("util.inspect(function named() {})"),
+        "[function: named]"
+    );
+    assert_eq!(
+        h.expect_text("util.inspect(class Thing {})"),
+        "[class: Thing]"
+    );
     assert_eq!(h.expect_text("util.inspect(new Map())"), "Map {}");
-    assert_eq!(h.expect_text("util.inspect(new Date(0))"), "1970-01-01T00:00:00.000Z");
+    assert_eq!(
+        h.expect_text("util.inspect(new Date(0))"),
+        "1970-01-01T00:00:00.000Z"
+    );
     assert_eq!(h.expect_text("util.inspect(/ab+/gi)"), "/ab+/gi");
     // An Error prints its stack, as Node does; only the first line is fixed.
     let error = h.expect_text("util.inspect(new TypeError('bad'))");
@@ -1028,7 +1094,10 @@ fn inspect_marks_a_cycle_and_stops_at_the_depth_limit() {
 #[test]
 fn format_handles_every_spec() {
     let mut h = Harness::with_modules();
-    assert_eq!(h.expect_text("util.format('%s is %d', 'age', 30)"), "age is 30");
+    assert_eq!(
+        h.expect_text("util.format('%s is %d', 'age', 30)"),
+        "age is 30"
+    );
     assert_eq!(h.expect_text("util.format('%d', '42')"), "42");
     assert_eq!(h.expect_text("util.format('%i', '42px')"), "42");
     assert_eq!(h.expect_text("util.format('%f', '1.5x')"), "1.5");
@@ -1043,7 +1112,10 @@ fn format_handles_every_spec() {
 #[test]
 fn style_text_wraps_and_nests() {
     let mut h = Harness::with_modules();
-    assert_eq!(h.expect_text("util.styleText('red', 'hi')"), "\u{1b}[31mhi\u{1b}[39m");
+    assert_eq!(
+        h.expect_text("util.styleText('red', 'hi')"),
+        "\u{1b}[31mhi\u{1b}[39m"
+    );
     assert_eq!(
         h.expect_text("util.styleText(['bold', 'red'], 'hi')"),
         "\u{1b}[1m\u{1b}[31mhi\u{1b}[39m\u{1b}[22m"
@@ -1054,21 +1126,26 @@ fn style_text_wraps_and_nests() {
 #[test]
 fn promisify_and_callbackify_turn_callbacks_around() {
     let mut h = Harness::with_modules();
-    h.eval("globalThis.readish = (value, callback) => callback(null, value * 2)").unwrap();
-    h.eval("globalThis.readishAsync = util.promisify(readish)").unwrap();
+    h.eval("globalThis.readish = (value, callback) => callback(null, value * 2)")
+        .unwrap();
+    h.eval("globalThis.readishAsync = util.promisify(readish)")
+        .unwrap();
     let value = h.eval("readishAsync(21)").unwrap();
     let settled = smol::block_on(h.settle(value)).unwrap();
     assert_eq!(number_of(&settled), Some(42.0));
 
-    h.eval("globalThis.writeish = async (value) => value + 1").unwrap();
-    h.eval("globalThis.writeishCb = util.callbackify(writeish)").unwrap();
+    h.eval("globalThis.writeish = async (value) => value + 1")
+        .unwrap();
+    h.eval("globalThis.writeishCb = util.callbackify(writeish)")
+        .unwrap();
     let value = h
         .eval("new Promise((resolve) => writeishCb(41, (error, value) => resolve(error ? 'error' : value)))")
         .unwrap();
     let settled = smol::block_on(h.settle(value)).unwrap();
     assert_eq!(number_of(&settled), Some(42.0));
 
-    h.eval("globalThis.failing = (callback) => callback(new Error('nope'))").unwrap();
+    h.eval("globalThis.failing = (callback) => callback(new Error('nope'))")
+        .unwrap();
     let value = h.eval("util.promisify(failing)()").unwrap();
     assert!(smol::block_on(h.settle(value)).is_err());
 }
@@ -1076,14 +1153,40 @@ fn promisify_and_callbackify_turn_callbacks_around() {
 #[test]
 fn util_predicates_and_deep_equality() {
     let mut h = Harness::with_modules();
-    assert_eq!(h.expect_text("String(util.types.isPromise(Promise.resolve()))"), "true");
-    assert_eq!(h.expect_text("String(util.types.isDate(new Date()))"), "true");
-    assert_eq!(h.expect_text("String(util.types.isTypedArray(new Uint8Array(2)))"), "true");
-    assert_eq!(h.expect_text("String(util.isDeepStrictEqual({ a: [1, { b: 2 }] }, { a: [1, { b: 2 }] }))"), "true");
-    assert_eq!(h.expect_text("String(util.isDeepStrictEqual({ a: 1 }, { a: 2 }))"), "false");
-    assert_eq!(h.expect_text("String(util.isDeepStrictEqual(new Uint8Array([1, 2]), new Uint8Array([1, 2])))"), "true");
-    assert_eq!(h.expect_text("String(util.isDeepStrictEqual(NaN, NaN))"), "true");
-    assert_eq!(h.expect_text("String(util.isDeepStrictEqual({}, Object.create(null)))"), "false");
+    assert_eq!(
+        h.expect_text("String(util.types.isPromise(Promise.resolve()))"),
+        "true"
+    );
+    assert_eq!(
+        h.expect_text("String(util.types.isDate(new Date()))"),
+        "true"
+    );
+    assert_eq!(
+        h.expect_text("String(util.types.isTypedArray(new Uint8Array(2)))"),
+        "true"
+    );
+    assert_eq!(
+        h.expect_text("String(util.isDeepStrictEqual({ a: [1, { b: 2 }] }, { a: [1, { b: 2 }] }))"),
+        "true"
+    );
+    assert_eq!(
+        h.expect_text("String(util.isDeepStrictEqual({ a: 1 }, { a: 2 }))"),
+        "false"
+    );
+    assert_eq!(
+        h.expect_text(
+            "String(util.isDeepStrictEqual(new Uint8Array([1, 2]), new Uint8Array([1, 2])))"
+        ),
+        "true"
+    );
+    assert_eq!(
+        h.expect_text("String(util.isDeepStrictEqual(NaN, NaN))"),
+        "true"
+    );
+    assert_eq!(
+        h.expect_text("String(util.isDeepStrictEqual({}, Object.create(null)))"),
+        "false"
+    );
 }
 
 #[test]
@@ -1101,8 +1204,14 @@ fn assert_ok_and_strict_equal() {
     assert!(h.eval("assert.strictEqual(1, 2)").is_err());
     assert!(h.eval("assert.strictEqual(0, -0)").is_err());
     assert!(h.eval("assert.equal('1', 1)").is_ok());
-    assert!(h.eval("assert.deepStrictEqual({ a: [1] }, { a: [1] })").is_ok());
-    assert!(h.eval("assert.deepStrictEqual({ a: [1] }, { a: [2] })").is_err());
+    assert!(
+        h.eval("assert.deepStrictEqual({ a: [1] }, { a: [1] })")
+            .is_ok()
+    );
+    assert!(
+        h.eval("assert.deepStrictEqual({ a: [1] }, { a: [2] })")
+            .is_err()
+    );
     assert!(h.eval("assert.deepEqual({ a: 1 }, { a: '1' })").is_ok());
     assert!(h.eval("assert.notStrictEqual(1, 2)").is_ok());
 }
@@ -1110,16 +1219,24 @@ fn assert_ok_and_strict_equal() {
 #[test]
 fn assert_throws_and_rejects() {
     let mut h = Harness::with_modules();
-    assert!(h
-        .eval("assert.throws(() => { throw new TypeError('bad'); }, TypeError)")
-        .is_ok());
-    assert!(h
-        .eval("assert.throws(() => { throw new TypeError('bad'); }, /bad/)")
-        .is_ok());
+    assert!(
+        h.eval("assert.throws(() => { throw new TypeError('bad'); }, TypeError)")
+            .is_ok()
+    );
+    assert!(
+        h.eval("assert.throws(() => { throw new TypeError('bad'); }, /bad/)")
+            .is_ok()
+    );
     assert!(h.eval("assert.throws(() => {}, TypeError)").is_err());
-    assert!(h.eval("assert.throws(() => { throw new Error('x'); }, TypeError)").is_err());
+    assert!(
+        h.eval("assert.throws(() => { throw new Error('x'); }, TypeError)")
+            .is_err()
+    );
     assert!(h.eval("assert.doesNotThrow(() => 1)").is_ok());
-    assert!(h.eval("assert.doesNotThrow(() => { throw new Error('x'); })").is_err());
+    assert!(
+        h.eval("assert.doesNotThrow(() => { throw new Error('x'); })")
+            .is_err()
+    );
     assert!(h.eval("assert.match('hello', /ell/)").is_ok());
     assert!(h.eval("assert.match('hello', /xyz/)").is_err());
     assert!(h.eval("assert.ifError(null)").is_ok());
@@ -1255,7 +1372,10 @@ fn string_decoder_rejects_an_unknown_encoding() {
         .unwrap();
     let thrown = h.call_err(&ns, "attempt", &[]);
     assert!(thrown.name.contains("TypeError"), "{thrown:?}");
-    assert!(thrown.message.contains("Unknown encoding: bogus"), "{thrown:?}");
+    assert!(
+        thrown.message.contains("Unknown encoding: bogus"),
+        "{thrown:?}"
+    );
 }
 
 // ---------- zlib ----------
@@ -1285,7 +1405,11 @@ fn zlib_round_trips_gzip_and_deflate() {
     assert_eq!(text_at(&mut h, &ns, "zlibHeader"), "78");
     assert!(text_at(&mut h, &ns, "rawHeader") != "78");
     for name in ["gzipBack", "zlibBack", "rawBack"] {
-        assert_eq!(text_at(&mut h, &ns, name), "hello hello hello hello hello", "{name}");
+        assert_eq!(
+            text_at(&mut h, &ns, name),
+            "hello hello hello hello hello",
+            "{name}"
+        );
     }
 }
 
@@ -1330,7 +1454,10 @@ fn zlib_stops_at_max_output_length() {
         )
         .unwrap();
     let value = h.call(&ns, "attempt", &[]).unwrap();
-    assert_eq!(text_of(&value).as_deref(), Some("RangeError|Cannot create a Buffer larger than 10 bytes"));
+    assert_eq!(
+        text_of(&value).as_deref(),
+        Some("RangeError|Cannot create a Buffer larger than 10 bytes")
+    );
 }
 
 #[test]
@@ -1561,11 +1688,510 @@ fn dom_exception_matches_the_webidl_table() {
         )
         .unwrap();
     let value = h.call(&ns, "aborted", &[]).unwrap();
-    assert_eq!(text_of(&value).as_deref(), Some("AbortError|20|stopped|true"));
+    assert_eq!(
+        text_of(&value).as_deref(),
+        Some("AbortError|20|stopped|true")
+    );
     let value = h.call(&ns, "quota", &[]).unwrap();
-    assert_eq!(text_of(&value).as_deref(), Some("true|QuotaExceededError|22"));
+    assert_eq!(
+        text_of(&value).as_deref(),
+        Some("true|QuotaExceededError|22")
+    );
     let value = h.call(&ns, "tagged", &[]).unwrap();
     assert_eq!(text_of(&value).as_deref(), Some("[object DOMException]"));
     let value = h.call(&ns, "unnamed", &[]).unwrap();
     assert_eq!(text_of(&value).as_deref(), Some("Error|0"));
+}
+
+#[test]
+fn web_readable_serves_what_start_enqueued() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            const stream = new ReadableStream({
+                start(controller) {
+                    controller.enqueue('a');
+                    controller.enqueue('b');
+                    controller.close();
+                },
+            });
+            globalThis.lockedBefore = stream.locked;
+            const reader = stream.getReader();
+            globalThis.lockedAfter = stream.locked;
+            const seen = [];
+            for (;;) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                seen.push(value);
+            }
+            globalThis.seen = seen.join('');
+            globalThis.closedState = await reader.closed.then(() => 'closed');
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(lockedBefore)"), "false");
+    assert_eq!(h.expect_text("String(lockedAfter)"), "true");
+    assert_eq!(h.expect_text("String(seen)"), "ab");
+    assert_eq!(h.expect_text("String(closedState)"), "closed");
+}
+
+#[test]
+fn web_readable_pulls_only_while_there_is_room() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            let pulled = 0;
+            const stream = new ReadableStream({
+                highWaterMark: 2,
+                pull(controller) {
+                    pulled += 1;
+                    controller.enqueue(pulled);
+                    if (pulled === 3) controller.close();
+                },
+            }, { highWaterMark: 2 });
+            const reader = stream.getReader();
+            const seen = [];
+            for (;;) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                seen.push(value);
+            }
+            globalThis.seen = seen.join(',');
+            globalThis.pulled = pulled;
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(seen)"), "1,2,3");
+    assert_eq!(h.expect_text("String(pulled)"), "3");
+}
+
+#[test]
+fn web_readable_reports_desired_size_from_the_strategy() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "const stream = new ReadableStream({
+            start(controller) {
+                globalThis.sizes = [];
+                globalThis.sizes.push(controller.desiredSize);
+                controller.enqueue({ length: 4 });
+                globalThis.sizes.push(controller.desiredSize);
+                controller.enqueue({ length: 6 });
+                globalThis.sizes.push(controller.desiredSize);
+            },
+        }, { highWaterMark: 10, size: (chunk) => chunk.length });
+        globalThis.kind = stream.constructor.name;",
+    )
+    .unwrap();
+    assert_eq!(h.expect_text("String(sizes.join(','))"), "10,6,0");
+}
+
+#[test]
+fn web_readable_propagates_an_error_to_reads_and_closed() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            const stream = new ReadableStream({
+                start(controller) {
+                    controller.enqueue('x');
+                    controller.error(new Error('boom'));
+                },
+            });
+            const reader = stream.getReader();
+            // error() discards whatever is queued, so the very first read rejects.
+            globalThis.firstRead = await reader.read().then(() => 'no', (e) => e.message);
+            globalThis.readError = globalThis.firstRead;
+            globalThis.closedError = await reader.closed.then(() => 'no', (e) => e.message);
+            globalThis.afterError = await reader.read().then(() => 'no', (e) => e.message);
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(firstRead)"), "boom");
+    assert_eq!(h.expect_text("String(readError)"), "boom");
+    assert_eq!(h.expect_text("String(closedError)"), "boom");
+    assert_eq!(h.expect_text("String(afterError)"), "boom");
+}
+
+#[test]
+fn web_readable_cancels_the_source_once() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            let calls = 0;
+            let reason = null;
+            const stream = new ReadableStream({
+                pull(controller) { controller.enqueue(1); },
+                cancel(why) { calls += 1; reason = why; },
+            }, { highWaterMark: 0 });
+            await stream.cancel('enough');
+            globalThis.calls = calls;
+            globalThis.reason = reason;
+            globalThis.after = await new ReadableStream({}).getReader().read().then(() => 'no');
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(calls)"), "1");
+    assert_eq!(h.expect_text("String(reason)"), "enough");
+}
+
+#[test]
+fn web_readable_iterates_with_for_await() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            const stream = new ReadableStream({
+                start(controller) {
+                    controller.enqueue('a');
+                    controller.enqueue('b');
+                    controller.enqueue('c');
+                    controller.close();
+                },
+            });
+            const seen = [];
+            for await (const chunk of stream) seen.push(chunk);
+            globalThis.seen = seen.join('');
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(seen)"), "abc");
+}
+
+#[test]
+fn web_byte_stream_reads_through_a_default_reader() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            const stream = new ReadableStream({
+                type: 'byte',
+                start(controller) {
+                    controller.enqueue(new Uint8Array([1, 2, 3]));
+                    controller.enqueue(new Uint8Array([4]));
+                    controller.close();
+                },
+            });
+            const reader = stream.getReader();
+            const a = await reader.read();
+            const b = await reader.read();
+            const c = await reader.read();
+            globalThis.kind = a.value.constructor.name;
+            globalThis.all = [].slice.call(a.value).concat([].slice.call(b.value)).join(',');
+            globalThis.done = c.done;
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(kind)"), "Uint8Array");
+    assert_eq!(h.expect_text("String(all)"), "1,2,3,4");
+    assert_eq!(h.expect_text("String(done)"), "true");
+}
+
+#[test]
+fn web_byte_stream_byob_read_splits_a_chunk() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            const stream = new ReadableStream({
+                type: 'byte',
+                start(controller) {
+                    controller.enqueue(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
+                    controller.close();
+                },
+            });
+            const reader = stream.getReader({ mode: 'byob' });
+            const parts = [];
+            const sizes = [];
+            for (;;) {
+                const view = new Uint8Array(4);
+                const { value, done } = await reader.read(view);
+                if (done) { sizes.push(value.byteLength); break; }
+                sizes.push(value.byteLength);
+                parts.push([].slice.call(value).join(''));
+            }
+            globalThis.sizes = sizes.join(',');
+            globalThis.parts = parts.join('|');
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    // 10 bytes through a 4-byte view: 4, 4, 2, then a zero-length done.
+    assert_eq!(h.expect_text("String(sizes)"), "4,4,2,0");
+    assert_eq!(h.expect_text("String(parts)"), "1234|5678|910");
+}
+
+#[test]
+fn web_writable_writes_in_order_and_closes() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            const seen = [];
+            let closed = 0;
+            const stream = new WritableStream({
+                write(chunk) { seen.push(chunk); },
+                close() { closed += 1; },
+            });
+            const writer = stream.getWriter();
+            globalThis.locked = stream.locked;
+            const pending = [writer.write('a'), writer.write('b'), writer.write('c')];
+            await Promise.all(pending);
+            await writer.close();
+            globalThis.seen = seen.join('');
+            globalThis.closed = closed;
+            globalThis.state = await writer.closed.then(() => 'closed');
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(seen)"), "abc");
+    assert_eq!(h.expect_text("String(closed)"), "1");
+    assert_eq!(h.expect_text("String(state)"), "closed");
+    assert_eq!(h.expect_text("String(locked)"), "true");
+}
+
+#[test]
+fn web_writable_counts_the_queue_for_desired_size() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            const stream = new WritableStream({ write() {} }, { highWaterMark: 2 });
+            const writer = stream.getWriter();
+            globalThis.start = writer.desiredSize;
+            const first = writer.write('a');
+            globalThis.mid = writer.desiredSize;
+            await first;
+            globalThis.after = writer.desiredSize;
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_number("start"), 2.0);
+    assert_eq!(h.expect_number("mid"), 1.0);
+    assert_eq!(h.expect_number("after"), 2.0);
+}
+
+#[test]
+fn web_writable_propagates_a_sink_error() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            const stream = new WritableStream({
+                write() { throw new Error('nope'); },
+            });
+            const writer = stream.getWriter();
+            globalThis.first = await writer.write('a').then(() => 'no', (e) => e.message);
+            globalThis.second = await writer.write('b').then(() => 'no', (e) => e.message);
+            globalThis.closedError = await writer.closed.then(() => 'no', (e) => e.message);
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(first)"), "nope");
+    assert_eq!(h.expect_text("String(second)"), "nope");
+    assert_eq!(h.expect_text("String(closedError)"), "nope");
+}
+
+#[test]
+fn web_writable_abort_reaches_the_sink() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            let reason = null;
+            const stream = new WritableStream({
+                write() {},
+                abort(why) { reason = why; },
+            });
+            await stream.abort('stop');
+            globalThis.reason = reason;
+            globalThis.state = await stream.getWriter().closed.then(() => 'closed');
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(reason)"), "stop");
+    assert_eq!(h.expect_text("String(state)"), "closed");
+}
+
+#[test]
+fn web_transform_passes_chunks_through_by_default() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            const stream = new TransformStream();
+            const reader = stream.readable.getReader();
+            const writer = stream.writable.getWriter();
+            const first = reader.read();
+            await writer.write('a');
+            globalThis.first = (await first).value;
+            const second = reader.read();
+            await writer.write('b');
+            globalThis.second = (await second).value;
+            await writer.close();
+            globalThis.done = (await reader.read()).done;
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(first)"), "a");
+    assert_eq!(h.expect_text("String(second)"), "b");
+    assert_eq!(h.expect_text("String(done)"), "true");
+}
+
+#[test]
+fn web_transform_transforms_and_flushes() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            const stream = new TransformStream({
+                transform(chunk, controller) { controller.enqueue(String(chunk).toUpperCase()); },
+                flush(controller) { controller.enqueue('!'); },
+            });
+            const writer = stream.writable.getWriter();
+            const collected = (async () => {
+                const out = [];
+                for await (const chunk of stream.readable) out.push(chunk);
+                return out.join('');
+            })();
+            await writer.write('a');
+            await writer.write('b');
+            await writer.close();
+            globalThis.collected = await collected;
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(collected)"), "AB!");
+}
+
+#[test]
+fn web_pipe_to_copies_and_closes() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            const seen = [];
+            let closed = 0;
+            const source = new ReadableStream({
+                start(controller) {
+                    controller.enqueue(1);
+                    controller.enqueue(2);
+                    controller.close();
+                },
+            });
+            const sink = new WritableStream({
+                write(chunk) { seen.push(chunk); },
+                close() { closed += 1; },
+            });
+            await source.pipeTo(sink);
+            globalThis.seen = seen.join('');
+            globalThis.closed = closed;
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(seen)"), "12");
+    assert_eq!(h.expect_text("String(closed)"), "1");
+}
+
+#[test]
+fn web_tee_gives_both_branches_every_chunk() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            const source = new ReadableStream({
+                start(controller) {
+                    controller.enqueue('a');
+                    controller.enqueue('b');
+                    controller.enqueue('c');
+                    controller.close();
+                },
+            });
+            const [one, two] = source.tee();
+            const collect = async (stream) => {
+                const out = [];
+                for await (const chunk of stream) out.push(chunk);
+                return out.join('');
+            };
+            const both = await Promise.all([collect(one), collect(two)]);
+            globalThis.result = both.join('|');
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(result)"), "abc|abc");
+}
+
+#[test]
+fn web_stream_is_reachable_as_a_module() {
+    let mut h = Harness::with_modules();
+    let namespace = h
+        .module(
+            "test-stream-web",
+            "import { ReadableStream, WritableStream, TransformStream, CountQueuingStrategy } from 'node:stream/web';
+             export const kinds = [
+               ReadableStream === globalThis.ReadableStream,
+               typeof WritableStream,
+               typeof TransformStream,
+               new CountQueuingStrategy({ highWaterMark: 3 }).size('x'),
+             ].join(',');",
+        )
+        .unwrap();
+    let value = h.property(&namespace, "kinds").unwrap();
+    assert_eq!(text_of(&value).as_deref(), Some("true,function,function,1"));
+}
+
+#[test]
+fn web_stream_error_rejects_a_pending_read() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            let controller = null;
+            const stream = new ReadableStream({
+                start(c) { controller = c; },
+            });
+            const reader = stream.getReader();
+            const pending = reader.read();
+            controller.error(new Error('late'));
+            globalThis.message = await pending.then(() => 'no', (e) => e.message);
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(message)"), "late");
+}
+
+#[test]
+fn web_pipe_to_waits_for_a_slow_sink() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "(async () => {
+            const seen = [];
+            let inflight = 0;
+            let peak = 0;
+            const source = new ReadableStream({
+                start(controller) {
+                    for (let i = 0; i < 8; i += 1) controller.enqueue(i);
+                    controller.close();
+                },
+            });
+            const sink = new WritableStream({
+                write(chunk) {
+                    inflight += 1;
+                    peak = Math.max(peak, inflight);
+                    seen.push(chunk);
+                    return new Promise((resolve) => setTimeout(() => { inflight -= 1; resolve(); }, 0));
+                },
+            });
+            await source.pipeTo(sink);
+            globalThis.count = seen.length;
+            globalThis.order = seen.join('');
+            // One write at a time: pipeTo never overtakes the sink.
+            globalThis.peak = peak;
+        })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(count)"), "8");
+    assert_eq!(h.expect_text("String(peak)"), "1");
 }

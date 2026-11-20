@@ -6,14 +6,16 @@
 
 use std::time::Instant;
 
-use xmas_runtime::testkit::{number_of, Harness};
+use xmas_runtime::testkit::{Harness, number_of};
 
 fn measure(harness: &mut Harness, label: &str, body: &str, calls: u32) {
     // once outside the clock: the work the loop repeats must be set up already
     harness.eval(body).unwrap();
     let started = Instant::now();
     harness
-        .eval(&format!("for (let i = 0; i < {calls}; i += 1) {{ __bench(); }}"))
+        .eval(&format!(
+            "for (let i = 0; i < {calls}; i += 1) {{ __bench(); }}"
+        ))
         .unwrap();
     let took = started.elapsed();
     let per_call = took.as_secs_f64() * 1e9 / f64::from(calls);

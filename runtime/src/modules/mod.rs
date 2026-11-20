@@ -5,25 +5,26 @@
 //! come from `crate::host` and nothing here reaches for tokio.
 
 pub mod abort;
+pub mod assert;
 pub mod async_hooks;
 pub mod buffer;
 pub mod bytes;
-pub mod assert;
 pub mod console;
 pub mod crypto;
 pub mod event;
 pub mod exception;
-pub mod perf_hooks;
 pub mod fs;
 pub mod os;
 pub mod path;
+pub mod perf_hooks;
 pub mod process;
-pub mod util;
 pub mod stream;
+pub mod stream_web;
 pub mod string_decoder;
 pub mod timers;
 pub mod tty;
 pub mod url;
+pub mod util;
 pub mod zlib;
 
 use crate::driver::Driver;
@@ -53,6 +54,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     string_decoder::install(driver)?;
     zlib::install(driver)?;
     stream::install(driver)?;
+    stream_web::install(driver)?;
     Ok(())
 }
 

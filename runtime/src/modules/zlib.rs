@@ -16,7 +16,9 @@
 use std::io::{Cursor, Read};
 
 use flate2::Compression;
-use flate2::read::{DeflateDecoder, DeflateEncoder, GzDecoder, GzEncoder, ZlibDecoder, ZlibEncoder};
+use flate2::read::{
+    DeflateDecoder, DeflateEncoder, GzDecoder, GzEncoder, ZlibDecoder, ZlibEncoder,
+};
 use quickjs_oxide::engine::api::core::{Scope, Value};
 
 use crate::driver::Driver;
@@ -61,10 +63,16 @@ fn kind_of(name: &str) -> Option<Kind> {
 /// Reading stops one byte past the limit, so an over-long result is caught
 /// without inflating (or allocating) the rest of the payload. The message keeps
 /// its RangeError prefix so the JS layer can throw the right class.
-fn collect<R: Read>(mut reader: R, capacity: usize, limit: Option<usize>) -> Result<Vec<u8>, String> {
+fn collect<R: Read>(
+    mut reader: R,
+    capacity: usize,
+    limit: Option<usize>,
+) -> Result<Vec<u8>, String> {
     let Some(limit) = limit else {
         let mut out = Vec::with_capacity(capacity);
-        reader.read_to_end(&mut out).map_err(|error| error.to_string())?;
+        reader
+            .read_to_end(&mut out)
+            .map_err(|error| error.to_string())?;
         return Ok(out);
     };
 
@@ -76,7 +84,9 @@ fn collect<R: Read>(mut reader: R, capacity: usize, limit: Option<usize>) -> Res
         .map_err(|error| error.to_string())?;
 
     if out.len() > limit {
-        return Err(format!("RangeError: Cannot create a Buffer larger than {limit} bytes"));
+        return Err(format!(
+            "RangeError: Cannot create a Buffer larger than {limit} bytes"
+        ));
     }
 
     Ok(out)
@@ -90,29 +100,34 @@ fn run(kind: Kind, src: &[u8], level: Option<u32>, max: Option<usize>) -> Result
     let quality = level.min(BROTLI_DEFAULT_QUALITY);
     let input = || Cursor::new(src);
     match kind {
-        Kind::Deflate => collect(ZlibEncoder::new(input(), Compression::new(level)), capacity, max),
-        Kind::DeflateRaw => {
-            collect(DeflateEncoder::new(input(), Compression::new(level)), capacity, max)
-        }
-        Kind::Gzip => collect(GzEncoder::new(input(), Compression::new(level)), capacity, max),
+        Kind::Deflate => collect(
+            ZlibEncoder::new(input(), Compression::new(level)),
+            capacity,
+            max,
+        ),
+        Kind::DeflateRaw => collect(
+            DeflateEncoder::new(input(), Compression::new(level)),
+            capacity,
+            max,
+        ),
+        Kind::Gzip => collect(
+            GzEncoder::new(input(), Compression::new(level)),
+            capacity,
+            max,
+        ),
         Kind::Inflate => collect(ZlibDecoder::new(input()), capacity, max),
         Kind::InflateRaw => collect(DeflateDecoder::new(input()), capacity, max),
         Kind::Gunzip => collect(GzDecoder::new(input()), capacity, max),
-        Kind::BrotliCompress => {
-            collect(
-                brotli::CompressorReader::new(
-                    input(),
-                    BROTLI_BUFFER,
-                    quality,
-                    BROTLI_WINDOW as u32,
-                ),
-                capacity,
-                max,
-            )
-        }
-        Kind::BrotliDecompress => {
-            collect(brotli::Decompressor::new(input(), BROTLI_BUFFER), capacity, max)
-        }
+        Kind::BrotliCompress => collect(
+            brotli::CompressorReader::new(input(), BROTLI_BUFFER, quality, BROTLI_WINDOW as u32),
+            capacity,
+            max,
+        ),
+        Kind::BrotliDecompress => collect(
+            brotli::Decompressor::new(input(), BROTLI_BUFFER),
+            capacity,
+            max,
+        ),
     }
 }
 
