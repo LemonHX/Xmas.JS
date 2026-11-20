@@ -938,3 +938,57 @@ fn os_is_a_module_too() {
     );
     assert!(namespace.is_ok(), "{namespace:?}");
 }
+
+#[test]
+fn path_strings_behave_like_node() {
+    let mut h = Harness::with_modules();
+    assert_eq!(h.expect_text("path.dirname('/usr/local/bin')"), "/usr/local");
+    assert_eq!(h.expect_text("path.dirname('/')"), "/");
+    assert_eq!(h.expect_text("path.dirname('')"), ".");
+    assert_eq!(h.expect_text("path.basename('/usr/local/bin.txt')"), "bin.txt");
+    assert_eq!(h.expect_text("path.basename('/usr/local/bin.txt', '.txt')"), "bin");
+    assert_eq!(h.expect_text("path.extname('/usr/local/bin.txt')"), ".txt");
+    assert_eq!(h.expect_text("path.extname('.bashrc')"), "");
+    assert_eq!(h.expect_text("path.join('/usr', 'local', 'bin')"), "/usr/local/bin");
+    assert_eq!(h.expect_text("path.join('/usr', '..', 'local')"), "/local");
+    assert_eq!(h.expect_text("path.join('a', '/b')"), "a/b");
+    assert_eq!(h.expect_text("path.normalize('/foo//bar/../baz')"), "/foo/baz");
+    assert_eq!(h.expect_text("path.relative('/a/b/c', '/a/d')"), "../../d");
+    assert_eq!(h.expect_text("String(path.isAbsolute('/usr'))"), "true");
+    assert_eq!(h.expect_text("String(path.isAbsolute('usr'))"), "false");
+    assert_eq!(h.expect_text("path.sep"), "/");
+    assert_eq!(h.expect_text("path.delimiter"), ":");
+}
+
+#[test]
+fn path_resolve_walks_from_the_working_directory() {
+    let mut h = Harness::with_modules();
+    h.eval("globalThis.dir = process.cwd()").unwrap();
+    assert_eq!(h.expect_text("path.resolve('foo', 'bar')"), format!("{}/foo/bar", h.expect_text("dir")));
+    assert_eq!(h.expect_text("path.resolve('/a', 'b', '..', 'c')"), "/a/c");
+}
+
+#[test]
+fn path_parse_and_format_round_trip() {
+    let mut h = Harness::with_modules();
+    h.eval("globalThis.parts = path.parse('/home/user/app.ts')").unwrap();
+    assert_eq!(h.expect_text("parts.dir"), "/home/user");
+    assert_eq!(h.expect_text("parts.base"), "app.ts");
+    assert_eq!(h.expect_text("parts.ext"), ".ts");
+    assert_eq!(h.expect_text("parts.name"), "app");
+    assert_eq!(h.expect_text("path.format(parts)"), "/home/user/app.ts");
+    assert_eq!(
+        h.expect_text("path.format({ dir: '/a', name: 'b', ext: '.js' })"),
+        "/a/b.js"
+    );
+}
+
+#[test]
+fn path_is_a_module_too() {
+    let mut h = Harness::with_modules();
+    let namespace = h.module(
+        "probe",
+        "import { join, sep } from 'node:path'; export const values = [join('/a', 'b'), sep];",
+    );
+    assert!(namespace.is_ok(), "{namespace:?}");
+}

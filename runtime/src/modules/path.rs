@@ -1,0 +1,1112 @@
+//! path: path string manipulation, copied from LLRT and adapted to this engine.
+//!
+//! The algorithms are LLRT's, kept as they were, because they are the part that
+//! is hard to get right: dot segments, UNC roots, drive letters, trailing
+//! separators, suffixes. What changed is the layer around them: LLRT binds these
+//! functions with rquickjs macros and hands them JS objects directly; here they
+//! are plain Rust functions behind host functions, with JSON for the one shape
+//! that is an object (parse) and only strings everywhere else.
+//!
+//! The result follows the platform it is compiled for, which is what Node does
+//! too: path.sep is the host separator and only the host flavour exists.
+#![allow(dead_code)] // the windows-only helpers are unused on other targets
+
+use std::{
+    borrow::Cow,
+    path::{Component, Path, PathBuf, MAIN_SEPARATOR, MAIN_SEPARATOR_STR},
+};
+
+use quickjs_oxide::engine::api::core::{Js, JsString, RuntimeError, Scope, Value};
+
+use crate::driver::Driver;
+use crate::modules::quote;
+
+const PRELUDE: &str = include_str!("../../js/path.js");
+
+/// LLRT's signature for the optional suffix; keeping the tuple keeps the copied
+/// code identical to the original.
+pub struct Opt<T>(pub Option<T>);
+
+/// Errors here are user-facing messages; the host boundary turns them into
+/// exceptions. LLRT used rquickjs' error type, which already swallowed io
+/// errors, so this keeps that one conversion and nothing else.
+#[derive(Debug)]
+pub struct PathError(String);
+
+impl std::fmt::Display for PathError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl From<std::io::Error> for PathError {
+    fn from(error: std::io::Error) -> Self {
+        PathError(error.to_string())
+    }
+}
+
+type Result<T> = std::result::Result<T, PathError>;
+
+#[cfg(windows)]
+const DELIMITER: char = ';';
+#[cfg(not(windows))]
+const DELIMITER: char = ':';
+
+#[cfg(windows)]
+pub const CURRENT_DIR_STR: &str = ".\\";
+
+#[cfg(windows)]
+const FORWARD_SLASH_STR: &str = "/";
+
+#[cfg(not(windows))]
+pub const CURRENT_DIR_STR: &str = "./";
+
+#[cfg(windows)]
+use memchr::{memchr, memchr2, memchr2_iter};
+
+#[cfg(windows)]
+pub fn replace_backslash(path: impl Into<String>) -> String {
+    let mut path = path.into();
+    let bytes = unsafe { path.as_bytes_mut() };
+
+    let mut start = 0;
+    while let Some(pos) = memchr(b'\\', &bytes[start..]) {
+        bytes[start + pos] = b'/';
+        start += pos + 1;
+    }
+    path
+}
+
+#[cfg(not(windows))]
+pub fn replace_backslash(path: impl Into<String>) -> String {
+    path.into().replace('\\', "/")
+}
+
+#[cfg(windows)]
+fn find_next_separator(s: &str) -> Option<usize> {
+    memchr2(b'\\', b'/', s.as_bytes())
+}
+
+#[cfg(not(windows))]
+fn find_next_separator(s: &str) -> Option<usize> {
+    s.find(MAIN_SEPARATOR)
+}
+
+#[cfg(windows)]
+fn find_last_sep(path: &str) -> Option<usize> {
+    memchr2_iter(b'\\', b'/', path.as_bytes()).next_back()
+}
+
+#[cfg(not(windows))]
+fn find_last_sep(path: &str) -> Option<usize> {
+    path.rfind(MAIN_SEPARATOR)
+}
+
+pub fn dirname<'a, P: Into<Cow<'a, str>>>(path: P) -> String {
+    let path = path.into();
+    let len = path.len();
+
+    if len == 0 {
+        return ".".into();
+    }
+
+    let bytes = path.as_bytes();
+
+    #[cfg(windows)]
+    {
+        if len == 1 {
+            return if is_sep(bytes[0]) {
+                path.into_owned()
+            } else {
+                ".".to_string()
+            };
+        }
+
+        // Determine root end and search offset
+        let (root_end, offset) = if is_sep(bytes[0]) {
+            if is_sep(bytes[1]) {
+                // UNC path: \\server\share
+                parse_unc_root(bytes, len).unwrap_or((1, 1))
+            } else {
+                (1, 1)
+            }
+        } else if bytes.len() > 1 && is_drive_letter(bytes[0]) && bytes[1] == b':' {
+            let r = if len > 2 && is_sep(bytes[2]) { 3 } else { 2 };
+            (r, r)
+        } else {
+            (0, 0)
+        };
+
+        // Find last separator (skipping trailing separators)
+        let end = find_dirname_end(bytes, offset);
+
+        match end {
+            Some(e) => &path[..e],
+            None if root_end > 0 => &path[..root_end],
+            None => ".",
+        }
+        .into()
+    }
+
+    #[cfg(not(windows))]
+    {
+        if len == 1 {
+            return if bytes[0] == b'/' {
+                path.into_owned()
+            } else {
+                ".".into()
+            };
+        }
+
+        let has_root = bytes[0] == b'/';
+        let end = find_dirname_end(bytes, 1);
+
+        match end {
+            Some(e) if has_root && e == 1 => "//",
+            Some(e) => &path[..e],
+            None if has_root => "/",
+            None => ".",
+        }
+        .into()
+    }
+}
+
+#[cfg(windows)]
+fn is_sep(c: u8) -> bool {
+    c == b'/' || c == b'\\'
+}
+
+#[cfg(windows)]
+fn is_drive_letter(c: u8) -> bool {
+    c.is_ascii_alphabetic()
+}
+
+#[cfg(windows)]
+fn parse_unc_root(bytes: &[u8], len: usize) -> Option<(usize, usize)> {
+    let mut j = 2;
+    // Skip server name
+    while j < len && !is_sep(bytes[j]) {
+        j += 1;
+    }
+    if j >= len || j == 2 {
+        return None;
+    }
+    // Skip separators
+    while j < len && is_sep(bytes[j]) {
+        j += 1;
+    }
+    if j >= len {
+        return None;
+    }
+    let share_start = j;
+    // Skip share name
+    while j < len && !is_sep(bytes[j]) {
+        j += 1;
+    }
+    if j == share_start {
+        return None;
+    }
+    if j == len {
+        return None;
+    } // UNC root only - caller handles this
+    Some((j + 1, j + 1))
+}
+
+fn find_dirname_end(bytes: &[u8], offset: usize) -> Option<usize> {
+    let mut matched_slash = true;
+    for i in (offset..bytes.len()).rev() {
+        #[cfg(windows)]
+        let is_separator = is_sep(bytes[i]);
+        #[cfg(not(windows))]
+        let is_separator = bytes[i] == b'/';
+
+        if is_separator {
+            if !matched_slash {
+                return Some(i);
+            }
+        } else {
+            matched_slash = false;
+        }
+    }
+    None
+}
+
+pub fn name_extname(path: &str) -> (&str, &str) {
+    let path = strip_trailing_seps(path);
+    let sep_pos = find_last_sep(path);
+
+    let path = match sep_pos {
+        Some(idx) => &path[idx + 1..],
+        None => path,
+    };
+    // A leading dot doesn't start an extension (".bashrc"), and ".." has none
+    match path.rfind('.') {
+        Some(idx) if idx > 0 && path != ".." => path.split_at(idx),
+        _ => (path, ""),
+    }
+}
+
+fn strip_trailing_seps(mut path: &str) -> &str {
+    while ends_with_sep(path) {
+        path = &path[..path.len() - 1];
+    }
+    path
+}
+
+pub fn basename(path: String, suffix: Opt<String>) -> String {
+    #[cfg(windows)]
+    {
+        if path.is_empty() || path == MAIN_SEPARATOR_STR || path == FORWARD_SLASH_STR {
+            return String::from("");
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        if path.is_empty() || path == MAIN_SEPARATOR_STR {
+            return String::from("");
+        }
+    }
+
+    let (base, ext) = name_extname(&path);
+    let mut name = [base, ext].concat();
+    if let Some(suffix) = suffix.0 {
+        if path == suffix {
+            return String::new();
+        }
+        // Only remove the suffix from the end, and never the whole name
+        if name.len() > suffix.len() && name.ends_with(&suffix) {
+            name.truncate(name.len() - suffix.len());
+        }
+    }
+    name
+}
+
+fn extname(path: String) -> String {
+    let (_, ext) = name_extname(&path);
+    ext.to_string()
+}
+
+fn format(dir: &str, root: &str, base: &str, name: &str, ext: &str) -> String {
+    let (dir, root, base, name, ext) = (
+        dir.to_string(),
+        root.to_string(),
+        base.to_string(),
+        name.to_string(),
+        ext.to_string(),
+    );
+
+    let mut path = String::new();
+    if !dir.is_empty() {
+        path.push_str(&dir);
+        if !ends_with_sep(&dir) {
+            path.push(MAIN_SEPARATOR);
+        }
+    } else if !root.is_empty() {
+        path.push_str(&root);
+        if !ends_with_sep(&root) {
+            path.push(MAIN_SEPARATOR);
+        }
+    }
+    if !base.is_empty() {
+        path.push_str(&base);
+    } else {
+        path.push_str(&name);
+        if !ext.is_empty() {
+            if !ext.starts_with('.') {
+                path.push('.');
+            }
+            path.push_str(&ext);
+        }
+    }
+    path
+}
+
+fn parse(path_str: &str) -> String {
+    let path = Path::new(path_str);
+    let parent = path
+        .parent()
+        .map(|p| p.to_str().unwrap())
+        .unwrap_or_default();
+    let filename = path
+        .file_name()
+        .map(|n| n.to_str().unwrap())
+        .unwrap_or_default();
+
+    let (name, extension) = name_extname(filename);
+
+    let root = path
+        .components()
+        .next()
+        .and_then(|c| match c {
+            Component::Prefix(prefix) => prefix.as_os_str().to_str(),
+            Component::RootDir => c.as_os_str().to_str(),
+            _ => Some(""),
+        })
+        .unwrap_or_default();
+
+    let mut out = String::with_capacity(64 + path_str.len());
+    out.push_str("{\"root\":");
+    out.push_str(&quote(root));
+    out.push_str(",\"dir\":");
+    out.push_str(&quote(parent));
+    out.push_str(",\"base\":");
+    out.push_str(&quote(&[name, extension].concat()));
+    out.push_str(",\"ext\":");
+    out.push_str(&quote(extension));
+    out.push_str(",\"name\":");
+    out.push_str(&quote(name));
+    out.push('}');
+    out
+}
+
+fn join(parts: &[String]) -> String {
+    join_path(parts.iter())
+}
+
+pub fn join_path<S, I>(parts: I) -> String
+where
+    S: AsRef<str>,
+    I: IntoIterator<Item = S>,
+{
+    join_path_with_separator(parts, false)
+}
+
+pub fn join_path_with_separator<S, I>(parts: I, force_posix_sep: bool) -> String
+where
+    S: AsRef<str>,
+    I: IntoIterator<Item = S>,
+{
+    //fine because we're either moving or storing references
+    let parts_vec: Vec<S> = parts.into_iter().collect();
+    //add one slash plus drive letter
+    //max is probably parts+size
+    let likely_max_size = parts_vec
+        .iter()
+        .map(|p| p.as_ref().len() + 1)
+        .sum::<usize>()
+        + 10;
+    let result = String::with_capacity(likely_max_size);
+    join_resolve_path(parts_vec, false, result, PathBuf::new(), force_posix_sep)
+}
+
+pub fn resolve_path<S, I>(parts: I) -> Result<String>
+where
+    S: AsRef<str>,
+    I: IntoIterator<Item = S>,
+{
+    resolve_path_with_separator(parts, false)
+}
+
+pub fn resolve_path_with_separator<S, I>(parts: I, force_posix_sep: bool) -> Result<String>
+where
+    S: AsRef<str>,
+    I: IntoIterator<Item = S>,
+{
+    let cwd = std::env::current_dir()?;
+
+    let mut result = cwd.clone().into_os_string().into_string().unwrap();
+    //add MAIN_SEPARATOR if we're not on already MAIN_SEPARATOR
+    if !result.ends_with(MAIN_SEPARATOR) {
+        result.push(MAIN_SEPARATOR);
+    }
+    #[cfg(windows)]
+    {
+        if force_posix_sep {
+            result = result.replace(MAIN_SEPARATOR, FORWARD_SLASH_STR);
+        }
+    }
+    Ok(join_resolve_path(parts, true, result, cwd, force_posix_sep))
+}
+
+pub fn relative<F, T>(from: F, to: T) -> Result<String>
+where
+    F: AsRef<str>,
+    T: AsRef<str>,
+{
+    let from_ref = from.as_ref();
+    let to_ref = to.as_ref();
+    if from_ref == to_ref {
+        return Ok("".into());
+    }
+
+    let mut abs_from = None;
+
+    if !is_absolute(from_ref) {
+        abs_from = Some(
+            std::env::current_dir()?.to_string_lossy().to_string() + MAIN_SEPARATOR_STR + from_ref,
+        );
+    }
+
+    let mut abs_to = None;
+
+    if !is_absolute(to_ref) {
+        abs_to = Some(
+            std::env::current_dir()?.to_string_lossy().to_string() + MAIN_SEPARATOR_STR + to_ref,
+        );
+    }
+
+    let from_ref = abs_from.as_deref().unwrap_or(from_ref);
+    let to_ref = abs_to.as_deref().unwrap_or(to_ref);
+
+    let mut from_index = 0;
+    let mut to_index = 0;
+    // skip common prefix
+    while from_index < from_ref.len() && to_index < to_ref.len() {
+        let from_next = find_next_separator(&from_ref[from_index..])
+            .unwrap_or(from_ref.len() - from_index)
+            + from_index;
+        let to_next =
+            find_next_separator(&to_ref[to_index..]).unwrap_or(to_ref.len() - to_index) + to_index;
+        if from_ref[from_index..from_next] != to_ref[to_index..to_next] {
+            break;
+        }
+        from_index = from_next + 1; //move past the separator
+        to_index = to_next + 1; //move past the separator
+    }
+    let mut relative = String::new();
+    // add ".." for each remaining component in 'from'
+    while from_index < from_ref.len() {
+        let from_next = find_next_separator(&from_ref[from_index..])
+            .unwrap_or(from_ref.len() - from_index)
+            + from_index;
+        if !relative.is_empty() {
+            relative.push(MAIN_SEPARATOR);
+        }
+        relative.push_str("..");
+        from_index = from_next + 1; // Move past the separator
+    }
+    // add the remaining components from 'to'
+    while to_index < to_ref.len() {
+        let to_next =
+            find_next_separator(&to_ref[to_index..]).unwrap_or(to_ref.len() - to_index) + to_index;
+        if !relative.is_empty() {
+            relative.push(MAIN_SEPARATOR);
+        }
+        let component = &to_ref[to_index..to_next];
+        if component != "." {
+            relative.push_str(component);
+        }
+        to_index = to_next + 1; // Move past the separator
+    }
+    Ok(if relative.is_empty() {
+        ".".into()
+    } else {
+        relative
+    })
+}
+
+fn join_resolve_path<S, I>(
+    parts: I,
+    resolve: bool,
+    mut result: String,
+    cwd: PathBuf,
+    force_posix_sep: bool,
+) -> String
+where
+    S: AsRef<str>,
+    I: IntoIterator<Item = S>,
+{
+    let (sep, sep_str) = if force_posix_sep {
+        ('/', "/")
+    } else {
+        (MAIN_SEPARATOR, MAIN_SEPARATOR_STR)
+    };
+
+    let mut resolve_cow: Cow<str>;
+    let mut empty = true;
+    let mut first = true;
+    let mut prefix_len = 0;
+
+    let mut index_stack = Vec::with_capacity(16);
+
+    // Remove the trailing sep: /a/b// -> /a/b
+    if ends_with_sep(&result) && result.len() > 1 {
+        result.truncate(result.len() - 1);
+    }
+
+    for part in parts {
+        let mut part_ref: &str = part.as_ref();
+        let mut start = 0;
+        if resolve {
+            if cfg!(not(windows)) {
+                if part_ref.starts_with(MAIN_SEPARATOR) {
+                    empty = false;
+                    result = MAIN_SEPARATOR.into();
+                    start = 1;
+                }
+            } else {
+                let starts_with_sep = starts_with_sep(part_ref);
+                if starts_with_sep {
+                    let (prefix, _) = get_path_prefix(&cwd);
+                    prefix_len = prefix.len();
+                    result = prefix;
+                    empty = false;
+                    result.push(sep);
+                } else {
+                    let path_buf: PathBuf = PathBuf::from(part_ref);
+                    if path_buf.is_absolute() {
+                        empty = false;
+                        let (prefix, mut components) = get_path_prefix(&path_buf);
+                        if !prefix.is_empty() {
+                            components.next(); //consume prefix
+                        }
+                        prefix_len = prefix.len();
+                        result = prefix;
+                        result.push(sep);
+                        resolve_cow = components
+                            .map(|comp| comp.as_os_str().to_str().unwrap_or_default()) // Convert each component to &str
+                            .collect::<Vec<&str>>() // Collect into a vector of &str
+                            .join(sep_str)
+                            .into();
+                        part_ref = resolve_cow.as_ref();
+                    }
+                }
+            }
+        } else if starts_with_sep(part_ref) && empty && first {
+            empty = false;
+            result.push(sep);
+            start = 1;
+        }
+
+        while start < part_ref.len() {
+            let end = find_next_separator(&part_ref[start..]).map_or(part_ref.len(), |i| i + start);
+            match &part_ref[start..end] {
+                ".." => {
+                    if let Some(last_index) = index_stack.pop() {
+                        result.truncate(last_index);
+                    } else if empty && resolve {
+                        if let Some(last_index) = find_last_sep(&result) {
+                            result.truncate(last_index);
+                        }
+                    } else if empty {
+                        result.push_str("..");
+                        result.push(sep);
+                    }
+                },
+                "" | "." => {
+                    //ignore
+                },
+                sub_part => {
+                    let len = result.len();
+                    if !result.ends_with(sep) && !result.is_empty() {
+                        result.push(sep);
+                    }
+                    result.push_str(sub_part);
+                    result.push(sep);
+                    index_stack.push(len);
+                },
+            }
+            start = end + 1;
+        }
+        first &= part_ref.is_empty();
+    }
+
+    if !resolve && result.is_empty() {
+        result.push('.');
+    }
+
+    if result.len() > prefix_len + 1 && ends_with_sep(&result) {
+        result.truncate(result.len() - 1);
+    }
+
+    result
+}
+
+pub fn resolve(parts: &[String]) -> Result<String> {
+    resolve_path(parts.iter())
+}
+
+fn get_path_prefix(cwd: &Path) -> (String, std::iter::Peekable<std::path::Components<'_>>) {
+    let mut components = cwd.components().peekable();
+
+    let prefix = if let Some(Component::Prefix(prefix)) = components.peek() {
+        prefix.as_os_str().to_str().unwrap().to_string()
+    } else {
+        "".into()
+    };
+
+    (prefix, components)
+}
+
+pub fn normalize<P: AsRef<str>>(path: P) -> String {
+    join_path([path].iter())
+}
+
+#[allow(dead_code)] //used by windows
+fn starts_with_sep(path: &str) -> bool {
+    matches!(path.as_bytes().first().unwrap_or(&0), b'/' | b'\\')
+}
+
+#[cfg(windows)]
+pub fn ends_with_sep(path: &str) -> bool {
+    matches!(path.as_bytes().last().unwrap_or(&0), b'/' | b'\\')
+}
+
+#[cfg(not(windows))]
+pub fn ends_with_sep(path: &str) -> bool {
+    path.ends_with(MAIN_SEPARATOR)
+}
+
+#[cfg(windows)]
+pub fn is_absolute(path: &str) -> bool {
+    starts_with_sep(path) || PathBuf::from(path).is_absolute()
+}
+
+#[cfg(not(windows))]
+pub fn is_absolute(path: &str) -> bool {
+    path.starts_with(MAIN_SEPARATOR)
+}
+
+pub fn install(driver: &mut Driver) -> std::result::Result<(), String> {
+    let global = driver
+        .context()
+        .global_object()
+        .map_err(|error| format!("global: {error}"))?;
+
+    {
+        let context = driver.context();
+        context
+            .define_function(&global, "__path_dirname", 1, |_: &mut Scope<'_>, path: String| {
+                text(&dirname(path))
+            })
+            .map_err(|error| format!("__path_dirname: {error}"))?;
+    }
+
+    {
+        let context = driver.context();
+        context
+            .define_function(&global, "__path_basename", 2, |_: &mut Scope<'_>, path: String, suffix: String| {
+                let suffix = if suffix.is_empty() { Opt(None) } else { Opt(Some(suffix)) };
+                text(&basename(path, suffix))
+            })
+            .map_err(|error| format!("__path_basename: {error}"))?;
+    }
+
+    {
+        let context = driver.context();
+        context
+            .define_function(&global, "__path_extname", 1, |_: &mut Scope<'_>, path: String| {
+                text(&extname(path))
+            })
+            .map_err(|error| format!("__path_extname: {error}"))?;
+    }
+
+    {
+        let context = driver.context();
+        context
+            .define_function(&global, "__path_join", 1, |_: &mut Scope<'_>, joined: String| {
+                text(&join(&split(&joined)))
+            })
+            .map_err(|error| format!("__path_join: {error}"))?;
+    }
+
+    {
+        let context = driver.context();
+        context
+            .define_function(&global, "__path_resolve", 1, |scope: &mut Scope<'_>, joined: String| {
+                match resolve(&split(&joined)) {
+                    Ok(answer) => text(&answer),
+                    Err(error) => Err(super::throw(scope, &error.0)),
+                }
+            })
+            .map_err(|error| format!("__path_resolve: {error}"))?;
+    }
+
+    {
+        let context = driver.context();
+        context
+            .define_function(&global, "__path_relative", 2, |scope: &mut Scope<'_>, from: String, to: String| {
+                match relative(from, to) {
+                    Ok(answer) => text(&answer),
+                    Err(error) => Err(super::throw(scope, &error.0)),
+                }
+            })
+            .map_err(|error| format!("__path_relative: {error}"))?;
+    }
+
+    {
+        let context = driver.context();
+        context
+            .define_function(&global, "__path_normalize", 1, |_: &mut Scope<'_>, path: String| {
+                text(&normalize(path))
+            })
+            .map_err(|error| format!("__path_normalize: {error}"))?;
+    }
+
+    {
+        let context = driver.context();
+        context
+            .define_function(&global, "__path_is_absolute", 1, |_: &mut Scope<'_>, path: String| {
+                Ok::<Value, RuntimeError>(Value::Bool(is_absolute(&path)))
+            })
+            .map_err(|error| format!("__path_is_absolute: {error}"))?;
+    }
+
+    {
+        let context = driver.context();
+        context
+            .define_function(&global, "__path_parse", 1, |_: &mut Scope<'_>, path: String| {
+                text(&parse(&path))
+            })
+            .map_err(|error| format!("__path_parse: {error}"))?;
+    }
+
+    {
+        let context = driver.context();
+        context
+            .define_function(
+                &global,
+                "__path_format",
+                5,
+                |_: &mut Scope<'_>, dir: String, root: String, base: String, name: String, ext: String| {
+                    text(&format(&dir, &root, &base, &name, &ext))
+                },
+            )
+            .map_err(|error| format!("__path_format: {error}"))?;
+    }
+
+    {
+        let context = driver.context();
+        context
+            .define_function(&global, "__path_sep", 0, |_: &mut Scope<'_>| {
+                text(&MAIN_SEPARATOR.to_string())
+            })
+            .map_err(|error| format!("__path_sep: {error}"))?;
+    }
+
+    {
+        let context = driver.context();
+        context
+            .define_function(&global, "__path_delimiter", 0, |_: &mut Scope<'_>| {
+                text(&DELIMITER.to_string())
+            })
+            .map_err(|error| format!("__path_delimiter: {error}"))?;
+    }
+
+    driver
+        .eval(PRELUDE)
+        .map_err(|error| format!("path prelude: {error}"))?;
+
+    let path = driver
+        .eval("globalThis.path")
+        .map_err(|error| format!("path object: {error}"))?;
+    let names = [
+        "basename", "dirname", "extname", "format", "parse", "join", "resolve", "relative",
+        "normalize", "isAbsolute", "toNamespacedPath", "matchesGlob", "sep", "delimiter", "posix",
+        "win32",
+    ];
+    let mut exports = vec![("default".to_string(), path.clone())];
+    exports.extend(super::collect(driver, &path, &names)?);
+    super::define_with_alias(driver, "path", exports)?;
+    Ok(())
+}
+
+fn text(body: &str) -> std::result::Result<Value, RuntimeError> {
+    let body = JsString::try_from_utf8(body)
+        .map_err(|error| RuntimeError::Internal(error.to_string()))?;
+    Ok(Value::String(body))
+}
+
+/// Arguments arrive joined; a path may not contain a NUL byte, so it can
+/// separate them. This keeps a variadic call to a single host call.
+fn split(joined: &str) -> Vec<String> {
+    joined.split('\0').map(|part| part.to_string()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{env::set_current_dir, sync::Mutex};
+
+    static THREAD_LOCK: Lazy<Mutex<()>> = Lazy::new(Mutex::default);
+
+    use std::sync::LazyLock as Lazy;
+
+    use super::*;
+
+    #[test]
+    fn test_relative() {
+        let _shared = THREAD_LOCK.lock().unwrap();
+        let cwd = std::env::current_dir().expect("unable to get current working directory");
+        set_current_dir("/").expect("unable to set working directory to /");
+
+        assert_eq!(
+            relative("a/b/c", "b/c").unwrap(),
+            "../../../b/c".replace('/', MAIN_SEPARATOR_STR)
+        );
+        assert_eq!(
+            relative("/data/orandea/test/aaa", "/data/orandea/impl/bbb").unwrap(),
+            "../../impl/bbb".replace('/', MAIN_SEPARATOR_STR)
+        );
+        assert_eq!(
+            relative("/a/b/c", "/a/d").unwrap(),
+            "../../d".replace('/', MAIN_SEPARATOR_STR)
+        );
+        assert_eq!(relative("/a/b/c", "/a/b/c/d").unwrap(), "d");
+        assert_eq!(relative("/a/b/c", "/a/b/c").unwrap(), "");
+
+        assert_eq!(
+            relative("a/b", "a/b/c/d").unwrap(),
+            "c/d".replace('/', MAIN_SEPARATOR_STR)
+        );
+        assert_eq!(
+            relative("a/b/c", "b/c").unwrap(),
+            "../../../b/c".replace('/', MAIN_SEPARATOR_STR)
+        );
+
+        set_current_dir(cwd).expect("unable to set working directory back");
+    }
+
+    #[test]
+    fn test_dirname() {
+        assert_eq!(dirname("/usr/local/bin".to_string()), "/usr/local");
+        assert_eq!(dirname("/usr/local/".to_string()), "/usr");
+        assert_eq!(dirname("usr/local/bin".to_string()), "usr/local");
+        assert_eq!(dirname("/".to_string()), "/");
+        assert_eq!(dirname("".to_string()), ".");
+    }
+
+    #[test]
+    fn test_basename() {
+        assert_eq!(basename("/usr/local/bin".to_string(), Opt(None)), "bin");
+        assert_eq!(
+            basename("/usr/local/bin.txt".to_string(), Opt(None)),
+            "bin.txt"
+        );
+        assert_eq!(
+            basename(
+                "/usr/local/bin.txt".to_string(),
+                Opt(Some(".txt".to_string()))
+            ),
+            "bin"
+        );
+        assert_eq!(basename("".to_string(), Opt(None)), "");
+        assert_eq!(basename("/".to_string(), Opt(None)), "");
+        assert_eq!(basename("/usr/local//".to_string(), Opt(None)), "local");
+        assert_eq!(basename("dir///".to_string(), Opt(None)), "dir");
+    }
+
+    #[test]
+    fn test_basename_suffix() {
+        let with_suffix =
+            |path: &str, suffix: &str| basename(path.to_string(), Opt(Some(suffix.to_string())));
+        // The suffix is only removed from the end of the name
+        assert_eq!(with_suffix("/tmp/app.js.map", ".js"), "app.js.map");
+        assert_eq!(with_suffix("/tmp/file.txt", "file"), "file.txt");
+        assert_eq!(with_suffix("/tmp/file.txt", "e.txt"), "fil");
+        assert_eq!(with_suffix("/tmp/a.txt/", ".txt"), "a");
+        // A name equal to the suffix is kept, unless the whole path is the suffix
+        assert_eq!(with_suffix("/tmp/.txt", ".txt"), ".txt");
+        assert_eq!(with_suffix("aaa", "aaa"), "");
+    }
+
+    #[test]
+    fn test_extname() {
+        assert_eq!(extname("/usr/local/bin.txt".to_string()), ".txt");
+        assert_eq!(extname("/usr/local/bin".to_string()), "");
+        assert_eq!(extname("file.tar.gz".to_string()), ".gz");
+        assert_eq!(extname(".bashrc".to_string()), "");
+        assert_eq!(extname("".to_string()), "");
+        assert_eq!(extname(".eslintrc.json".to_string()), ".json");
+        assert_eq!(extname("/home/user/.config.js".to_string()), ".js");
+        assert_eq!(extname("..txt".to_string()), ".txt");
+        assert_eq!(extname("...".to_string()), ".");
+        assert_eq!(extname("..".to_string()), "");
+        assert_eq!(extname(".".to_string()), "");
+        assert_eq!(extname("file.txt//".to_string()), ".txt");
+    }
+
+    #[test]
+    fn test_join() {
+        // Standard cases
+        assert_eq!(
+            join_path(["/usr", "local", "bin"].iter()),
+            "/usr/local/bin".replace('/', MAIN_SEPARATOR_STR)
+        );
+        assert_eq!(
+            join_path(["/usr", "/local", "bin"].iter()),
+            "/usr/local/bin".replace('/', MAIN_SEPARATOR_STR)
+        );
+        assert_eq!(
+            join_path(["usr", "local", "bin"].iter()),
+            "usr/local/bin".replace('/', MAIN_SEPARATOR_STR)
+        );
+        assert_eq!(join_path(["", "bin"].iter()), "bin");
+
+        // Complex cases
+        assert_eq!(
+            join_path(["/usr", "..", "local", "bin"].iter()),
+            "/local/bin".replace('/', MAIN_SEPARATOR_STR)
+        ); // Parent dir
+        assert_eq!(
+            join_path([".", "usr", "local"]),
+            "usr/local".replace('/', MAIN_SEPARATOR_STR)
+        ); // Current dir
+        assert_eq!(
+            join_path(["/usr", ".", "bin"].iter()),
+            "/usr/bin".replace('/', MAIN_SEPARATOR_STR)
+        ); // Current dir in middle
+        assert_eq!(
+            join_path(["usr", "local", "bin", ".."].iter()),
+            "usr/local".replace('/', MAIN_SEPARATOR_STR)
+        ); // Ending with parent dir
+        assert_eq!(
+            join_path(["/usr", "local", "", "bin"].iter()),
+            "/usr/local/bin".replace('/', MAIN_SEPARATOR_STR)
+        ); // Empty component in path
+        assert_eq!(
+            join_path(["/usr", "local", ".hidden"].iter()),
+            "/usr/local/.hidden".replace('/', MAIN_SEPARATOR_STR)
+        ); // Hidden file
+        assert_eq!(
+            join_path(["..", "a"].iter()),
+            "../a".replace('/', MAIN_SEPARATOR_STR)
+        ); // Leading parent dir
+        assert_eq!(
+            join_path(["a", "..", "..", "b"].iter()),
+            "../b".replace('/', MAIN_SEPARATOR_STR)
+        ); // Parent dir above a relative path
+        assert_eq!(
+            join_path(["/", "..", "a"].iter()),
+            "/a".replace('/', MAIN_SEPARATOR_STR)
+        ); // Parent of root
+        assert_eq!(
+            join_path(["a", "/b"].iter()),
+            "a/b".replace('/', MAIN_SEPARATOR_STR)
+        ); // Absolute-looking part after a relative one
+        assert_eq!(
+            join_path([".", "/b"].iter()),
+            "b".replace('/', MAIN_SEPARATOR_STR)
+        );
+        assert_eq!(join_path(["a", ".."].iter()), "."); // Nothing left
+        assert_eq!(join_path(Vec::<&str>::new()), ".");
+    }
+
+    #[test]
+    fn test_resolve_path() {
+        let _shared = THREAD_LOCK.lock().unwrap();
+        let prefix = if cfg!(windows) {
+            if let Some(Component::Prefix(prefix)) =
+                std::env::current_dir().unwrap().components().next()
+            {
+                prefix.as_os_str().to_str().unwrap().to_string()
+            } else {
+                "".into()
+            }
+        } else {
+            "".into()
+        };
+
+        assert_eq!(
+            resolve_path(["", "foo/bar"].iter()).unwrap(),
+            std::env::current_dir()
+                .unwrap()
+                .join("foo/bar".replace('/', MAIN_SEPARATOR_STR))
+                .to_string_lossy()
+                .to_string()
+        );
+
+        // Standard cases
+        assert_eq!(
+            resolve_path(["/"].iter()).unwrap(),
+            prefix.clone() + MAIN_SEPARATOR_STR
+        );
+
+        // Standard cases
+        assert_eq!(
+            resolve_path(["/foo/bar", "../baz"].iter()).unwrap(),
+            prefix.clone() + &"/foo/baz".replace('/', MAIN_SEPARATOR_STR)
+        );
+        assert_eq!(
+            resolve_path(["/foo/bar", "./baz"].iter()).unwrap(),
+            prefix.clone() + &"/foo/bar/baz".replace('/', MAIN_SEPARATOR_STR)
+        );
+        assert_eq!(
+            resolve_path(["foo/bar", "/baz"].iter()).unwrap(),
+            prefix.clone() + &"/baz".replace('/', MAIN_SEPARATOR_STR)
+        );
+
+        // Complex cases
+        assert_eq!(
+            resolve_path(["/foo", "bar", ".", "baz"].iter()).unwrap(),
+            prefix.clone() + &"/foo/bar/baz".replace('/', MAIN_SEPARATOR_STR)
+        ); // Current dir in middle
+        assert_eq!(
+            resolve_path(["/foo", "bar", "..", "baz"].iter()).unwrap(),
+            prefix.clone() + &"/foo/baz".replace('/', MAIN_SEPARATOR_STR)
+        ); // Parent dir in middle
+        assert_eq!(
+            resolve_path(["/foo", "bar", "../..", "baz"].iter()).unwrap(),
+            prefix.clone() + &"/baz".replace('/', MAIN_SEPARATOR_STR)
+        ); // Double parent dir
+        assert_eq!(
+            resolve_path(["/foo", "bar", ".hidden"].iter()).unwrap(),
+            prefix.clone() + &"/foo/bar/.hidden".replace('/', MAIN_SEPARATOR_STR)
+        ); // Hidden file
+        assert_eq!(
+            resolve_path(["/foo", ".", "bar", "."].iter()).unwrap(),
+            prefix.clone() + &"/foo/bar".replace('/', MAIN_SEPARATOR_STR)
+        ); // Multiple current dirs
+        assert_eq!(
+            resolve_path(["/foo", "..", "..", "bar"].iter()).unwrap(),
+            prefix.clone() + &"/bar".replace('/', MAIN_SEPARATOR_STR)
+        ); // Multiple parent dirs
+        assert_eq!(
+            resolve_path(["/foo/bar", "/..", "baz"].iter()).unwrap(),
+            prefix.clone() + &"/baz".replace('/', MAIN_SEPARATOR_STR)
+        ); // Parent dir with absolute path
+
+        assert_eq!(
+            resolve_path(["../foo"].iter()).unwrap(),
+            std::env::current_dir()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join("foo".replace('/', MAIN_SEPARATOR_STR))
+                .to_string_lossy()
+                .to_string()
+        ); // Start with ..
+
+        assert_eq!(
+            resolve_path(["../".repeat(32)].iter()).unwrap(),
+            prefix.clone()
+        ); // Many ..
+    }
+
+    #[test]
+    fn test_normalize() {
+        assert_eq!(
+            normalize("/foo//bar//baz"),
+            "/foo/bar/baz".replace('/', MAIN_SEPARATOR_STR)
+        );
+        assert_eq!(
+            normalize("/foo/./bar/../baz"),
+            "/foo/baz".replace('/', MAIN_SEPARATOR_STR)
+        );
+        assert_eq!(
+            normalize("foo/bar/"),
+            "foo/bar".replace('/', MAIN_SEPARATOR_STR)
+        );
+        assert_eq!(normalize("./foo"), "foo");
+        assert_eq!(
+            normalize("../foo/../../bar"),
+            "../../bar".replace('/', MAIN_SEPARATOR_STR)
+        );
+        assert_eq!(normalize(""), ".");
+    }
+
+    #[test]
+    fn test_is_absolute() {
+        assert!(is_absolute("/usr/local/bin"));
+        assert!(!is_absolute("usr/local/bin"));
+        #[cfg(windows)]
+        assert!(is_absolute("C:\\Program Files")); // for Windows systems
+        assert!(!is_absolute("./local/bin"));
+    }
+
+    #[test]
+    fn test_replace_backslash() {
+        assert_eq!(replace_backslash("C:\\Program Files"), "C:/Program Files");
+        assert_eq!(replace_backslash("/usr/local/bin"), "/usr/local/bin");
+        assert_eq!(replace_backslash("C:\\Users\\User\\"), "C:/Users/User/");
+    }
+}
