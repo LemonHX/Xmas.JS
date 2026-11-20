@@ -42,6 +42,24 @@ fn say(words: &'static [u8]) -> u16 {
     port
 }
 
+/// A datagram peer: everything that arrives goes straight back, byte for byte.
+fn datagram_echo() -> u16 {
+    let socket = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind");
+    let port = socket.local_addr().expect("addr").port();
+    std::thread::spawn(move || {
+        let mut buffer = [0u8; 2048];
+        loop {
+            match socket.recv_from(&mut buffer) {
+                Ok((read, from)) => {
+                    let _ = socket.send_to(&buffer[..read], from);
+                }
+                Err(_) => return,
+            }
+        }
+    });
+    port
+}
+
 /// A port nothing is listening on.
 fn closed_port() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
@@ -67,7 +85,7 @@ fn harness() -> Harness {
     let mut h = Harness::with_modules();
     h.module(
         "app",
-        "import { connect } from 'cloudflare:sockets';\nglobalThis.connect = connect;\n",
+        "import { connect, UDPSocket } from 'cloudflare:sockets';\n         globalThis.connect = connect;\n         globalThis.UDPSocket = UDPSocket;\n",
     )
     .expect("module");
     h
@@ -246,4 +264,186 @@ fn start_tls_refuses_instead_of_pretending() {
     .expect("start");
     run(&mut h, "done");
     assert_eq!(h.expect_text("String(answer)"), "TypeError");
+}
+
+#[test]
+fn a_datagram_comes_back_whole() {
+    let port = datagram_echo();
+    let mut h = harness();
+    h.eval(&format!(
+        "(async () => {{
+            const socket = new UDPSocket({{ remoteAddress: '127.0.0.1', remotePort: {port} }});
+            const writer = socket.writable.getWriter();
+            await writer.write(Buffer.from('hello'));
+            const reader = socket.readable.getReader();
+            const first = await reader.read();
+            globalThis.text = __bytes_to_text(first.value, 'utf8');
+            globalThis.done = 'yes';
+        }})();"
+    ))
+    .expect("start");
+    run(&mut h, "done");
+    assert_eq!(h.expect_text("String(text)"), "hello");
+}
+
+#[test]
+fn datagram_edges_are_kept() {
+    let port = datagram_echo();
+    let mut h = harness();
+    h.eval(&format!(
+        "(async () => {{
+            const socket = new UDPSocket({{ remoteAddress: '127.0.0.1', remotePort: {port} }});
+            const writer = socket.writable.getWriter();
+            await writer.write(Buffer.from('a'));
+            await writer.write(Buffer.from('bc'));
+            const reader = socket.readable.getReader();
+            const one = await reader.read();
+            const two = await reader.read();
+            globalThis.sizes = one.value.length + ',' + two.value.length;
+            globalThis.texts = __bytes_to_text(one.value, 'utf8') + ':' + __bytes_to_text(two.value, 'utf8');
+            globalThis.done = 'yes';
+        }})();"
+    ))
+    .expect("start");
+    run(&mut h, "done");
+    assert_eq!(h.expect_text("String(sizes)"), "1,2");
+    assert_eq!(h.expect_text("String(texts)"), "a:bc");
+}
+
+#[test]
+fn an_empty_datagram_is_still_a_datagram() {
+    let port = datagram_echo();
+    let mut h = harness();
+    h.eval(&format!(
+        "(async () => {{
+            const socket = new UDPSocket({{ remoteAddress: '127.0.0.1', remotePort: {port} }});
+            const writer = socket.writable.getWriter();
+            await writer.write(new Uint8Array(0));
+            const reader = socket.readable.getReader();
+            const first = await reader.read();
+            globalThis.report = String(first.done) + ',' + String(first.value.length);
+            globalThis.done = 'yes';
+        }})();"
+    ))
+    .expect("start");
+    run(&mut h, "done");
+    // Not an end of stream: zero bytes is a datagram like any other.
+    assert_eq!(h.expect_text("String(report)"), "false,0");
+}
+
+#[test]
+fn opened_reports_where_it_bound_itself() {
+    let port = datagram_echo();
+    let mut h = harness();
+    h.eval(&format!(
+        "(async () => {{
+            const socket = new UDPSocket({{
+                remoteAddress: '127.0.0.1',
+                remotePort: {port},
+                localAddress: '127.0.0.1',
+            }});
+            const info = await socket.opened;
+            globalThis.info = info.localAddress + ':' + String(info.localPort > 0);
+            globalThis.done = 'yes';
+        }})();"
+    ))
+    .expect("start");
+    run(&mut h, "done");
+    assert_eq!(h.expect_text("String(info)"), "127.0.0.1:true");
+}
+
+#[test]
+fn close_ends_the_readable_side() {
+    let port = datagram_echo();
+    let mut h = harness();
+    h.eval(&format!(
+        "(async () => {{
+            const socket = new UDPSocket({{ remoteAddress: '127.0.0.1', remotePort: {port} }});
+            await socket.opened;
+            await socket.close();
+            const reader = socket.readable.getReader();
+            const after = await reader.read();
+            await socket.closed;
+            globalThis.report = String(after.done);
+            globalThis.done = 'yes';
+        }})();"
+    ))
+    .expect("start");
+    run(&mut h, "done");
+    assert_eq!(h.expect_text("String(report)"), "true");
+}
+
+#[test]
+fn a_datagram_that_is_too_big_is_refused() {
+    let port = datagram_echo();
+    let mut h = harness();
+    h.eval(&format!(
+        "(async () => {{
+            const socket = new UDPSocket({{ remoteAddress: '127.0.0.1', remotePort: {port} }});
+            const writer = socket.writable.getWriter();
+            try {{
+                await writer.write(Buffer.alloc(70000, 97));
+                globalThis.answer = 'no error';
+            }} catch (error) {{
+                globalThis.answer = String(error.name);
+            }}
+            globalThis.done = 'yes';
+        }})();"
+    ))
+    .expect("start");
+    run(&mut h, "done");
+    assert_eq!(h.expect_text("String(answer)"), "RangeError");
+}
+
+#[test]
+fn the_datagram_arguments_are_checked() {
+    let mut h = harness();
+    h.eval(
+        "const attempt = (work) => {
+            try {
+                work();
+                return 'no error';
+            } catch (error) {
+                return String(error.name);
+            }
+        };
+        globalThis.noRemote = attempt(() => new UDPSocket({ remotePort: 53 }));
+        globalThis.emptyRemote = attempt(() => new UDPSocket({ remoteAddress: '', remotePort: 53 }));
+        globalThis.zeroPort = attempt(() => new UDPSocket({ remoteAddress: 'example.com', remotePort: 0 }));
+        globalThis.highPort = attempt(() => new UDPSocket({ remoteAddress: 'example.com', remotePort: 70000 }));
+        globalThis.badLocal = attempt(() => new UDPSocket({ remoteAddress: 'example.com', remotePort: 53, localPort: -1 }));
+        globalThis.nothing = attempt(() => new UDPSocket());",
+    )
+    .expect("eval");
+    for name in [
+        "noRemote",
+        "emptyRemote",
+        "zeroPort",
+        "highPort",
+        "badLocal",
+        "nothing",
+    ] {
+        assert_eq!(
+            h.expect_text(&format!("String({name})")),
+            "TypeError",
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn both_names_export_the_datagram_socket() {
+    let mut h = Harness::with_modules();
+    h.module(
+        "names",
+        "import * as cloudflare from 'cloudflare:sockets';\n\
+         import * as plain from 'sockets';\n\
+         globalThis.same = String(cloudflare.UDPSocket === plain.UDPSocket);\n\
+         globalThis.kind = typeof cloudflare.UDPSocket;\n\
+         globalThis.byDefault = typeof cloudflare.default.UDPSocket;\n",
+    )
+    .expect("module");
+    assert_eq!(h.expect_text("String(same)"), "true");
+    assert_eq!(h.expect_text("String(kind)"), "function");
+    assert_eq!(h.expect_text("String(byDefault)"), "function");
 }

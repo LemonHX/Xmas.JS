@@ -6,6 +6,10 @@
 //! write happens because a writer wrote one, so nothing here runs a loop per socket and nothing
 //! buffers bytes the caller did not ask for.
 //!
+//! A UDPSocket is the same arrangement one step down: no connection, so the ids point at a bound
+//! datagram socket, every read is one datagram and every write is one datagram. Message edges are
+//! what the caller asked for, so the queue keeps them: an empty datagram is still a datagram.
+//!
 //! Name resolution is smol's, on a blocking thread, which is why there is no dns module under all
 //! this. There is no TLS: secureTransport 'on' is refused rather than half done.
 
@@ -15,7 +19,7 @@ use std::net::Shutdown;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use futures_lite::{AsyncReadExt, AsyncWriteExt};
+use futures_lite::{AsyncReadExt, AsyncWriteExt, future};
 use quickjs_oxide::engine::api::core::{
     Context, JsString, NativeErrorKind, PromiseCapability, RuntimeError, Scope, Value,
 };
@@ -32,6 +36,23 @@ const EOF: &str = "eof";
 
 type Stream = Arc<smol::Async<std::net::TcpStream>>;
 
+/// The largest payload a UDP datagram can carry over IPv4.
+const MAX_DATAGRAM: usize = 65_507;
+
+/// A bound datagram socket, plus the end of the channel that a pending read watches for a close.
+struct Datagram {
+    socket: Arc<smol::net::UdpSocket>,
+    stop: smol::channel::Sender<()>,
+    stopped: smol::channel::Receiver<()>,
+}
+
+/// What a datagram read hands over: the socket and its close channel, both Send.
+type Opened = (
+    Arc<smol::net::UdpSocket>,
+    smol::channel::Sender<()>,
+    smol::channel::Receiver<()>,
+);
+
 /// The open sockets of this realm. An id comes from JS, the same way fetch ids do.
 #[derive(Default)]
 struct State {
@@ -39,6 +60,9 @@ struct State {
     /// Sockets still being connected. The stream travels here because the connect task runs off
     /// the realm thread and the map is not Send.
     opening: RefCell<BTreeMap<u64, smol::channel::Receiver<Stream>>>,
+    datagrams: RefCell<BTreeMap<u64, Datagram>>,
+    /// Datagram sockets still being bound, for the same reason.
+    binding: RefCell<BTreeMap<u64, smol::channel::Receiver<Opened>>>,
 }
 
 pub fn install(driver: &mut Driver) -> Result<(), String> {
@@ -224,6 +248,207 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             .map_err(|error| format!("__sockets_close: {error}"))?;
     }
 
+    {
+        let pending = pending.clone();
+        let state = Rc::clone(&state);
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__udp_open",
+                5,
+                move |scope: &mut Scope<'_>,
+                      id: f64,
+                      remote_host: String,
+                      remote_port: f64,
+                      local_host: String,
+                      local_port: f64|
+                      -> Result<Value, RuntimeError> {
+                    let key = id as u64;
+                    let capability = scope.new_promise()?;
+                    let promise = capability.promise.clone();
+
+                    let (opened_tx, opened_rx) = smol::channel::unbounded::<Opened>();
+                    state.binding.borrow_mut().insert(key, opened_rx);
+
+                    let state_of_settle = Rc::clone(&state);
+                    let parked =
+                        pending.park(Box::new(move |context: &mut Context, reply: Reply| {
+                            let binding = state_of_settle.binding.borrow_mut().remove(&key);
+                            if reply.is_ok() {
+                                if let Some(binding) = binding {
+                                    if let Ok((socket, stop, stopped)) = binding.try_recv() {
+                                        state_of_settle.datagrams.borrow_mut().insert(
+                                            key,
+                                            Datagram {
+                                                socket,
+                                                stop,
+                                                stopped,
+                                            },
+                                        );
+                                    }
+                                }
+                            }
+                            settle(context, capability, reply);
+                        }));
+
+                    smol::spawn(async move {
+                        let bound = open_datagram(
+                            &remote_host,
+                            remote_port as u16,
+                            &local_host,
+                            local_port as u16,
+                        )
+                        .await;
+                        match bound {
+                            Ok((socket, stop, stopped, local)) => {
+                                let _ = opened_tx.send((socket, stop, stopped)).await;
+                                parked.finish(Ok(Payload::Text(local)));
+                            }
+                            Err(message) => parked.finish(Err(message)),
+                        }
+                    })
+                    .detach();
+
+                    Ok(Value::Object(promise))
+                },
+            )
+            .map_err(|error| format!("__udp_open: {error}"))?;
+    }
+
+    {
+        let pending = pending.clone();
+        let state = Rc::clone(&state);
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__udp_send",
+                2,
+                move |scope: &mut Scope<'_>,
+                      id: f64,
+                      chunk: Value|
+                      -> Result<Value, RuntimeError> {
+                    let Some(socket) = state
+                        .datagrams
+                        .borrow()
+                        .get(&(id as u64))
+                        .map(|datagram| Arc::clone(&datagram.socket))
+                    else {
+                        return Err(bytes::error(scope, "the socket is closed"));
+                    };
+                    let data = bytes::take(scope, &chunk)?;
+                    if data.len() > MAX_DATAGRAM {
+                        return Err(scope_range_error(
+                            scope,
+                            "a datagram carries at most 65507 bytes",
+                        ));
+                    }
+                    let capability = scope.new_promise()?;
+                    let promise = capability.promise.clone();
+                    let parked =
+                        pending.park(Box::new(move |context: &mut Context, reply: Reply| {
+                            settle(context, capability, reply);
+                        }));
+
+                    smol::spawn(async move {
+                        let reply = match socket.send(&data).await {
+                            Ok(_) => Ok(Payload::Text(String::new())),
+                            Err(error) => Err(error.to_string()),
+                        };
+                        parked.finish(reply);
+                    })
+                    .detach();
+
+                    Ok(Value::Object(promise))
+                },
+            )
+            .map_err(|error| format!("__udp_send: {error}"))?;
+    }
+
+    {
+        let pending = pending.clone();
+        let state = Rc::clone(&state);
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__udp_recv",
+                1,
+                move |scope: &mut Scope<'_>, id: f64| -> Result<Value, RuntimeError> {
+                    let Some((socket, stopped)) =
+                        state.datagrams.borrow().get(&(id as u64)).map(|datagram| {
+                            (Arc::clone(&datagram.socket), datagram.stopped.clone())
+                        })
+                    else {
+                        return Err(bytes::error(scope, "the socket is closed"));
+                    };
+                    let capability = scope.new_promise()?;
+                    let promise = capability.promise.clone();
+                    let parked =
+                        pending.park(Box::new(move |context: &mut Context, reply: Reply| {
+                            settle(context, capability, reply);
+                        }));
+
+                    smol::spawn(async move {
+                        // A datagram read has to be raceable against the socket being closed:
+                        // nothing else will ever wake it, and a task parked forever keeps the
+                        // socket alive.
+                        let reply = match future::or(
+                            async move {
+                                let mut buffer = vec![0u8; MAX_DATAGRAM];
+                                match socket.recv(&mut buffer).await {
+                                    Ok(read) => {
+                                        buffer.truncate(read);
+                                        Ok(Some(buffer))
+                                    }
+                                    Err(error) => Err(error.to_string()),
+                                }
+                            },
+                            async move {
+                                let _ = stopped.recv().await;
+                                Ok(None)
+                            },
+                        )
+                        .await
+                        {
+                            // None is a socket that was closed under the read, and an empty
+                            // datagram is not that: it comes back as zero bytes.
+                            Ok(None) => Ok(Payload::Text(EOF.to_string())),
+                            Ok(Some(bytes)) => Ok(Payload::Bytes(bytes)),
+                            Err(message) => Err(message),
+                        };
+                        parked.finish(reply);
+                    })
+                    .detach();
+
+                    Ok(Value::Object(promise))
+                },
+            )
+            .map_err(|error| format!("__udp_recv: {error}"))?;
+    }
+
+    {
+        let state = Rc::clone(&state);
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__udp_close",
+                1,
+                move |_scope: &mut Scope<'_>, id: f64| -> Result<Value, RuntimeError> {
+                    if let Some(datagram) = state.datagrams.borrow_mut().remove(&(id as u64)) {
+                        // Wake a read that is waiting: a datagram socket has no end of file, so
+                        // this is the only way it hears about a close.
+                        let _ = datagram.stop.try_send(());
+                    }
+                    state.binding.borrow_mut().remove(&(id as u64));
+                    Ok(Value::Undefined)
+                },
+            )
+            .map_err(|error| format!("__udp_close: {error}"))?;
+    }
+
     driver
         .context()
         .eval(PRELUDE)
@@ -232,7 +457,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         .context()
         .eval("__sockets_module")
         .map_err(|error| format!("__sockets_module: {error}"))?;
-    let exports = super::collect(driver, &module, &["connect", "default"])?;
+    let exports = super::collect(driver, &module, &["connect", "UDPSocket", "default"])?;
     // Two names, no node: alias: this is a web API that Cloudflare spells cloudflare:sockets.
     super::define_name(driver, "sockets", exports.clone())?;
     super::define_name(driver, "cloudflare:sockets", exports)
@@ -263,6 +488,68 @@ async fn open(hostname: &str, port: u16) -> Result<(Stream, String, String), Str
         }
     }
     Err(last)
+}
+
+/// Bind a datagram socket and point it at the remote end. Both ends report back as text, because
+/// the JS side wants the local address it actually got.
+async fn open_datagram(
+    remote_host: &str,
+    remote_port: u16,
+    local_host: &str,
+    local_port: u16,
+) -> Result<
+    (
+        Arc<smol::net::UdpSocket>,
+        smol::channel::Sender<()>,
+        smol::channel::Receiver<()>,
+        String,
+    ),
+    String,
+> {
+    let address = smol::net::resolve((remote_host, remote_port))
+        .await
+        .map_err(|error| format!("{remote_host}: {error}"))?
+        .into_iter()
+        .next()
+        .ok_or_else(|| format!("{remote_host}: did not resolve to anything"))?;
+
+    // A datagram socket is always bound: with no local preference that is the wildcard on the
+    // remote's family, with one it is exactly what the caller asked for.
+    let bind = if local_host.is_empty() {
+        if address.is_ipv6() {
+            "[::]:0".to_string()
+        } else {
+            "0.0.0.0:0".to_string()
+        }
+    } else if local_host.contains(':') {
+        format!("[{local_host}]:{local_port}")
+    } else {
+        format!("{local_host}:{local_port}")
+    };
+    let socket = smol::net::UdpSocket::bind(bind.as_str())
+        .await
+        .map_err(|error| format!("bind {bind}: {error}"))?;
+    // Connect on a datagram socket only fixes the peer: the kernel drops datagrams from anyone
+    // else, which is what a socket with one remote end means.
+    socket
+        .connect(address)
+        .await
+        .map_err(|error| format!("{remote_host}:{remote_port}: {error}"))?;
+
+    let local = socket
+        .local_addr()
+        .map(|address| format!("{}\u{0}{}", address.ip(), address.port()))
+        .unwrap_or_default();
+    let (stop, stopped) = smol::channel::unbounded();
+    Ok((Arc::new(socket), stop, stopped, local))
+}
+
+/// The RangeError thrown when a value is out of range.
+fn scope_range_error(scope: &mut Scope<'_>, message: &str) -> RuntimeError {
+    match scope.new_native_error(NativeErrorKind::Range, message) {
+        Ok(value) => RuntimeError::Exception(value),
+        Err(error) => error,
+    }
 }
 
 /// Resolve or reject the promise JS is holding.
