@@ -5,12 +5,19 @@
 //! come from `crate::host` and nothing here reaches for tokio.
 
 pub mod abort;
+pub mod buffer;
+pub mod bytes;
 pub mod console;
+pub mod crypto;
 pub mod event;
+pub mod fs;
 pub mod timers;
+pub mod url;
 
 use crate::driver::Driver;
 use quickjs_oxide::engine::api::core::Value;
+
+pub(crate) use buffer::buffer_hex;
 
 /// Install everything, in dependency order.
 pub fn install(driver: &mut Driver) -> Result<(), String> {
@@ -18,6 +25,10 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     timers::install(driver)?;
     event::install(driver)?;
     abort::install(driver)?;
+    url::install(driver)?;
+    buffer::install(driver)?;
+    fs::install(driver)?;
+    crypto::install(driver)?;
     Ok(())
 }
 
