@@ -1,11 +1,8 @@
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use colored::*;
 use compact_str::CompactString;
-use rsquickjs::{context::EvalOptions, Promise};
-use std::ffi::OsString;
-use xmas::utils::ctx::CtxExtension;
 
 /// Xmas.JS - A Modern System Scripting Runtime for the JavaScript Era
 #[derive(Parser)]
@@ -22,10 +19,6 @@ struct Cli {
 
     #[command(subcommand)]
     command: Option<Commands>,
-
-    /// Script file to run (if no subcommand is provided)
-    #[arg(trailing_var_arg = true)]
-    script: Vec<OsString>,
 }
 
 #[derive(Subcommand)]
@@ -142,38 +135,21 @@ enum Commands {
         #[arg(short = 'e', long)]
         external: Vec<String>,
     },
-
-    // ==================== REPL ====================
-    /// Start the interactive REPL
-    Repl,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    // Set working directory if specified
     if let Some(cwd) = &cli.working_dir {
         std::env::set_current_dir(cwd)?;
     }
 
     match cli.command {
-        // No command - enter REPL or run script
         None => {
-            if cli.script.is_empty() {
-                // No script provided, enter REPL
-                xmas::repl().await
-            } else {
-                // Run script file
-                let script_path = cli.script[0].to_string_lossy().to_string();
-                run_script(&script_path, &cli.script[1..]).await
-            }
+            anyhow::bail!("the runtime is being rewritten; only package manager and bundler work")
         }
 
-        // REPL command
-        Some(Commands::Repl) => xmas::repl().await,
-
-        // Package manager commands
         Some(Commands::Install) => {
             run_pm(xmas_package_manager::Subcommand::Install, cli.verbose).await
         }
@@ -238,7 +214,6 @@ async fn main() -> anyhow::Result<()> {
             .await
         }
 
-        // Bundler command
         Some(Commands::Bun {
             entry,
             output_dir,
@@ -275,97 +250,4 @@ async fn run_pm(cmd: xmas_package_manager::Subcommand, verbose: bool) -> anyhow:
     xmas_package_manager::package_manager(&args)
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))
-}
-
-async fn run_script(script_path: &str, _args: &[OsString]) -> anyhow::Result<()> {
-    use rsquickjs::{AsyncContext, AsyncRuntime};
-    use std::sync::Arc;
-    use xmas_js_modules::module::module_builder::ModuleBuilder;
-    use xmas_js_modules::module::package::loader::PackageLoader;
-    use xmas_js_modules::module::package::resolver::PackageResolver;
-    use xmas_js_modules::permissions::Permissions;
-
-    // Initialize tracing
-    tracing_subscriber::fmt::Subscriber::builder()
-        .with_max_level(tracing::Level::WARN)
-        .without_time()
-        .init();
-
-    // Get the script name without extension for output
-    let script_name = std::path::Path::new(script_path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("bundle");
-
-    // Bundle the script first
-    println!("{} {}...", "Bundling".cyan().bold(), script_path);
-    let bundle_config = xmas_bundler::BundleConfig {
-        entry: vec![PathBuf::from(script_path)],
-        output_dir: PathBuf::from("."),
-        output_filename: Some(format!("{}.js", script_name)),
-        minify: false,
-        source_map: false,
-        format: xmas_bundler::BundleFormat::Esm,
-        tree_shake: true,
-        external: vec![],
-    };
-    xmas_bundler::bundle(bundle_config)
-        .await
-        .map_err(|e| anyhow::anyhow!("Bundle error: {}", e))?;
-
-    // Now run the bundled output
-    let bundled_path = format!("{}.js", script_name);
-    println!("{} {}...", "Running".green().bold(), bundled_path);
-
-    let runtime = AsyncRuntime::new()?;
-    let context = AsyncContext::full(&runtime).await?;
-
-    let (resolver, loader, ga) = ModuleBuilder::default().build();
-    runtime
-        .set_loader((resolver, PackageResolver), (loader, PackageLoader))
-        .await;
-
-    // Read the bundled output
-    let script_content = std::fs::read_to_string(&bundled_path)?;
-
-    rsquickjs::async_with!(context => |ctx| {
-        let vsys = xmas_vsys::Vsys::builder()
-            .permissions(Permissions::allow_all())
-            .build();
-        xmas_js_modules::init(&ctx, Arc::new(vsys), xmas_js_modules::console::LogType::Stdio)?;
-        ga.attach(&ctx)?;
-        let poller = ctx.get_background_task_poller();
-
-        // Execute the bundled script directly (already transformed JS)
-        match ctx.eval_with_options(
-            script_content,
-            EvalOptions {
-                promise: true,
-                filename: Some(bundled_path.into()),
-                ..Default::default()
-            },
-        ) {
-            Ok(promise) => {
-                let promise : Promise<'_> = promise;
-                match promise.into_future::<()>().await {
-                    Ok(value) => {
-                        println!("{}: {:?}", "Result".green().bold(), value);
-                    },
-                    Err(e) => {
-                        eprintln!("{}: {}", "Error".red().bold(), e);
-                                        let err = ctx.catch();
-                eprintln!("{}: {:?}", "Exception".red().bold(), err.into_exception().map(|e| e.to_string()));
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("{}: {}", "Error".red().bold(), e);
-                let err = ctx.catch();
-                eprintln!("{}: {:?}", "Exception".red().bold(), err.into_exception().map(|e| e.to_string()));
-            }
-        }
-        poller.abort();
-        Ok(())
-    })
-    .await
 }
