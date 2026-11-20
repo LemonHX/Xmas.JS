@@ -62,19 +62,20 @@ const FORWARD_SLASH_STR: &str = "/";
 pub const CURRENT_DIR_STR: &str = "./";
 
 #[cfg(windows)]
-use memchr::{memchr, memchr2, memchr2_iter};
+use memchr::{memchr2, memchr2_iter};
 
 #[cfg(windows)]
 pub fn replace_backslash(path: impl Into<String>) -> String {
-    let mut path = path.into();
-    let bytes = unsafe { path.as_bytes_mut() };
-
-    let mut start = 0;
-    while let Some(pos) = memchr(b'\\', &bytes[start..]) {
-        bytes[start + pos] = b'/';
-        start += pos + 1;
+    let mut bytes = path.into().into_bytes();
+    // Flipping 0x5C to 0x2F cannot break UTF-8: neither byte is a continuation
+    // byte, and both encode the same length. This used to be an in-place
+    // as_bytes_mut, which is the same work with an unsound-looking cast.
+    for byte in bytes.iter_mut() {
+        if *byte == b'\\' {
+            *byte = b'/';
+        }
     }
-    path
+    String::from_utf8(bytes).unwrap_or_default()
 }
 
 #[cfg(not(windows))]

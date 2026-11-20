@@ -58,3 +58,44 @@ fn the_runtime_links_no_system_library() {
          keep TLS, compression and crypto in Rust: rustls, miniz_oxide, the RustCrypto crates"
     );
 }
+
+/// Our own code, not a dependency's: no unsafe blocks, no unsafe fns. Anything
+/// that needs syscalls goes through std or a crate; a raw pointer here would be
+/// the start of an attack surface nobody reviews.
+#[test]
+fn the_runtime_has_no_unsafe_of_its_own() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut offenders = Vec::new();
+    walk(&root, &mut offenders);
+    assert!(
+        offenders.is_empty(),
+        "unsafe in our own sources: {offenders:?}"
+    );
+}
+
+fn walk(directory: &std::path::Path, offenders: &mut Vec<String>) {
+    let entries = match std::fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            walk(&path, offenders);
+            continue;
+        }
+        if path.extension().and_then(|kind| kind.to_str()) != Some("rs") {
+            continue;
+        }
+        let body = match std::fs::read_to_string(&path) {
+            Ok(body) => body,
+            Err(_) => continue,
+        };
+        for token in ["unsafe {", "unsafe fn", "unsafe impl"] {
+            if body.contains(token) {
+                offenders.push(format!("{} ({token})", path.display()));
+                break;
+            }
+        }
+    }
+}

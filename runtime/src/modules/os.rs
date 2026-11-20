@@ -1,13 +1,29 @@
-//! os: the machine this realm runs on, shaped after Node's os module.
+//! os: what this runtime knows about itself, shaped after Node's os module.
 //!
-//! The values that never change during a run are read once at install time and
-//! frozen into JS. totalmem, freemem, uptime and loadavg change, so those stay
-//! host calls; they return numbers, not JSON, so a call allocates nothing.
+//! It reports the runtime, not the machine. Nothing here asks the kernel
+//! anything: no libc, no sysctl, no /proc. A script therefore cannot learn the
+//! host's memory, its load, its kernel version, its hostname or its user ids,
+//! which is what makes running unfamiliar code here defensible when there is no
+//! permission model to gate it with.
+//!
+//! The names and shapes stay Node's so code written against Node keeps running.
+//! The numbers are ours:
+//!
+//! - totalmem: this realm's heap cap
+//! - freemem: what is left of that cap
+//! - uptime: seconds since this realm's clock started
+//! - loadavg: zero, because one realm has nothing to average
+//! - uid, gid: -1, which is what Node reports where the ids do not exist
+//! - hostname: empty, not disclosed
+//!
+//! What cannot change during a run is read once at install time and frozen into
+//! JS. The four that do change stay host calls and return numbers, so a call
+//! allocates nothing.
 
 use quickjs_oxide::engine::api::core::{Js, JsString, RuntimeError, Scope, Value};
 
 use crate::driver::Driver;
-use crate::host::sysinfo;
+use crate::host::Env;
 use crate::modules::{node_arch, node_platform, quote};
 
 const PRELUDE: &str = include_str!("../../js/os.js");
@@ -19,7 +35,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         .map_err(|error| format!("global: {error}"))?;
 
     {
-        let snapshot = snapshot();
+        let snapshot = snapshot(&driver.host.env);
         driver
             .context()
             .define_function(&global, "__os_static", 0, move |_: &mut Scope<'_>| {
@@ -28,32 +44,42 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             .map_err(|error| format!("__os_static: {error}"))?;
     }
 
-    driver
-        .context()
-        .define_function(&global, "__os_totalmem", 0, move |_: &mut Scope<'_>| {
-            Ok::<Value, RuntimeError>(Value::Float(sysinfo::total_memory() as f64))
-        })
-        .map_err(|error| format!("__os_totalmem: {error}"))?;
+    {
+        let cap = driver.heap_cap;
+        driver
+            .context()
+            .define_function(&global, "__os_totalmem", 0, move |_: &mut Scope<'_>| {
+                Ok::<Value, RuntimeError>(Value::Float(cap as f64))
+            })
+            .map_err(|error| format!("__os_totalmem: {error}"))?;
+    }
 
-    driver
-        .context()
-        .define_function(&global, "__os_freemem", 0, move |_: &mut Scope<'_>| {
-            Ok::<Value, RuntimeError>(Value::Float(sysinfo::free_memory() as f64))
-        })
-        .map_err(|error| format!("__os_freemem: {error}"))?;
+    {
+        let heap_used = driver.heap_used();
+        let cap = driver.heap_cap;
+        driver
+            .context()
+            .define_function(&global, "__os_freemem", 0, move |_: &mut Scope<'_>| {
+                let left = cap.saturating_sub(heap_used.get());
+                Ok::<Value, RuntimeError>(Value::Float(left as f64))
+            })
+            .map_err(|error| format!("__os_freemem: {error}"))?;
+    }
 
-    driver
-        .context()
-        .define_function(&global, "__os_uptime", 0, move |_: &mut Scope<'_>| {
-            Ok::<Value, RuntimeError>(Value::Float(sysinfo::uptime()))
-        })
-        .map_err(|error| format!("__os_uptime: {error}"))?;
+    {
+        let clock = driver.host.clock.clone();
+        driver
+            .context()
+            .define_function(&global, "__os_uptime", 0, move |_: &mut Scope<'_>| {
+                Ok::<Value, RuntimeError>(Value::Float(clock.elapsed_ns() / 1e9))
+            })
+            .map_err(|error| format!("__os_uptime: {error}"))?;
+    }
 
     driver
         .context()
         .define_function(&global, "__os_loadavg", 0, move |_: &mut Scope<'_>| {
-            let [one, five, fifteen] = sysinfo::loadavg();
-            text(&format!("[{one},{five},{fifteen}]"))
+            text("[0,0,0]")
         })
         .map_err(|error| format!("__os_loadavg: {error}"))?;
 
@@ -82,37 +108,56 @@ fn text(body: &str) -> Result<Value, RuntimeError> {
 }
 
 /// The part of the answer that cannot change while the process runs.
-fn snapshot() -> String {
-    let homedir = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .unwrap_or_default();
-    let user = std::env::var("USER")
-        .or_else(|_| std::env::var("USERNAME"))
-        .or_else(|_| std::env::var("LOGNAME"))
-        .unwrap_or_default();
-    let shell = std::env::var("SHELL").unwrap_or_default();
+///
+/// Everything coming from the environment is read through the host's snapshot,
+/// not std::env, so an embedder that injects a fake environment gets a matching
+/// os module.
+fn snapshot(env: &Env) -> String {
+    let first = |keys: &[&str]| -> String {
+        keys.iter()
+            .find_map(|key| env.get(key))
+            .unwrap_or_default()
+    };
+    let homedir = first(&["HOME", "USERPROFILE"]);
+    let user = first(&["USER", "USERNAME", "LOGNAME"]);
+    let shell = first(&["SHELL", "COMSPEC"]);
+    let tmpdir = {
+        let declared = first(&["TMPDIR", "TEMP", "TMP"]);
+        if declared.is_empty() {
+            std::env::temp_dir().to_string_lossy().into_owned()
+        } else {
+            declared
+        }
+    };
+    // The one thing asked of the kernel, and it goes through std: how many
+    // threads that will actually run us. CPU counts size thread pools; they are
+    // not a fact about the user.
+    let cpus = std::thread::available_parallelism()
+        .map(|count| count.get())
+        .unwrap_or(1);
+
     let mut out = String::with_capacity(512);
     out.push_str("{\"platform\":");
     out.push_str(&quote(node_platform()));
     out.push_str(",\"arch\":");
     out.push_str(&quote(node_arch()));
     out.push_str(",\"type\":");
-    out.push_str(&quote(&sysinfo::system_name()));
+    out.push_str(&quote("XmasJS"));
     out.push_str(",\"release\":");
-    out.push_str(&quote(&sysinfo::release()));
+    out.push_str(&quote(env!("CARGO_PKG_VERSION")));
     out.push_str(",\"machine\":");
-    out.push_str(&quote(&sysinfo::machine()));
+    out.push_str(&quote(node_arch()));
     out.push_str(",\"hostname\":");
-    out.push_str(&quote(&sysinfo::hostname()));
+    out.push_str(&quote(""));
     out.push_str(",\"homedir\":");
     out.push_str(&quote(&homedir));
     out.push_str(",\"tmpdir\":");
-    out.push_str(&quote(&std::env::temp_dir().to_string_lossy()));
-    out.push_str(&format!(",\"cpus\":{}", sysinfo::cpu_count()));
+    out.push_str(&quote(&tmpdir));
+    out.push_str(&format!(",\"cpus\":{cpus}"));
     out.push_str(",\"eol\":");
     out.push_str(&quote(if cfg!(windows) { "\r\n" } else { "\n" }));
-    out.push_str(&format!(",\"uid\":{}", sysinfo::uid()));
-    out.push_str(&format!(",\"gid\":{}", sysinfo::gid()));
+    out.push_str(",\"uid\":-1");
+    out.push_str(",\"gid\":-1");
     out.push_str(",\"user\":");
     out.push_str(&quote(&user));
     out.push_str(",\"shell\":");

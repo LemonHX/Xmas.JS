@@ -2,8 +2,8 @@
   const facts = JSON.parse(__os_static());
   const cpus = [];
   for (let i = 0; i < facts.cpus; i += 1) {
-    // Node reports a model and per-mode times per core; the host does not hand
-    // those out, so they are empty and zeroed rather than invented.
+    // Node reports a model and per-mode times per core; this runtime does not
+    // have them, so they are empty and zeroed rather than invented.
     cpus.push({ model: '', speed: 0, times: { user: 0, nice: 0, sys: 0, idle: 0, irq: 0 } });
   }
 

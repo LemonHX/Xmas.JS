@@ -13,7 +13,6 @@ use quickjs_oxide::engine::api::core::{Js, JsString, RuntimeError, Scope, Stream
 
 use crate::driver::Driver;
 use crate::host::env::Env;
-use crate::host::sysinfo;
 use crate::modules::{node_arch, node_platform, quote};
 
 const PRELUDE: &str = include_str!("../../js/process.js");
@@ -197,7 +196,9 @@ fn meta(env: &Env) -> String {
     out.push_str(",\"arch\":");
     out.push_str(&quote(node_arch()));
     out.push_str(&format!(",\"pid\":{}", std::process::id()));
-    out.push_str(&format!(",\"ppid\":{}", sysinfo::parent_pid()));
+    // No parent process to name: a realm is not a child of anything a script
+    // can reach.
+    out.push_str(",\"ppid\":0");
     out.push_str(",\"version\":");
     out.push_str(&quote(concat!("v", env!("CARGO_PKG_VERSION"))));
     out.push_str(",\"argv\":[");
@@ -230,10 +231,12 @@ fn meta(env: &Env) -> String {
 /// resident part from the kernel. external and arrayBuffers are reported as
 /// zero until the engine tracks them separately.
 fn memory(heap_used: &Rc<Cell<usize>>, cap: usize) -> String {
+    // Every number is the realm's own heap. Resident memory belongs to the
+    // machine, not to this realm, so it is not reported: rss is the heap the
+    // engine has reserved. external and arrayBuffers stay zero because buffers
+    // and typed arrays are allocated inside that same heap here.
+    let used = heap_used.get();
     format!(
-        "{{\"rss\":{},\"heapTotal\":{},\"heapUsed\":{},\"external\":0,\"arrayBuffers\":0}}",
-        sysinfo::rss(),
-        cap,
-        heap_used.get()
+        "{{\"rss\":{used},\"heapTotal\":{cap},\"heapUsed\":{used},\"external\":0,\"arrayBuffers\":0}}"
     )
 }
