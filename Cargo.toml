@@ -10,12 +10,17 @@ description = "WinterTC compatible ECMAScript/TypeScript runtime"
 
 [workspace]
 members = [
+  "runtime",
   "package-manager",
   "bundler",
   "vsys",
 ]
+# The runtime is what we are building; the package manager and the bundler
+# still pull tokio and rolldown, so keep them out of the default build.
+default-members = ["runtime"]
 
 [workspace.dependencies]
+xmas-runtime = { path = "runtime" }
 xmas-package-manager = { path = "package-manager" }
 xmas-vsys = { path = "vsys" }
 xmas-bundler = { path = "bundler" }
