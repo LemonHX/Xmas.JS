@@ -13,9 +13,11 @@ fn serve(listener: TcpListener) {
         let Ok((mut socket, _)) = listener.accept() else {
             return;
         };
-        std::thread::spawn(move || loop {
-            if !answer(&mut socket) {
-                return;
+        std::thread::spawn(move || {
+            loop {
+                if !answer(&mut socket) {
+                    return;
+                }
             }
         });
     }

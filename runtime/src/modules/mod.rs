@@ -19,6 +19,7 @@ pub mod os;
 pub mod path;
 pub mod perf_hooks;
 pub mod process;
+pub mod sockets;
 pub mod stream;
 pub mod stream_web;
 pub mod string_decoder;
@@ -58,6 +59,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     stream_web::install(driver)?;
     // fetch needs Blob, ReadableStream and DOMException, so it comes last
     fetch::install(driver)?;
+    // sockets needs ReadableStream and WritableStream, and nothing else
+    sockets::install(driver)?;
     Ok(())
 }
 
