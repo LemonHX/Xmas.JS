@@ -102,6 +102,12 @@ impl Pending {
         Ok(settled)
     }
 
+    /// Wake the loop without a result: a connection that just handed work to JS uses this, so the
+    /// realm gets a slice to run the handler's microtasks even when no host job is in flight.
+    pub fn notify(&self) {
+        let _ = self.inner.wake.try_send(());
+    }
+
     /// Wait until any job finishes. Used by the event loop instead of polling on a timer.
     pub async fn wait(&self) {
         let _ = self.inner.woken.recv().await;

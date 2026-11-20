@@ -19,6 +19,7 @@ pub mod os;
 pub mod path;
 pub mod perf_hooks;
 pub mod process;
+pub mod server;
 pub mod sockets;
 pub mod stream;
 pub mod stream_web;
@@ -61,6 +62,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     fetch::install(driver)?;
     // sockets needs ReadableStream and WritableStream, and nothing else
     sockets::install(driver)?;
+    // the server builds a Request out of a parsed head, so it needs Headers and Response
+    server::install(driver)?;
     Ok(())
 }
 

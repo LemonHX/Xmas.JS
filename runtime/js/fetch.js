@@ -218,7 +218,9 @@
     }
     owner._bodyUsed = true;
     const chunks = [];
-    if (owner._native !== null) {
+    // Only a response that came off the wire has a native body to read chunk by chunk. A request
+    // built in JS carries its bytes in _bytes, and its body getter makes a stream out of them.
+    if (typeof owner._native === 'number') {
       const id = owner._native;
       owner._native = null;
       return new Promise((resolve, reject) => {

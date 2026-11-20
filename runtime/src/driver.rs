@@ -5,15 +5,17 @@
 //!
 //! When idle, wait for timers with smol::Timer, so the reactor is also running and the host's IO futures don't starve.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use futures_lite::future;
 use quickjs_oxide::engine::api::core::{
     Context, HeapLimits, ObjectRef, PromiseCapability, PromiseSnapshot, Runtime, RuntimeError,
     RuntimeOptions, Scope, Value,
 };
 
+use crate::host::server::State as ServerState;
 use crate::host::{Host, Level, PromiseSlot, sleep};
 
 pub const SLICE: Duration = Duration::from_micros(200);
@@ -33,6 +35,9 @@ pub struct Slice {
 
 pub struct Driver {
     pub host: Host,
+    /// The realm side of the HTTP server: where a request waits for its answer. Empty until the
+    /// server module installs itself.
+    pub server: Rc<ServerState>,
     pub notice_us: f64,
     /// The heap cap this realm was built with, so process.memoryUsage can report it.
     pub heap_cap: usize,
@@ -58,6 +63,7 @@ impl Driver {
         let context = runtime.context();
         let mut driver = Driver {
             host,
+            server: Rc::new(ServerState::default()),
             notice_us: 0.0,
             heap_cap: max_bytes,
             heap_used: Rc::new(Cell::new(0)),
@@ -330,6 +336,49 @@ impl Driver {
     /// How many host async jobs have not landed yet.
     pub fn outstanding_io(&self) -> usize {
         self.host.pending.outstanding()
+    }
+
+    /// Keep the realm turning while a server serves on this thread: run jobs, fire timers, settle
+    /// host results, and sleep when there is nothing to do.
+    ///
+    /// One of these runs per worker thread. A request that handed work to JS calls
+    /// Pending::notify, so the slice that runs the handler's microtasks happens right away instead
+    /// of on the next timer.
+    pub async fn pump(realm: Rc<RefCell<Driver>>) {
+        loop {
+            let busy = {
+                let mut driver = realm.borrow_mut();
+                match driver.slice() {
+                    Ok(slice) => slice.jobs > 0 || slice.timers > 0 || slice.settled > 0,
+                    Err(error) => {
+                        eprintln!("realm: {error}");
+                        false
+                    }
+                }
+            };
+            if busy {
+                continue;
+            }
+
+            let (deadline, pending) = {
+                let driver = realm.borrow();
+                (driver.host.timers.next_deadline(), driver.host.pending.clone())
+            };
+            future::or(
+                async move {
+                    match deadline {
+                        Some(when) => {
+                            let wait = when.saturating_duration_since(Instant::now());
+                            smol::Timer::after(wait).await;
+                        }
+                        // No timer to wait for: only a notify or a settled job can wake us.
+                        None => smol::future::pending::<()>().await,
+                    }
+                },
+                async move { pending.wait().await },
+            )
+            .await;
+        }
     }
 
     pub fn pending_jobs(&self) -> Result<bool, String> {

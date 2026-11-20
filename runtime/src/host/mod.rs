@@ -12,6 +12,7 @@ pub mod http;
 pub mod modules;
 pub mod net;
 pub mod pending;
+pub mod server;
 pub mod timer;
 
 pub use clock::{CancelHandle, Clock};
@@ -21,6 +22,7 @@ pub use fs::{DirItem, Fs, Meta};
 pub use modules::{Module, Modules};
 pub use net::Net;
 pub use pending::{Job, Payload, Pending, Reply, Settle};
+pub use server::Server;
 pub use timer::{PromiseSlot, TimerCallback, TimerId, Timers, sleep};
 
 use quickjs_oxide::engine::api::core::{Host as EngineHostTrait, Stream};
