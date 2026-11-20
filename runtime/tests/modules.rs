@@ -13,7 +13,8 @@ fn console_writes_to_the_host_sink() {
     h.eval("console.log('a', 1, { b: 2 }); console.warn('w'); console.assert(false, 'boom');")
         .unwrap();
     let out = h.host().console.take();
-    assert!(out.contains("[log] a 1 {\"b\":2}"), "{out}");
+    // console.log formats like Node: util.format, so an object is inspected.
+    assert!(out.contains("[log] a 1 { b: 2 }"), "{out}");
     assert!(out.contains("[warn] w"), "{out}");
     assert!(out.contains("[error] Assertion failed: boom"), "{out}");
 }
@@ -991,4 +992,165 @@ fn path_is_a_module_too() {
         "import { join, sep } from 'node:path'; export const values = [join('/a', 'b'), sep];",
     );
     assert!(namespace.is_ok(), "{namespace:?}");
+}
+
+#[test]
+fn inspect_writes_values_the_way_node_does() {
+    let mut h = Harness::with_modules();
+    assert_eq!(h.expect_text("util.inspect(1)"), "1");
+    assert_eq!(h.expect_text("util.inspect('text')"), "text");
+    assert_eq!(h.expect_text("util.inspect([1, 'a', true])"), "[ 1, 'a', true ]");
+    assert_eq!(h.expect_text("util.inspect({ a: 1, b: 'x' })"), "{ a: 1, b: 'x' }");
+    assert_eq!(h.expect_text("util.inspect({ a: { b: { c: 1 } } })"), "{ a: { b: { c: 1 } } }");
+    assert_eq!(h.expect_text("util.inspect(function named() {})"), "[function: named]");
+    assert_eq!(h.expect_text("util.inspect(class Thing {})"), "[class: Thing]");
+    assert_eq!(h.expect_text("util.inspect(new Map())"), "Map {}");
+    assert_eq!(h.expect_text("util.inspect(new Date(0))"), "1970-01-01T00:00:00.000Z");
+    assert_eq!(h.expect_text("util.inspect(/ab+/gi)"), "/ab+/gi");
+    // An Error prints its stack, as Node does; only the first line is fixed.
+    let error = h.expect_text("util.inspect(new TypeError('bad'))");
+    assert!(error.starts_with("TypeError: bad\n  at "), "{error}");
+}
+
+#[test]
+fn inspect_marks_a_cycle_and_stops_at_the_depth_limit() {
+    let mut h = Harness::with_modules();
+    assert_eq!(
+        h.expect_text("const loop = { name: 'x' }; loop.self = loop; util.inspect(loop)"),
+        "{ name: 'x', self: [Circular] }"
+    );
+    assert_eq!(
+        h.expect_text("util.inspect({ a: { b: { c: { d: { e: 1 } } } } })"),
+        "{ a: { b: { c: { d: [Object] } } } }"
+    );
+}
+
+#[test]
+fn format_handles_every_spec() {
+    let mut h = Harness::with_modules();
+    assert_eq!(h.expect_text("util.format('%s is %d', 'age', 30)"), "age is 30");
+    assert_eq!(h.expect_text("util.format('%d', '42')"), "42");
+    assert_eq!(h.expect_text("util.format('%i', '42px')"), "42");
+    assert_eq!(h.expect_text("util.format('%f', '1.5x')"), "1.5");
+    assert_eq!(h.expect_text("util.format('%j', { a: 1 })"), "{\"a\":1}");
+    assert_eq!(h.expect_text("util.format('%o', [1, 2])"), "[ 1, 2 ]");
+    assert_eq!(h.expect_text("util.format('100%%')"), "100%%");
+    assert_eq!(h.expect_text("util.format(1, 'two', [3])"), "1 two [ 3 ]");
+    assert_eq!(h.expect_text("util.format('%s %s', 'only')"), "only %s");
+    assert_eq!(h.expect_text("util.format('%c', 'color: red')"), "");
+}
+
+#[test]
+fn style_text_wraps_and_nests() {
+    let mut h = Harness::with_modules();
+    assert_eq!(h.expect_text("util.styleText('red', 'hi')"), "\u{1b}[31mhi\u{1b}[39m");
+    assert_eq!(
+        h.expect_text("util.styleText(['bold', 'red'], 'hi')"),
+        "\u{1b}[1m\u{1b}[31mhi\u{1b}[39m\u{1b}[22m"
+    );
+    assert!(h.eval("util.styleText('nope', 'hi')").is_err());
+}
+
+#[test]
+fn promisify_and_callbackify_turn_callbacks_around() {
+    let mut h = Harness::with_modules();
+    h.eval("globalThis.readish = (value, callback) => callback(null, value * 2)").unwrap();
+    h.eval("globalThis.readishAsync = util.promisify(readish)").unwrap();
+    let value = h.eval("readishAsync(21)").unwrap();
+    let settled = smol::block_on(h.settle(value)).unwrap();
+    assert_eq!(number_of(&settled), Some(42.0));
+
+    h.eval("globalThis.writeish = async (value) => value + 1").unwrap();
+    h.eval("globalThis.writeishCb = util.callbackify(writeish)").unwrap();
+    let value = h
+        .eval("new Promise((resolve) => writeishCb(41, (error, value) => resolve(error ? 'error' : value)))")
+        .unwrap();
+    let settled = smol::block_on(h.settle(value)).unwrap();
+    assert_eq!(number_of(&settled), Some(42.0));
+
+    h.eval("globalThis.failing = (callback) => callback(new Error('nope'))").unwrap();
+    let value = h.eval("util.promisify(failing)()").unwrap();
+    assert!(smol::block_on(h.settle(value)).is_err());
+}
+
+#[test]
+fn util_predicates_and_deep_equality() {
+    let mut h = Harness::with_modules();
+    assert_eq!(h.expect_text("String(util.types.isPromise(Promise.resolve()))"), "true");
+    assert_eq!(h.expect_text("String(util.types.isDate(new Date()))"), "true");
+    assert_eq!(h.expect_text("String(util.types.isTypedArray(new Uint8Array(2)))"), "true");
+    assert_eq!(h.expect_text("String(util.isDeepStrictEqual({ a: [1, { b: 2 }] }, { a: [1, { b: 2 }] }))"), "true");
+    assert_eq!(h.expect_text("String(util.isDeepStrictEqual({ a: 1 }, { a: 2 }))"), "false");
+    assert_eq!(h.expect_text("String(util.isDeepStrictEqual(new Uint8Array([1, 2]), new Uint8Array([1, 2])))"), "true");
+    assert_eq!(h.expect_text("String(util.isDeepStrictEqual(NaN, NaN))"), "true");
+    assert_eq!(h.expect_text("String(util.isDeepStrictEqual({}, Object.create(null)))"), "false");
+}
+
+#[test]
+fn assert_ok_and_strict_equal() {
+    let mut h = Harness::with_modules();
+    assert!(h.eval("assert(true)").is_ok());
+    assert!(h.eval("assert(1)").is_ok());
+    assert!(h.eval("assert('text')").is_ok());
+    assert!(h.eval("assert(false)").is_err());
+    assert!(h.eval("assert(0)").is_err());
+    assert!(h.eval("assert('')").is_err());
+    let message = h.eval_err("assert.ok(0, 'needs a value')");
+    assert!(message.message.contains("needs a value"), "{:?}", message);
+    assert!(h.eval("assert.strictEqual(1, 1)").is_ok());
+    assert!(h.eval("assert.strictEqual(1, 2)").is_err());
+    assert!(h.eval("assert.strictEqual(0, -0)").is_err());
+    assert!(h.eval("assert.equal('1', 1)").is_ok());
+    assert!(h.eval("assert.deepStrictEqual({ a: [1] }, { a: [1] })").is_ok());
+    assert!(h.eval("assert.deepStrictEqual({ a: [1] }, { a: [2] })").is_err());
+    assert!(h.eval("assert.deepEqual({ a: 1 }, { a: '1' })").is_ok());
+    assert!(h.eval("assert.notStrictEqual(1, 2)").is_ok());
+}
+
+#[test]
+fn assert_throws_and_rejects() {
+    let mut h = Harness::with_modules();
+    assert!(h
+        .eval("assert.throws(() => { throw new TypeError('bad'); }, TypeError)")
+        .is_ok());
+    assert!(h
+        .eval("assert.throws(() => { throw new TypeError('bad'); }, /bad/)")
+        .is_ok());
+    assert!(h.eval("assert.throws(() => {}, TypeError)").is_err());
+    assert!(h.eval("assert.throws(() => { throw new Error('x'); }, TypeError)").is_err());
+    assert!(h.eval("assert.doesNotThrow(() => 1)").is_ok());
+    assert!(h.eval("assert.doesNotThrow(() => { throw new Error('x'); })").is_err());
+    assert!(h.eval("assert.match('hello', /ell/)").is_ok());
+    assert!(h.eval("assert.match('hello', /xyz/)").is_err());
+    assert!(h.eval("assert.ifError(null)").is_ok());
+    assert!(h.eval("assert.ifError(new Error('x'))").is_err());
+
+    let value = h
+        .eval("assert.rejects(Promise.reject(new Error('no')), /no/)")
+        .unwrap();
+    assert!(smol::block_on(h.settle(value)).is_ok());
+    let value = h.eval("assert.rejects(Promise.resolve())").unwrap();
+    assert!(smol::block_on(h.settle(value)).is_err());
+    let value = h
+        .eval("assert.rejects(Promise.reject(new Error('no')), TypeError)")
+        .unwrap();
+    assert!(smol::block_on(h.settle(value)).is_err());
+    assert_eq!(
+        h.expect_text("new assert.AssertionError({ message: 'm' }).name"),
+        "AssertionError"
+    );
+}
+
+#[test]
+fn assert_is_a_module_too() {
+    let mut h = Harness::with_modules();
+    assert!(h
+        .module(
+            "probe",
+            "import assert, { deepStrictEqual } from 'node:assert'; deepStrictEqual({ a: 1 }, { a: 1 }); export const value = typeof assert;",
+        )
+        .is_ok());
+    assert!(h
+        .module("probe2", "import { strictEqual } from 'assert/strict'; strictEqual(1, 1); export const value = 1;")
+        .is_ok());
 }

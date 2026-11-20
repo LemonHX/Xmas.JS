@@ -7,6 +7,7 @@
 pub mod abort;
 pub mod buffer;
 pub mod bytes;
+pub mod assert;
 pub mod console;
 pub mod crypto;
 pub mod event;
@@ -14,6 +15,7 @@ pub mod fs;
 pub mod os;
 pub mod path;
 pub mod process;
+pub mod util;
 pub mod stream;
 pub mod timers;
 pub mod url;
@@ -25,6 +27,7 @@ pub(crate) use buffer::buffer_hex;
 
 /// Install everything, in dependency order.
 pub fn install(driver: &mut Driver) -> Result<(), String> {
+    assert::install(driver)?;
     console::install(driver)?;
     timers::install(driver)?;
     event::install(driver)?;
@@ -33,6 +36,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     buffer::install(driver)?;
     path::install(driver)?;
     process::install(driver)?;
+    util::install(driver)?;
     os::install(driver)?;
     fs::install(driver)?;
     crypto::install(driver)?;
@@ -78,21 +82,26 @@ fn collect(
     Ok(exports)
 }
 
+/// Register a set of exports under one module name.
+pub(crate) fn define_name(
+    driver: &mut Driver,
+    name: &str,
+    exports: Vec<(String, Value)>,
+) -> Result<(), String> {
+    driver
+        .context()
+        .define_module(name, exports)
+        .map_err(|error| format!("define_module {name}: {error}"))
+}
+
 /// Register a set of exports under both `name` and the `node:` prefixed alias.
 pub(crate) fn define_with_alias(
     driver: &mut Driver,
     name: &str,
     exports: Vec<(String, Value)>,
 ) -> Result<(), String> {
-    let context = driver.context();
-    context
-        .define_module(name, exports.clone())
-        .map_err(|error| format!("define_module {name}: {error}"))?;
-    let alias = format!("node:{name}");
-    context
-        .define_module(&alias, exports)
-        .map_err(|error| format!("define_module {alias}: {error}"))?;
-    Ok(())
+    define_name(driver, name, exports.clone())?;
+    define_name(driver, &format!("node:{name}"), exports)
 }
 
 /// A string as a JSON string literal. Small and local on purpose: it is used to
