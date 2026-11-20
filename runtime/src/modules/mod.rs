@@ -11,6 +11,7 @@ pub mod console;
 pub mod crypto;
 pub mod event;
 pub mod fs;
+pub mod stream;
 pub mod timers;
 pub mod url;
 
@@ -29,6 +30,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     buffer::install(driver)?;
     fs::install(driver)?;
     crypto::install(driver)?;
+    stream::install(driver)?;
     Ok(())
 }
 

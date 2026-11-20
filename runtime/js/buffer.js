@@ -1,37 +1,6 @@
 (function () {
-  const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  const INDEX = new Map();
-  for (let i = 0; i < ALPHABET.length; i++) INDEX.set(ALPHABET[i], i);
-
-  const toBase64 = (bytes) => {
-    let out = '';
-    for (let i = 0; i < bytes.length; i += 3) {
-      const a = bytes[i];
-      const b = i + 1 < bytes.length ? bytes[i + 1] : 0;
-      const c = i + 2 < bytes.length ? bytes[i + 2] : 0;
-      out += ALPHABET[a >> 2];
-      out += ALPHABET[((a & 3) << 4) | (b >> 4)];
-      out += i + 1 < bytes.length ? ALPHABET[((b & 15) << 2) | (c >> 6)] : '=';
-      out += i + 2 < bytes.length ? ALPHABET[c & 63] : '=';
-    }
-    return out;
-  };
-
-  const fromBase64 = (text) => {
-    const clean = text.replace(/[^A-Za-z0-9+/]/g, '');
-    const out = new Uint8Array(Math.floor((clean.length * 3) / 4));
-    let at = 0;
-    for (let i = 0; i < clean.length; i += 4) {
-      const a = INDEX.get(clean[i]) || 0;
-      const b = INDEX.get(clean[i + 1]) || 0;
-      const c = INDEX.get(clean[i + 2]) || 0;
-      const d = INDEX.get(clean[i + 3]) || 0;
-      out[at++] = (a << 2) | (b >> 4);
-      if (i + 2 < clean.length) out[at++] = ((b & 15) << 4) | (c >> 2);
-      if (i + 3 < clean.length) out[at++] = ((c & 3) << 6) | d;
-    }
-    return out.slice(0, at);
-  };
+  // Encoding conversion is native: text in and out as an ArrayBuffer, no base64
+  // round trip and no byte loop in JS.
 
   const encoding = (name) => {
     const text = String(name || 'utf8').toLowerCase();
@@ -80,11 +49,10 @@
       }
       throw new TypeError('Buffer.from does not recognize this argument');
     }
+    // The ArrayBuffer from the native encoder is owned by this Buffer, so it is
+    // taken as a view instead of being copied.
     static fromString(text, name) {
-      const bytes = fromBase64(__bytes_encode(text, encoding(name)));
-      const out = new Buffer(bytes.length);
-      out.set(bytes);
-      return out;
+      return new Buffer(__text_to_bytes(text, encoding(name)));
     }
     static alloc(size, fill, name) {
       const out = new Buffer(size);
@@ -135,7 +103,7 @@
       const codec = encoding(offset ? offset.encoding : name);
       const from = offset && offset.offset !== undefined ? offset.offset : (start || 0);
       const to = offset && offset.length !== undefined ? from + offset.length : (end === undefined ? this.length : end);
-      return __bytes_decode(toBase64(this.subarray(from, to)), codec);
+      return __bytes_to_text(this.subarray(from, to), codec);
     }
     toJSON() {
       return { type: 'Buffer', data: Array.from(this) };
@@ -183,22 +151,14 @@
     }
   }
 
-  const atob = (text) => {
-    const bytes = fromBase64(String(text));
-    let out = '';
-    for (const byte of bytes) out += String.fromCharCode(byte);
-    return out;
-  };
+  const atob = (text) => __bytes_to_text(new Uint8Array(__text_to_bytes(String(text), 'base64')), 'latin1');
 
   const btoa = (text) => {
     const source = String(text);
-    const bytes = new Uint8Array(source.length);
-    for (let i = 0; i < source.length; i++) {
-      const code = source.charCodeAt(i);
-      if (code > 255) throw new Error('btoa only accepts latin1 characters');
-      bytes[i] = code;
+    for (let i = 0; i < source.length; i += 1) {
+      if (source.charCodeAt(i) > 255) throw new Error('btoa only accepts latin1 characters');
     }
-    return toBase64(bytes);
+    return __bytes_to_text(new Uint8Array(__text_to_bytes(source, 'latin1')), 'base64');
   };
 
   globalThis.Buffer = Buffer;

@@ -91,7 +91,20 @@ impl Harness {
 
     /// Install the modules carried over from the old runtime (console, timers, ...).
     pub fn with_modules() -> Self {
-        let mut harness = Self::new();
+        Self::with_heap_and_modules(crate::driver::DEFAULT_HEAP)
+    }
+
+    /// Same, with an explicit heap cap: mark-sweep pauses grow with the live set,
+    /// so a module that allocates per call needs room to breathe.
+    pub fn with_heap_and_modules(bytes: usize) -> Self {
+        let host = Host::capture();
+        let modules = host.modules.clone();
+        let driver = crate::driver::Driver::with_heap(host, bytes).expect("build runtime");
+        driver
+            .runtime()
+            .set_module_loader(TableLoader { modules })
+            .expect("install loader");
+        let mut harness = Harness { driver };
         crate::modules::install(&mut harness.driver).expect("install modules");
         harness
     }

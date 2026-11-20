@@ -2,13 +2,16 @@
 //!
 //! The old modules/src/buffer was an rquickjs Class wrapping Vec<u8>, and every byte read went through a host call.
 //! Here Buffer is just a JS subclass of Uint8Array; reads and writes all happen in the engine, and only encoding conversion crosses the bridge:
-//!   __bytes_encode(text, encoding) -> base64    text becomes bytes
-//!   __bytes_decode(base64, encoding) -> text    bytes become text
-//! Why use base64 instead of something else: JsString is UTF-16, cannot hold arbitrary bytes, and base64 is the only lossless one.
+//!   __text_to_bytes(text, encoding) -> ArrayBuffer   text becomes bytes
+//!   __bytes_to_text(bytes, encoding) -> string       bytes become text
+//! The bytes travel as an ArrayBuffer, not as a base64 string: base64 inflates
+//! by a third and needs a codec on both sides. A 4 KiB string chunk used to
+//! spend ~360 us in the JS base64 decoder; the ArrayBuffer path is a memcpy.
 
 use quickjs_oxide::engine::api::core::{JsString, RuntimeError, Scope, Value};
 
 use crate::driver::Driver;
+use crate::modules::bytes;
 
 const PRELUDE: &str = include_str!("../../js/buffer.js");
 
@@ -22,34 +25,31 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         .context()
         .define_function(
             &global,
-            "__bytes_encode",
+            "__text_to_bytes",
             2,
             |scope: &mut Scope<'_>, text: String, encoding: String| -> Result<Value, RuntimeError> {
-                let bytes = encode(&text, &encoding).map_err(|error| super::throw(scope, &error))?;
-                Ok(Value::String(
-                    JsString::try_from_utf8(&base64_encode(&bytes))
-                        .map_err(|error| RuntimeError::Internal(error.to_string()))?,
-                ))
+                let encoded = encode(&text, &encoding).map_err(|error| super::throw(scope, &error))?;
+                bytes::give(scope, &encoded)
             },
         )
-        .map_err(|error| format!("__bytes_encode: {error}"))?;
+        .map_err(|error| format!("__text_to_bytes: {error}"))?;
 
     driver
         .context()
         .define_function(
             &global,
-            "__bytes_decode",
+            "__bytes_to_text",
             2,
-            |scope: &mut Scope<'_>, encoded: String, encoding: String| -> Result<Value, RuntimeError> {
-                let bytes = base64_decode(&encoded);
-                let text = decode(&bytes, &encoding).map_err(|error| super::throw(scope, &error))?;
+            |scope: &mut Scope<'_>, value: Value, encoding: String| -> Result<Value, RuntimeError> {
+                let decoded = bytes::with_bytes(scope, &value, |raw| decode(raw, &encoding))?;
+                let text = decoded.map_err(|error| super::throw(scope, &error))?;
                 Ok(Value::String(
                     JsString::try_from_utf8(&text)
                         .map_err(|error| RuntimeError::Internal(error.to_string()))?,
                 ))
             },
         )
-        .map_err(|error| format!("__bytes_decode: {error}"))?;
+        .map_err(|error| format!("__bytes_to_text: {error}"))?;
 
     driver
         .eval(PRELUDE)

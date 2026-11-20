@@ -15,6 +15,10 @@
       return this;
     }
     once(name, listener) {
+      // A once wrapper removes itself while the list is being walked, so emits
+      // for this name have to run over a snapshot; every other name does not.
+      if (!this._snapshot) Object.defineProperty(this, '_snapshot', { value: new Set(), enumerable: false });
+      this._snapshot.add(name);
       const wrapper = (...args) => {
         this.removeListener(name, wrapper);
         listener.apply(this, args);
@@ -43,7 +47,8 @@
         }
         return false;
       }
-      for (const listener of list.slice()) listener.apply(this, args);
+      const snapshot = this._snapshot && this._snapshot.has(name) ? list.slice() : list;
+      for (let index = 0; index < snapshot.length; index += 1) snapshot[index].apply(this, args);
       return true;
     }
     listeners(name) {

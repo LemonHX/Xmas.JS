@@ -684,3 +684,126 @@ fn crypto_timing_safe_equal() {
     assert_eq!(h.expect_number("threw ? 1 : 0"), 1.0);
 }
 
+#[test]
+fn readable_pushes_data_then_end() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "const r = new stream.Readable();
+         globalThis.seen = [];
+         r.on('data', (chunk) => seen.push(String(chunk)));
+         r.on('end', () => seen.push('end'));
+         r.push('a');
+         r.push(Buffer.from('b'));
+         r.push(null);",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("seen.join('|')"), "a|b|end");
+}
+
+#[test]
+fn readable_read_and_async_iteration() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "const r = stream.Readable.from(['x', 'y', 'z']);
+         globalThis.collected = null;
+         (async () => { const parts = []; for await (const item of r) parts.push(item); globalThis.collected = parts.join(''); })();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("collected"), "xyz");
+}
+
+#[test]
+fn readable_read_pulls_bytes() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "const r = new stream.Readable({ read() {} });
+         r.push(Buffer.from('hello'));
+         globalThis.first = String(r.read());
+         globalThis.second = r.read();",
+    )
+    .unwrap();
+    assert_eq!(h.expect_text("first"), "hello");
+    assert_eq!(h.expect_text("String(second)"), "null");
+}
+
+#[test]
+fn pipe_feeds_a_writable_and_finishes() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "globalThis.parts = [];
+         const sink = new stream.Writable({ write(chunk, enc, done) { parts.push(String(chunk)); done(); } });
+         globalThis.finishedNow = false;
+         sink.on('finish', () => { globalThis.finishedNow = true; });
+         const source = new stream.Readable();
+         source.pipe(sink);
+         source.push('one ');
+         source.push('two');
+         source.push(null);",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("parts.join('')"), "one two");
+    assert_eq!(h.expect_text("String(finishedNow)"), "true");
+}
+
+#[test]
+fn transform_and_pipeline() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "const upper = new stream.Transform({ transform(chunk, enc, done) { done(null, String(chunk).toUpperCase()); } });
+         globalThis.piped = null;
+         globalThis.pipelineDone = false;
+         stream.pipeline(
+           stream.Readable.from(['ab', 'cd']),
+           upper,
+           new stream.Writable({ write(chunk, enc, done) { globalThis.piped = (globalThis.piped || '') + String(chunk); done(); } }),
+         ).then(() => { globalThis.pipelineDone = true; });",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("piped"), "ABCD");
+    assert_eq!(h.expect_text("String(pipelineDone)"), "true");
+}
+
+#[test]
+fn pass_through_keeps_bytes() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "const pass = new stream.PassThrough();
+         globalThis.out = [];
+         pass.on('data', (chunk) => out.push(String(chunk)));
+         pass.write('keep');
+         pass.end();",
+    )
+    .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("out.join('')"), "keep");
+}
+
+#[test]
+fn write_returns_false_over_high_water_mark_and_drains() {
+    let mut h = Harness::with_modules();
+    h.eval(
+        "globalThis.calls = 0;
+         globalThis.drains = 0;
+         globalThis.pending = [];
+         const sink = new stream.Writable({
+           highWaterMark: 4,
+           write(chunk, enc, done) { calls += 1; pending.push(done); },
+         });
+         sink.on('drain', () => { drains += 1; });
+         globalThis.firstWrite = sink.write('abcdef');
+         globalThis.secondWrite = sink.write('gh');",
+    )
+    .unwrap();
+    assert_eq!(h.expect_text("String(firstWrite)"), "false");
+    assert_eq!(h.expect_text("String(calls)"), "1");
+    // Release the first write: pending drops, so drain should fire
+    h.eval("pending.shift()();").unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("String(calls)"), "2");
+    assert_eq!(h.expect_text("String(drains >= 1)"), "true");
+}
+
