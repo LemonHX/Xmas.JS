@@ -1,8 +1,9 @@
-//! url：URL / URLSearchParams。
+//! url: URL and URLSearchParams.
 //!
-//! The old modules/src/url/ was 1420 lines of rquickjs Class (url_class 328 + url_search_params 898).
-//! This is split into two halves: parsing and normalization are delegated to Rust's url crate (the WHATWG rules are not worth rewriting),
-//! Property access, searchParams, and iterators are all JS.
+//! The old modules/src/url/ was 1420 lines of rquickjs Class (url_class 328 +
+//! url_search_params 898). This is split in two: parsing and normalization go to Rust's
+//! url crate, because the WHATWG rules are not worth rewriting, and property access,
+//! searchParams and iterators are JS.
 //!
 //! The bridge has only two functions: __url_parse(input, base) and __url_set(href, field, value),
 //! Both return a JSON string, and the JS side uses JSON.parse to turn it into a property bag.

@@ -1,8 +1,9 @@
-//! events：EventEmitter、Event、CustomEvent、EventTarget。
+//! events: EventEmitter, Event, CustomEvent, EventTarget.
 //!
-//! The old modules/src/event/ is rquickjs's Class + Arc<RwLock<Vec<..>>>（748 lines）。
-//! This whole thing has no host-side capabilities at all，it is all JS semantics，so the whole block is written in JS，and the Rust side is only responsible for
-//! inject the prelude、register the result as a module。EventEmitter is for the subsequent stream。
+//! The old modules/src/event/ is rquickjs's Class plus Arc<RwLock<Vec<..>>> (748 lines).
+//! None of it needs a capability from the host, it is all JS semantics, so the whole block
+//! is JS and the Rust side only injects the prelude and registers the result as a module.
+//! EventEmitter is what stream builds on.
 
 use crate::driver::Driver;
 

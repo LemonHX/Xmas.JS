@@ -100,6 +100,41 @@ impl Pending {
     }
 }
 
+/// Hand a Future to smol and give JS a promise for it.
+///
+/// Works are settled on the thread holding the realm, because resolving needs
+/// a mutable engine; the future itself only has to be Send.
+pub fn start<F>(
+    scope: &mut quickjs_oxide::engine::api::core::Scope<'_>,
+    pending: &Pending,
+    work: F,
+) -> Result<quickjs_oxide::engine::api::core::Value, quickjs_oxide::engine::api::core::RuntimeError>
+where
+    F: std::future::Future<Output = Reply> + Send + 'static,
+{
+    use quickjs_oxide::engine::api::core::{Js, JsString, NativeErrorKind, Value};
+    let capability = scope.new_promise()?;
+    let promise = capability.promise.clone();
+    let job = pending.park(Box::new(move |context: &mut Context, reply: Reply| {
+        let value = match reply {
+            Ok(Payload::Bytes(bytes)) => {
+                crate::modules::bytes::give(context, &bytes).unwrap_or(Value::Undefined)
+            }
+            Ok(Payload::Text(text)) => match JsString::try_from_utf8(&text) {
+                Ok(text) => Value::String(text),
+                Err(_) => Value::Undefined,
+            },
+            Err(message) => match context.new_native_error(NativeErrorKind::Internal, &message) {
+                Ok(value) => value,
+                Err(_) => Value::Undefined,
+            },
+        };
+        let _ = capability.resolve(context, value);
+    }));
+    smol::spawn(async move { job.finish(work.await) }).detach();
+    Ok(Value::Object(promise))
+}
+
 /// A round-trip ticket for one piece of work. It cannot be cloned out, so one piece of work is settled only once.
 pub struct Job {
     id: u64,

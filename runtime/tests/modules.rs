@@ -1154,3 +1154,229 @@ fn assert_is_a_module_too() {
         .module("probe2", "import { strictEqual } from 'assert/strict'; strictEqual(1, 1); export const value = 1;")
         .is_ok());
 }
+
+// ---------- string_decoder ----------
+
+fn is_true(value: &quickjs_oxide::engine::api::core::Value) -> bool {
+    matches!(value, quickjs_oxide::engine::api::core::Value::Bool(true))
+}
+
+fn text_at(
+    harness: &mut Harness,
+    namespace: &quickjs_oxide::engine::api::core::Value,
+    name: &str,
+) -> String {
+    let value = harness.property(namespace, name).unwrap();
+    text_of(&value).unwrap_or_default()
+}
+
+#[test]
+fn string_decoder_keeps_half_a_utf8_character() {
+    let mut h = Harness::with_modules();
+    let ns = h
+        .module(
+            "sd-utf8",
+            "import { StringDecoder } from 'node:string_decoder';
+             const d = new StringDecoder('utf8');
+             export const encoding = d.encoding;
+             export const first = d.write(Buffer.from([0xe4, 0xb8]));
+             export const second = d.write(Buffer.from([0xad]));
+             export const rest = d.write(Buffer.from(' tail'));
+             export const done = d.end();",
+        )
+        .unwrap();
+    assert_eq!(text_at(&mut h, &ns, "encoding"), "utf8");
+    // Half of a three-byte character produces nothing until the rest arrives.
+    assert_eq!(text_at(&mut h, &ns, "first"), "");
+    assert_eq!(text_at(&mut h, &ns, "second"), "\u{4e2d}");
+    assert_eq!(text_at(&mut h, &ns, "rest"), " tail");
+    assert_eq!(text_at(&mut h, &ns, "done"), "");
+}
+
+#[test]
+fn string_decoder_flushes_incomplete_bytes_as_replacement() {
+    let mut h = Harness::with_modules();
+    let ns = h
+        .module(
+            "sd-flush",
+            "import { StringDecoder } from 'string_decoder';
+             const d = new StringDecoder('utf-8');
+             export const first = d.write(Buffer.from([0xe4]));
+             export const done = d.end();
+             export const after = d.write(Buffer.from('ok'));",
+        )
+        .unwrap();
+    assert_eq!(text_at(&mut h, &ns, "first"), "");
+    assert_eq!(text_at(&mut h, &ns, "done"), "\u{fffd}");
+    // end() empties the state, so the next chunk starts clean.
+    assert_eq!(text_at(&mut h, &ns, "after"), "ok");
+}
+
+#[test]
+fn string_decoder_handles_utf16_surrogates_and_base64_groups() {
+    let mut h = Harness::with_modules();
+    let ns = h
+        .module(
+            "sd-more",
+            "import { StringDecoder } from 'node:string_decoder';
+             const wide = new StringDecoder('utf16le');
+             const all = Buffer.from('ab\u{1F600}', 'utf16le');
+             export const wideFirst = wide.write(all.subarray(0, 3));
+             export const wideRest = wide.end(all.subarray(3));
+             const b64 = new StringDecoder('base64');
+             export const b64First = b64.write(Buffer.from([1]));
+             export const b64Rest = b64.write(Buffer.from([2, 3]));
+             const hex = new StringDecoder('hex');
+             export const hexText = hex.write(Buffer.from([0xde, 0xad]));
+             const latin = new StringDecoder('binary');
+             export const latinLabel = latin.encoding;
+             export const latinText = latin.write(Buffer.from([0xe9]));",
+        )
+        .unwrap();
+    assert_eq!(text_at(&mut h, &ns, "wideFirst"), "a");
+    assert_eq!(text_at(&mut h, &ns, "wideRest"), "b\u{1F600}");
+    // A base64 decoder works on groups of three bytes, like Node's.
+    assert_eq!(text_at(&mut h, &ns, "b64First"), "");
+    assert_eq!(text_at(&mut h, &ns, "b64Rest"), "AQID");
+    assert_eq!(text_at(&mut h, &ns, "hexText"), "dead");
+    assert_eq!(text_at(&mut h, &ns, "latinLabel"), "latin1");
+    assert_eq!(text_at(&mut h, &ns, "latinText"), "\u{e9}");
+}
+
+#[test]
+fn string_decoder_rejects_an_unknown_encoding() {
+    let mut h = Harness::with_modules();
+    let ns = h
+        .module(
+            "sd-bad",
+            "import { StringDecoder } from 'string_decoder';
+             export const attempt = () => new StringDecoder('bogus');",
+        )
+        .unwrap();
+    let thrown = h.call_err(&ns, "attempt", &[]);
+    assert!(thrown.name.contains("TypeError"), "{thrown:?}");
+    assert!(thrown.message.contains("Unknown encoding: bogus"), "{thrown:?}");
+}
+
+// ---------- zlib ----------
+
+#[test]
+fn zlib_round_trips_gzip_and_deflate() {
+    let mut h = Harness::with_modules();
+    let ns = h
+        .module(
+            "zl-round",
+            "import zlib from 'node:zlib';
+             const text = 'hello hello hello hello hello';
+             const source = Buffer.from(text);
+             const gz = zlib.gzipSync(source);
+             const zl = zlib.deflateSync(source);
+             const raw = zlib.deflateRawSync(source);
+             export const gzipMagic = gz[0].toString(16) + gz[1].toString(16);
+             // zlib starts with 78, raw deflate has no header at all
+             export const zlibHeader = zl[0].toString(16);
+             export const rawHeader = raw[0].toString(16);
+             export const gzipBack = zlib.gunzipSync(gz).toString();
+             export const zlibBack = zlib.inflateSync(zl).toString();
+             export const rawBack = zlib.inflateRawSync(raw).toString();",
+        )
+        .unwrap();
+    assert_eq!(text_at(&mut h, &ns, "gzipMagic"), "1f8b");
+    assert_eq!(text_at(&mut h, &ns, "zlibHeader"), "78");
+    assert!(text_at(&mut h, &ns, "rawHeader") != "78");
+    for name in ["gzipBack", "zlibBack", "rawBack"] {
+        assert_eq!(text_at(&mut h, &ns, name), "hello hello hello hello hello", "{name}");
+    }
+}
+
+#[test]
+fn zlib_round_trips_brotli_and_computes_crc32() {
+    let mut h = Harness::with_modules();
+    let ns = h
+        .module(
+            "zl-brotli",
+            "import { brotliCompressSync, brotliDecompressSync, crc32 } from 'zlib';
+             const source = Buffer.from('brotli payload '.repeat(20));
+             const packed = brotliCompressSync(source);
+             export const back = brotliDecompressSync(packed).toString();
+             export const smaller = packed.length < source.length;
+             export const checksum = crc32(Buffer.from('hello'));
+             export const seeded = crc32(Buffer.from(''), crc32(Buffer.from('hello')));",
+        )
+        .unwrap();
+    assert_eq!(text_at(&mut h, &ns, "back"), "brotli payload ".repeat(20));
+    assert!(is_true(&h.property(&ns, "smaller").unwrap()));
+    // zlib.crc32('hello') is 0x3610a686, the value Node prints.
+    let checksum = h.property(&ns, "checksum").unwrap();
+    assert_eq!(number_of(&checksum), Some(907060870.0));
+}
+
+#[test]
+fn zlib_stops_at_max_output_length() {
+    let mut h = Harness::with_modules();
+    let ns = h
+        .module(
+            "zl-limit",
+            "import { gzipSync, gunzipSync } from 'node:zlib';
+             const packed = gzipSync(Buffer.from('x'.repeat(1000)));
+             export const attempt = () => {
+               try {
+                 gunzipSync(packed, { maxOutputLength: 10 });
+                 return 'no error';
+               } catch (error) {
+                 return error.name + '|' + error.message;
+               }
+             };",
+        )
+        .unwrap();
+    let value = h.call(&ns, "attempt", &[]).unwrap();
+    assert_eq!(text_of(&value).as_deref(), Some("RangeError|Cannot create a Buffer larger than 10 bytes"));
+}
+
+#[test]
+fn zlib_reports_a_bad_payload_as_a_zlib_error() {
+    let mut h = Harness::with_modules();
+    let ns = h
+        .module(
+            "zl-bad",
+            "import { gunzipSync } from 'node:zlib';
+             export const attempt = () => {
+               try {
+                 gunzipSync(Buffer.from([1, 2, 3, 4]));
+                 return 'no error';
+               } catch (error) {
+                 return error.code + '|' + (error instanceof Error);
+               }
+             };",
+        )
+        .unwrap();
+    let value = h.call(&ns, "attempt", &[]).unwrap();
+    assert_eq!(text_of(&value).as_deref(), Some("Z_DATA_ERROR|true"));
+}
+
+#[test]
+fn zlib_callback_form_runs_off_the_realm_thread() {
+    let mut h = Harness::with_modules();
+    let ns = h
+        .module(
+            "zl-async",
+            "import zlib from 'zlib';
+             export const packed = () => new Promise((resolve, reject) => {
+               zlib.gzip(Buffer.from('async payload'), (error, output) => {
+                 if (error) reject(error); else resolve(output);
+               });
+             });
+             export const same = async () => {
+               const gz = await packed();
+               return new Promise((resolve, reject) => {
+                 zlib.gunzip(gz, (error, output) => {
+                   if (error) reject(error); else resolve(output.toString());
+                 });
+               });
+             };",
+        )
+        .unwrap();
+    let promise = h.call(&ns, "same", &[]).unwrap();
+    let settled = smol::block_on(h.settle(promise)).unwrap();
+    assert_eq!(text_of(&settled).as_deref(), Some("async payload"));
+}

@@ -17,8 +17,10 @@ pub mod path;
 pub mod process;
 pub mod util;
 pub mod stream;
+pub mod string_decoder;
 pub mod timers;
 pub mod url;
+pub mod zlib;
 
 use crate::driver::Driver;
 use quickjs_oxide::engine::api::core::Value;
@@ -40,6 +42,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     os::install(driver)?;
     fs::install(driver)?;
     crypto::install(driver)?;
+    string_decoder::install(driver)?;
+    zlib::install(driver)?;
     stream::install(driver)?;
     Ok(())
 }

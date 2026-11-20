@@ -3,7 +3,8 @@
 //! Previously everything went through base64 strings, which was wrong: an 8MB Buffer encoded as base64 is 11MB of
 //! JS string, UTF-16 occupies 22MB on the heap, plus a copy of the original data, the 64MB heap limit directly OOMs.
 //! Now binary goes through ArrayBuffer: on the way in it borrows memory from the engine (zero-copy Uint8Array),
-//! on the way out, new_array_buffer. base64 is only left for cases where 「the caller wants a base64 string in the first place」.
+//! on the way out, new_array_buffer. base64 is only left for cases where the caller wants a
+//! base64 string in the first place.
 
 use quickjs_oxide::engine::api::core::{Js, NativeErrorKind, RuntimeError, Value};
 

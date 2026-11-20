@@ -95,7 +95,7 @@ fn encode(text: &str, encoding: &str) -> Result<Vec<u8>, String> {
     }
 }
 
-fn decode(bytes: &[u8], encoding: &str) -> Result<String, String> {
+pub(crate) fn decode(bytes: &[u8], encoding: &str) -> Result<String, String> {
     match encoding {
         "utf8" => Ok(String::from_utf8_lossy(bytes).into_owned()),
         "latin1" | "ascii" => Ok(bytes.iter().map(|byte| *byte as char).collect()),
@@ -114,6 +114,7 @@ fn decode(bytes: &[u8], encoding: &str) -> Result<String, String> {
             Ok(out)
         }
         "base64" => Ok(base64_encode(bytes)),
+        "base64url" => Ok(base64_encode(bytes).replace('+', "-").replace('/', "_").trim_end_matches('=').to_string()),
         other => Err(format!("unknown encoding: {other}")),
     }
 }

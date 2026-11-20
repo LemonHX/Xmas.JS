@@ -1,8 +1,9 @@
-//! crypto：first migrate the non-subtle half（hash / hmac / random numbers / uuid）。
+//! crypto: the non-subtle half so far (hash, hmac, random numbers, uuid).
 //!
-//! WebCrypto's subtle is another big chunk（the old 3412 lines），wait until this layer is stable and then migrate it separately。
-//! Digest state stays in Rust's table，JS only holds an id：each update crosses the bridge one byte at a time，
-//! Consistent with Node's streaming semantics，no need to accumulate the whole chunk of data in JS。
+//! WebCrypto's subtle is another big chunk (the old 3412 lines); it waits until this layer
+//! is stable and then migrates separately. Digest state stays in Rust's table and JS only
+//! holds an id, so each update crosses the bridge with just its own bytes, the way Node's
+//! streaming semantics want, and no chunk is accumulated in JS.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
