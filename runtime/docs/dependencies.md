@@ -22,16 +22,16 @@ The engine is quickjs-oxide, which is also pure Rust.
 
 | need | crate | notes |
 | --- | --- | --- |
-| TLS | rustls with the ring provider | ring compiles vendored C and asm at build time; no system library and it cross-compiles everywhere Rust does. aws-lc-rs is out: it wants cmake and nasm on Windows. |
+| TLS | rustls with the rustls-rustcrypto provider | zero C at build time: no ring, no aws-lc. ring was the first choice but it compiles vendored C and asm, and a C toolchain in the build is the thing we are avoiding. rustls-rustcrypto is younger, so TLS gets its own tests rather than trust. |
 | gzip, deflate | flate2 with default-features off, feature rust_backend | that routes to miniz_oxide, pure Rust. The default backend is already miniz_oxide but the C one is one feature flag away, so pin it. |
 | brotli | brotli-decompressor | pure Rust |
 | AES, GCM, CBC | aes, aes-gcm, cbc, ctr | RustCrypto |
 | password hashing | pbkdf2, scrypt, argon2 | RustCrypto |
 | signatures, key objects | rsa, p256, p384, ed25519-dalek | pure Rust, but the key parsing needs care |
 
-If a strictly C-free build is ever needed, rustls-rustcrypto replaces ring with
-RustCrypto primitives. It is younger than ring, so it stays the fallback rather
-than the default.
+Nothing in the tree may need a C compiler. That rules out ring as well, so TLS
+is rustls plus rustls-rustcrypto: the primitives come from the same RustCrypto
+crates the crypto module already uses.
 
 ## Never
 
