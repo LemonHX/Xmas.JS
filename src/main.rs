@@ -103,6 +103,25 @@ enum Commands {
         /// Arguments to pass
         args: Vec<OsString>,
     },
+
+    // ==================== Server ====================
+    /// Serve a module as an HTTP app
+    Serve {
+        /// Entry module (.ts, .tsx or .js)
+        entry: PathBuf,
+
+        /// Port to listen on
+        #[arg(short, long, default_value_t = 8000)]
+        port: u16,
+
+        /// Address to bind
+        #[arg(long, default_value = "0.0.0.0")]
+        host: String,
+
+        /// How many worker threads, and so how many realms; defaults to one per core
+        #[arg(short, long)]
+        workers: Option<usize>,
+    },
 }
 
 #[tokio::main]
@@ -174,6 +193,13 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
+        Some(Commands::Serve {
+            entry,
+            port,
+            host,
+            workers,
+        }) => serve(&entry, &host, port, workers),
+
         Some(Commands::Dlx { name, args }) => {
             run_pm(
                 xmas_package_manager::Subcommand::DownloadAndExec { name, args },
@@ -181,6 +207,29 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
+    }
+}
+
+/// Serve an app until the process is stopped.
+///
+/// The runtime runs its own worker threads and its own executor, so there is nothing here to
+/// drive: this is a plain blocking call, and the process ends on a signal.
+fn serve(entry: &PathBuf, host: &str, port: u16, workers: Option<usize>) -> anyhow::Result<()> {
+    let workers = workers.unwrap_or_else(|| {
+        std::thread::available_parallelism()
+            .map(|count| count.get())
+            .unwrap_or(1)
+    });
+    let addr = format!("{host}:{port}");
+    let server = xmas_runtime::entry::serve_app(&addr, workers, entry)
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+    println!(
+        "listening on http://{} with {workers} worker{}",
+        server.addr(),
+        if workers == 1 { "" } else { "s" }
+    );
+    loop {
+        std::thread::park();
     }
 }
 

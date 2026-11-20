@@ -48,14 +48,14 @@ fn an_entry_that_calls_serve_keeps_its_own_handler() {
 }
 
 #[test]
-fn an_entry_with_no_handler_answers_with_the_reason() {
+fn an_entry_with_no_handler_refuses_to_start() {
+    // A worker that cannot resolve a handler would answer 500 to everything, so the server does not
+    // start instead of pretending it can serve.
     let path = written("app.ts", "export const nothing = 1;\n");
-    let server = start_file(&path);
-    let mut client = Client::to(&server);
-    client.send("GET / HTTP/1.1\r\nHost: t\r\n\r\n");
-    let (head, body) = client.response();
-    assert!(head.starts_with("HTTP/1.1 500"), "{head}");
-    assert!(body.contains("no fetch handler"), "{body}");
+    let error = xmas_runtime::entry::serve_app("127.0.0.1:0", 1, &path)
+        .err()
+        .expect("an entry with no handler cannot serve");
+    assert!(error.contains("no fetch handler"), "{error}");
 }
 
 #[test]
@@ -70,6 +70,26 @@ fn an_answer_that_is_not_a_response_is_a_500() {
     let (head, body) = client.response();
     assert!(head.starts_with("HTTP/1.1 500"), "{head}");
     assert!(body.contains("not a Response"), "{body}");
+}
+
+#[test]
+fn an_entry_that_throws_while_it_is_evaluated_says_so() {
+    // Module evaluation is a promise, so a top-level throw would otherwise look like an entry that
+    // simply has no handler.
+    let path = written(
+        "app.ts",
+        "throw new Error('boom at the top level');
+export default {
+  fetch(): Response {
+    return new Response('x');
+  },
+};
+",
+    );
+    let error = xmas_runtime::entry::serve_app("127.0.0.1:0", 1, &path)
+        .err()
+        .expect("the entry throws, so it cannot serve");
+    assert!(error.contains("boom at the top level"), "{error}");
 }
 
 #[test]

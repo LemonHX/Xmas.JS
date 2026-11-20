@@ -29,8 +29,13 @@ the entry exported. Three shapes work, in this order:
 2. the namespace has its own `fetch` (`export function fetch`),
 3. the default export has one (`export default { fetch }`).
 
-If none of the three is there the worker fails to start and every request it would have served is
-answered with a 500 that says so, rather than with a handler that was never set.
+If none of the three is there the worker refuses to start. So does a worker whose entry throws while
+it is evaluated: module evaluation is a promise, so the throw arrives as a rejection rather than an
+error, and it is drained and reported instead of being mistaken for a missing handler.
+
+A server only starts when every worker it asked for came up; otherwise `serve_app` stops the threads
+that did start and returns the first reason. Half a server answering 500 on one worker in ten is
+harder to read than a start that fails with the reason in it.
 
 ```ts
 // app.ts
@@ -43,7 +48,11 @@ export default {
 
 ```sh
 cargo run --example serve_app -- ./app.ts --port 8000 --workers 4
+# or, from the cli
+xmas serve ./app.ts --port 8000 --host 127.0.0.1 --workers 4
 ```
+
+`--host` defaults to `0.0.0.0`, and a wildcard listener satisfies any hostname an entry asks for.
 
 The address belongs to the listener, not to the entry: it is bound before any realm exists. An entry
 that asks for a different port (`Xmas.serve({ port: 3000 })`) is refused at startup with both numbers

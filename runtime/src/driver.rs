@@ -60,6 +60,11 @@ impl Driver {
             ..RuntimeOptions::default()
         };
         let runtime = Runtime::with_host(host.engine(), options);
+        // Unhandled rejections are tracked from the start: a module's evaluation is a promise, so a
+        // throw at the top level of an entry arrives as one, and without tracking it vanishes.
+        runtime
+            .set_track_rejections(true)
+            .map_err(|error| format!("track rejections: {error}"))?;
         let context = runtime.context();
         let mut driver = Driver {
             host,
@@ -203,6 +208,23 @@ impl Driver {
             Some(stack) => format!("{head}\n{stack}"),
             None => head,
         }
+    }
+
+    /// The unhandled rejections recorded since the last call, rendered as messages.
+    ///
+    /// A rejection has no throw site to report, so what comes back is the reason alone.
+    pub fn take_rejections(&mut self) -> Vec<String> {
+        let reasons = match self.runtime.take_unhandled_rejections() {
+            Ok(rejections) => rejections
+                .into_iter()
+                .map(|(_, reason)| reason)
+                .collect::<Vec<_>>(),
+            Err(error) => return vec![format!("{error}")],
+        };
+        reasons
+            .into_iter()
+            .map(|reason| self.render(RuntimeError::Exception(reason)))
+            .collect()
     }
 
     /// A version without evaluation wrapping; tests need to check what is thrown themselves.
@@ -354,7 +376,13 @@ impl Driver {
             let busy = {
                 let mut driver = realm.borrow_mut();
                 match driver.slice() {
-                    Ok(slice) => slice.jobs > 0 || slice.timers > 0 || slice.settled > 0,
+                    Ok(slice) => {
+                        // Nothing awaits a stray rejection, so say it here rather than keep it.
+                        for rejection in driver.take_rejections() {
+                            eprintln!("unhandled rejection: {rejection}");
+                        }
+                        slice.jobs > 0 || slice.timers > 0 || slice.settled > 0
+                    }
                     Err(error) => {
                         eprintln!("realm: {error}");
                         false

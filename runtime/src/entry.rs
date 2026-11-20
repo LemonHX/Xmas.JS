@@ -103,6 +103,19 @@ fn evaluate(driver: &mut Driver, path: &Path, source: &str) -> Result<Value, Str
     context
         .execute_module(&bytecode)
         .map_err(|error| format!("{name}: {error}"))?;
+
+    // Module evaluation is promise-driven, so a throw at the top level of the entry arrives as a
+    // rejected promise rather than an error above. Drain the jobs it queued and report it here:
+    // otherwise the entry merely looks handler-less and the reason it failed is lost.
+    driver.slice()?;
+    let mut rejections = driver.take_rejections();
+    if !rejections.is_empty() {
+        let reason = rejections.remove(0);
+        return Err(format!(
+            "{name}: the entry threw while it was evaluated: {reason}"
+        ));
+    }
+
     driver.eval("globalThis.__xmas_entry")
 }
 

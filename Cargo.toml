@@ -19,9 +19,11 @@ default-members = ["runtime"]
 
 [workspace.dependencies]
 xmas-package-manager = { path = "package-manager" }
+xmas-runtime = { path = "runtime" }
 
 [dependencies]
 xmas-package-manager = { workspace = true }
+xmas-runtime = { workspace = true }
 tokio = { version = "1.36", features = ["full"] }
 anyhow = "1.0.100"
 clap = { version = "4.5", features = ["derive"] }

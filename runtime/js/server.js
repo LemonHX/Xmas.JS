@@ -299,6 +299,8 @@
     }
     if (hostname !== undefined) {
       const bound_host = addr.slice(0, at);
+      // A wildcard bind answers on every address, so any name it covers is the same server.
+      if (bound_host === '0.0.0.0' || bound_host === '::' || bound_host === '[::]') return;
       if (String(hostname) !== bound_host) {
         throw new Error(
           'the entry asked for hostname ' + hostname + ' but this server listens on ' +

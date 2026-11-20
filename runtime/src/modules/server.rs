@@ -234,11 +234,25 @@ pub fn serve<B>(addr: &str, workers: usize, boot: B) -> Result<Server, String>
 where
     B: Fn(usize) -> Result<Rc<RefCell<Driver>>, String> + Send + Sync + Clone + 'static,
 {
-    server::serve(addr, workers, move |index, executor| {
-        let realm = match boot(index) {
-            Ok(realm) => realm,
+    let count = workers.max(1);
+    // Every worker says whether it got its realm. Without this a server whose workers all failed
+    // would bind, answer 500 to everything and look healthy in a terminal.
+    let (report, reports) = smol::channel::bounded::<Result<(), String>>(count);
+
+    let server = server::serve(addr, count, move |index, executor| {
+        // A panic while booting must not leave the caller waiting for a report that never comes.
+        let booted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| boot(index)))
+            .unwrap_or_else(|_| Err(String::from("the realm panicked while it booted")));
+        let realm = match booted {
+            Ok(realm) => {
+                let _ = report.send_blocking(Ok(()));
+                realm
+            }
             Err(error) => {
                 eprintln!("worker {index} could not start its realm: {error}");
+                let _ = report.send_blocking(Err(error.clone()));
+                // Never reached: serve refuses to start unless every worker booted, and the server
+                // is dropped before a connection could arrive. The signature still wants a handler.
                 let handle: Handler = Box::new(move |conn: Conn| {
                     let text = format!("this worker could not start: {error}");
                     Box::pin(async move { server_error(conn, &text) })
@@ -284,7 +298,32 @@ where
 
         (handle, upgraded)
     })
-    .map_err(|error| format!("serve {addr}: {error}"))
+    .map_err(|error| format!("serve {addr}: {error}"))?;
+
+    let mut started = 0usize;
+    let mut first: Option<String> = None;
+    for _ in 0..count {
+        match reports.recv_blocking() {
+            Ok(Ok(())) => started += 1,
+            Ok(Err(error)) => {
+                if first.is_none() {
+                    first = Some(error);
+                }
+            }
+            // A worker that went away without a word is as bad as one that failed.
+            Err(_) => {}
+        }
+    }
+
+    if started < count {
+        // Stop the threads that did come up: a server missing a realm is a failed start, not a
+        // degraded one, and a start that fails says why.
+        drop(server);
+        let why = first.unwrap_or_else(|| String::from("a worker went away before it booted"));
+        return Err(format!("{} of {count} workers could not start: {why}", count - started));
+    }
+
+    Ok(server)
 }
 
 /// One request, from the parsed head trillium handed over to the answer going back out.
