@@ -24,6 +24,7 @@ pub mod sockets;
 pub mod stream;
 pub mod stream_web;
 pub mod string_decoder;
+pub mod temporal;
 pub mod timers;
 pub mod tty;
 pub mod url;
@@ -53,6 +54,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     tty::install(driver)?;
     util::install(driver)?;
     os::install(driver)?;
+    temporal::install(driver)?;
     fs::install(driver)?;
     crypto::install(driver)?;
     string_decoder::install(driver)?;

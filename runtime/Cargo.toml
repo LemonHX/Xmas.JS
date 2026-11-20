@@ -21,6 +21,9 @@ getrandom = "0.3"
 flate2 = { version = "1.1.11", default-features = false, features = ["rust_backend"] }
 brotli = { version = "9.1.3", default-features = false, features = ["std"] }
 memchr = "2"
+# Temporal is the language's own date API; the crate is the one V8, Boa and Kiesel use. No default
+# features: sys-local would read the host's zone, and the compiled tzdb is what this runtime wants.
+temporal_rs = { version = "0.2.6", default-features = false, features = ["compiled_data"] }
 trillium = "1.4"
 trillium-http = "1.8"
 trillium-client = "0.9.21"

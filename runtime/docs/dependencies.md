@@ -28,6 +28,7 @@ The engine is quickjs-oxide, which is also pure Rust.
 | AES, GCM, CBC | aes, aes-gcm, cbc, ctr | RustCrypto |
 | password hashing | pbkdf2, scrypt, argon2 | RustCrypto |
 | signatures, key objects | rsa, p256, p384, ed25519-dalek | pure Rust, but the key parsing needs care |
+| dates, calendars, zones | temporal_rs with default-features off, feature compiled_data | its sys-local default would read the host zone through iana-time-zone, and that links core-foundation-sys on a mac. compiled_data carries the tzdb instead. See docs/temporal.md. |
 
 Nothing in the tree may need a C compiler. That rules out ring as well, so TLS
 is rustls plus rustls-rustcrypto: the primitives come from the same RustCrypto
