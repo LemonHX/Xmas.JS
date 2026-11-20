@@ -5,12 +5,15 @@
 //! come from `crate::host` and nothing here reaches for tokio.
 
 pub mod abort;
+pub mod async_hooks;
 pub mod buffer;
 pub mod bytes;
 pub mod assert;
 pub mod console;
 pub mod crypto;
 pub mod event;
+pub mod exception;
+pub mod perf_hooks;
 pub mod fs;
 pub mod os;
 pub mod path;
@@ -19,6 +22,7 @@ pub mod util;
 pub mod stream;
 pub mod string_decoder;
 pub mod timers;
+pub mod tty;
 pub mod url;
 pub mod zlib;
 
@@ -29,15 +33,19 @@ pub(crate) use buffer::buffer_hex;
 
 /// Install everything, in dependency order.
 pub fn install(driver: &mut Driver) -> Result<(), String> {
+    exception::install(driver)?;
     assert::install(driver)?;
     console::install(driver)?;
     timers::install(driver)?;
     event::install(driver)?;
+    perf_hooks::install(driver)?;
+    async_hooks::install(driver)?;
     abort::install(driver)?;
     url::install(driver)?;
     buffer::install(driver)?;
     path::install(driver)?;
     process::install(driver)?;
+    tty::install(driver)?;
     util::install(driver)?;
     os::install(driver)?;
     fs::install(driver)?;

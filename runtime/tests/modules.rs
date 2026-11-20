@@ -1380,3 +1380,192 @@ fn zlib_callback_form_runs_off_the_realm_thread() {
     let settled = smol::block_on(h.settle(promise)).unwrap();
     assert_eq!(text_of(&settled).as_deref(), Some("async payload"));
 }
+
+// ---------- perf_hooks ----------
+
+#[test]
+fn perf_hooks_clocks_and_measures() {
+    let mut h = Harness::with_modules();
+    let ns = h
+        .module(
+            "ph-entries",
+            "import { performance } from 'node:perf_hooks';
+             export const monotonic = () => {
+               const first = performance.now();
+               let sum = 0;
+               for (let i = 0; i < 1000; i += 1) sum += i;
+               return performance.now() >= first && sum > 0;
+             };
+             export const originIsEpoch = () => performance.timeOrigin > 1600000000000;
+             export const measured = () => {
+               performance.mark('start');
+               performance.mark('finish');
+               const entry = performance.measure('between', 'start', 'finish');
+               return entry.entryType + '|' + (entry.duration >= 0) + '|' + performance.getEntriesByType('measure').length;
+             };
+             export const cleared = () => {
+               performance.clearMarks();
+               performance.clearMeasures();
+               return performance.getEntries().length;
+             };
+             export const sameObject = () => performance.now === globalThis.performance.now;
+             export const missingMark = () => {
+               try {
+                 performance.measure('nope', 'not-there');
+                 return 'no error';
+               } catch (error) {
+                 return error.name + '|' + error.message.includes('does not exist');
+               }
+             };",
+        )
+        .unwrap();
+    let value = h.call(&ns, "monotonic", &[]).unwrap();
+    assert!(is_true(&value));
+    let value = h.call(&ns, "originIsEpoch", &[]).unwrap();
+    assert!(is_true(&value));
+    let value = h.call(&ns, "measured", &[]).unwrap();
+    assert_eq!(text_of(&value).as_deref(), Some("measure|true|1"));
+    let value = h.call(&ns, "cleared", &[]).unwrap();
+    assert_eq!(number_of(&value), Some(0.0));
+    let value = h.call(&ns, "sameObject", &[]).unwrap();
+    assert!(is_true(&value));
+    let value = h.call(&ns, "missingMark", &[]).unwrap();
+    assert_eq!(text_of(&value).as_deref(), Some("Error|true"));
+}
+
+#[test]
+fn perf_hooks_observer_sees_buffered_marks() {
+    let mut h = Harness::with_modules();
+    let ns = h
+        .module(
+            "ph-observer",
+            "import { performance, PerformanceObserver } from 'node:perf_hooks';
+             export const watch = () => new Promise((resolve) => {
+               performance.mark('early');
+               const observer = new PerformanceObserver((list) => {
+                 observer.disconnect();
+                 resolve(list.getEntries().map((entry) => entry.name).join(','));
+               });
+               observer.observe({ type: 'mark', buffered: true });
+             });",
+        )
+        .unwrap();
+    let promise = h.call(&ns, "watch", &[]).unwrap();
+    let settled = smol::block_on(h.settle(promise)).unwrap();
+    assert_eq!(text_of(&settled).as_deref(), Some("early"));
+}
+
+// ---------- tty ----------
+
+#[test]
+fn tty_reports_descriptors_and_streams() {
+    let mut h = Harness::with_modules();
+    let ns = h
+        .module(
+            "tty-shape",
+            "import tty, { isatty, WriteStream, ReadStream } from 'node:tty';
+             export const kinds = () => typeof isatty(1) + '|' + isatty(-1) + '|' + typeof tty.isatty;
+             export const out = () => {
+               const stream = new WriteStream(2);
+               return typeof stream.isTTY + '|' + typeof stream.columns + '|' + stream.fd;
+             };
+             export const terminal = () => {
+               const stream = new WriteStream(2);
+               return typeof stream.getColorDepth() + '|' + stream.hasColors(16);
+             };
+             export const input = () => {
+               const stream = new ReadStream(0);
+               return stream.isTTY === isatty(0) && stream.isRaw === false;
+             };",
+        )
+        .unwrap();
+    for (name, want) in [
+        ("kinds", "boolean|false|function"),
+        ("out", "boolean|number|2"),
+        ("terminal", "number|true"),
+    ] {
+        let value = h.call(&ns, name, &[]).unwrap();
+        assert_eq!(text_of(&value).as_deref(), Some(want), "{name}");
+    }
+    let value = h.call(&ns, "input", &[]).unwrap();
+    assert!(is_true(&value));
+}
+
+// ---------- async_hooks ----------
+
+#[test]
+fn async_hooks_stores_travel_through_run_and_bind() {
+    let mut h = Harness::with_modules();
+    let ns = h
+        .module(
+            "ah-store",
+            "import { AsyncLocalStorage, AsyncResource, executionAsyncId, createHook } from 'node:async_hooks';
+             const storage = new AsyncLocalStorage();
+             export const inside = () => storage.run('request-1', () => storage.getStore());
+             export const outside = () => storage.getStore() === undefined;
+             export const nested = () => storage.run('a', () => storage.run('b', () => storage.getStore()));
+             export const bound = () => {
+               const carried = storage.run('carried', () => storage.bind(() => storage.getStore()));
+               return storage.run('other', () => carried());
+             };
+             export const leaving = () => {
+               storage.enterWith('entered');
+               const before = storage.getStore();
+               const after = storage.exit(() => storage.getStore());
+               return before + '|' + (after === undefined) + '|' + storage.getStore();
+             };
+             export const resource = () => new AsyncResource('test').runInAsyncScope(() => 'ran');
+             export const hookShape = () => {
+               const hook = createHook({ init() {} });
+               hook.enable();
+               const wasEnabled = hook.enabled;
+               hook.disable();
+               return wasEnabled + '|' + hook.enabled + '|' + executionAsyncId();
+             };",
+        )
+        .unwrap();
+    let value = h.call(&ns, "inside", &[]).unwrap();
+    assert_eq!(text_of(&value).as_deref(), Some("request-1"));
+    let value = h.call(&ns, "outside", &[]).unwrap();
+    assert!(is_true(&value));
+    let value = h.call(&ns, "nested", &[]).unwrap();
+    assert_eq!(text_of(&value).as_deref(), Some("b"));
+    let value = h.call(&ns, "bound", &[]).unwrap();
+    assert_eq!(text_of(&value).as_deref(), Some("carried"));
+    let value = h.call(&ns, "leaving", &[]).unwrap();
+    assert_eq!(text_of(&value).as_deref(), Some("entered|true|entered"));
+    let value = h.call(&ns, "resource", &[]).unwrap();
+    assert_eq!(text_of(&value).as_deref(), Some("ran"));
+    let value = h.call(&ns, "hookShape", &[]).unwrap();
+    assert_eq!(text_of(&value).as_deref(), Some("true|false|0"));
+}
+
+// ---------- DOMException ----------
+
+#[test]
+fn dom_exception_matches_the_webidl_table() {
+    let mut h = Harness::with_modules();
+    let ns = h
+        .module(
+            "dom-exception",
+            "export const aborted = () => {
+               const error = new DOMException('stopped', 'AbortError');
+               return error.name + '|' + error.code + '|' + error.message + '|' + (error instanceof Error);
+             };
+             export const quota = () => {
+               const error = new QuotaExceededError('too big');
+               return (error instanceof DOMException) + '|' + error.name + '|' + error.code;
+             };
+             export const tagged = () => Object.prototype.toString.call(new DOMException('', 'NotFoundError'));
+             export const unnamed = () => new DOMException().name + '|' + new DOMException().code;",
+        )
+        .unwrap();
+    let value = h.call(&ns, "aborted", &[]).unwrap();
+    assert_eq!(text_of(&value).as_deref(), Some("AbortError|20|stopped|true"));
+    let value = h.call(&ns, "quota", &[]).unwrap();
+    assert_eq!(text_of(&value).as_deref(), Some("true|QuotaExceededError|22"));
+    let value = h.call(&ns, "tagged", &[]).unwrap();
+    assert_eq!(text_of(&value).as_deref(), Some("[object DOMException]"));
+    let value = h.call(&ns, "unnamed", &[]).unwrap();
+    assert_eq!(text_of(&value).as_deref(), Some("Error|0"));
+}

@@ -293,3 +293,43 @@ pub fn parent_pid() -> u32 {
 pub fn parent_pid() -> u32 {
     0
 }
+
+/// Whether a descriptor is a terminal, as tty.isatty reports it.
+pub fn isatty(fd: i32) -> bool {
+    #[cfg(unix)]
+    {
+        // SAFETY: isatty only reads the descriptor's file status.
+        unsafe { libc::isatty(fd) == 1 }
+    }
+    #[cfg(not(unix))]
+    {
+        use std::io::IsTerminal;
+        match fd {
+            0 => std::io::stdin().is_terminal(),
+            1 => std::io::stdout().is_terminal(),
+            2 => std::io::stderr().is_terminal(),
+            _ => false,
+        }
+    }
+}
+
+/// Terminal size as (columns, rows); None when the descriptor is not a
+/// terminal or the kernel will not say.
+pub fn window_size(fd: i32) -> Option<(u16, u16)> {
+    #[cfg(unix)]
+    {
+        // SAFETY: TIOCGWINSZ fills in a winsize the kernel owns the layout of.
+        let mut size: libc::winsize = unsafe { std::mem::zeroed() };
+        let result = unsafe { libc::ioctl(fd, libc::TIOCGWINSZ, &mut size) };
+        if result == 0 && size.ws_col > 0 {
+            Some((size.ws_col, size.ws_row))
+        } else {
+            None
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = fd;
+        None
+    }
+}
