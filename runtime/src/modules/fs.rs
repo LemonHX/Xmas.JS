@@ -19,6 +19,7 @@ use crate::driver::Driver;
 use crate::host::Payload;
 use crate::host::pending::{Job, Pending, Reply};
 use crate::modules::bytes;
+use crate::modules::quote;
 
 const PRELUDE: &str = include_str!("../../js/fs.js");
 
@@ -331,20 +332,3 @@ fn describe(error: &std::io::Error) -> String {
     format!("{code}: {error}")
 }
 
-fn quote(text: &str) -> String {
-    let mut out = String::with_capacity(text.len() + 2);
-    out.push('"');
-    for character in text.chars() {
-        match character {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            other if (other as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", other as u32)),
-            other => out.push(other),
-        }
-    }
-    out.push('"');
-    out
-}

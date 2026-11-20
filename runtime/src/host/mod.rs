@@ -11,6 +11,7 @@ pub mod fs;
 pub mod modules;
 pub mod net;
 pub mod pending;
+pub mod sysinfo;
 pub mod timer;
 
 pub use clock::{CancelHandle, Clock};

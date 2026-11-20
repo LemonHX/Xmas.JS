@@ -11,6 +11,8 @@ pub mod console;
 pub mod crypto;
 pub mod event;
 pub mod fs;
+pub mod os;
+pub mod process;
 pub mod stream;
 pub mod timers;
 pub mod url;
@@ -28,6 +30,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     abort::install(driver)?;
     url::install(driver)?;
     buffer::install(driver)?;
+    process::install(driver)?;
+    os::install(driver)?;
     fs::install(driver)?;
     crypto::install(driver)?;
     stream::install(driver)?;
@@ -87,4 +91,43 @@ pub(crate) fn define_with_alias(
         .define_module(&alias, exports)
         .map_err(|error| format!("define_module {alias}: {error}"))?;
     Ok(())
+}
+
+/// A string as a JSON string literal. Small and local on purpose: it is used to
+/// hand install-time data to JS once, not to serialize anything at run time.
+pub(crate) fn quote(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for character in text.chars() {
+        match character {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            other if (other as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", other as u32)),
+            other => out.push(other),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// process.platform / os.platform() spelling: Node says darwin, not macos.
+pub(crate) fn node_platform() -> &'static str {
+    match std::env::consts::OS {
+        "macos" => "darwin",
+        "windows" => "win32",
+        other => other,
+    }
+}
+
+/// process.arch / os.arch() spelling: Node says arm64 and x64.
+pub(crate) fn node_arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "aarch64" => "arm64",
+        "x86_64" => "x64",
+        "x86" => "ia32",
+        other => other,
+    }
 }

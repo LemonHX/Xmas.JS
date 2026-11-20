@@ -55,8 +55,21 @@ impl Console {
     }
 
     /// Raw output sent by the engine; no prefix is added.
-    pub fn raw(&self, _stream: Stream, bytes: &[u8]) {
-        self.push(bytes);
+    pub fn raw(&self, stream: Stream, bytes: &[u8]) {
+        match (&self.sink, stream) {
+            (Sink::Stdout, Stream::Stderr) => {
+                use std::io::Write;
+                let mut out = std::io::stderr().lock();
+                let _ = out.write_all(bytes);
+                let _ = out.flush();
+            }
+            _ => self.push(bytes),
+        }
+    }
+
+    /// True when output is collected in memory instead of going to the terminal.
+    pub fn is_captured(&self) -> bool {
+        matches!(self.sink, Sink::Capture(_))
     }
 
     /// Retrieve the captured content (an empty string in stdout mode).

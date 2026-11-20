@@ -5,6 +5,8 @@
 //!
 //! When idle, wait for timers with smol::Timer, so the reactor is also running and the host's IO futures don't starve.
 
+use std::cell::Cell;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use quickjs_oxide::engine::api::core::{
@@ -32,6 +34,12 @@ pub struct Slice {
 pub struct Driver {
     pub host: Host,
     pub notice_us: f64,
+    /// The heap cap this realm was built with, so process.memoryUsage can report it.
+    pub heap_cap: usize,
+    /// Heap bytes as of the last loop turn. The engine refuses to be re-entered
+    /// from a host callback, so process.memoryUsage reads this instead of asking
+    /// mid-call; it is stale by at most one turn of the loop.
+    heap_used: Rc<Cell<usize>>,
     runtime: Runtime,
     context: Context,
 }
@@ -51,10 +59,13 @@ impl Driver {
         let mut driver = Driver {
             host,
             notice_us: 0.0,
+            heap_cap: max_bytes,
+            heap_used: Rc::new(Cell::new(0)),
             runtime,
             context,
         };
         driver.install_globals()?;
+        driver.refresh_heap();
         Ok(driver)
     }
 
@@ -207,7 +218,21 @@ impl Driver {
     }
 
     /// Run one slice: jobs within the budget, plus timers that are due.
+    /// Read the engine's heap report and keep it for process.memoryUsage. Only
+    /// called while the realm is not entered: between turns of the loop.
+    pub fn refresh_heap(&mut self) {
+        if let Ok(report) = self.runtime.memory_report() {
+            self.heap_used.set(report.reserved_bytes());
+        }
+    }
+
+    /// A handle to the heap reading above, for the process module.
+    pub fn heap_used(&self) -> Rc<Cell<usize>> {
+        self.heap_used.clone()
+    }
+
     pub fn slice(&mut self) -> Result<Slice, String> {
+        self.refresh_heap();
         let started = Instant::now();
         let mut jobs = 0u64;
         while started.elapsed() < SLICE {

@@ -46,6 +46,11 @@ impl Clock {
         self.0.start.elapsed().as_micros() as f64
     }
 
+    /// Nanoseconds since the clock was created: one f64, exact for 104 days.
+    pub fn elapsed_ns(&self) -> f64 {
+        self.0.start.elapsed().as_nanos() as f64
+    }
+
     pub fn deadline(&self) -> Option<Instant> {
         self.0.deadline.get()
     }

@@ -807,3 +807,134 @@ fn write_returns_false_over_high_water_mark_and_drains() {
     assert_eq!(h.expect_text("String(drains >= 1)"), "true");
 }
 
+
+#[test]
+fn process_exposes_the_run() {
+    let mut h = Harness::with_modules();
+    assert_eq!(h.expect_text("String(Array.isArray(process.argv))"), "true");
+    let platform = match std::env::consts::OS {
+        "macos" => "darwin",
+        other => other,
+    };
+    assert_eq!(h.expect_text("process.platform"), platform);
+    assert_eq!(h.expect_text("String(process.pid > 0)"), "true");
+    assert_eq!(h.expect_text("String(process.pid === process.pid)"), "true");
+    assert_eq!(h.expect_text("typeof process.version"), "string");
+    assert_eq!(h.expect_text("typeof process.cwd()"), "string");
+    assert_eq!(h.expect_text("String(process.uptime() >= 0)"), "true");
+}
+
+#[test]
+fn process_env_reads_without_a_host_call() {
+    let mut h = Harness::with_modules();
+    h.eval("process.env.XMAS_TEST_TOKEN = 'abc'").unwrap();
+    assert_eq!(h.expect_text("process.env.XMAS_TEST_TOKEN"), "abc");
+    // The write reached the native side, which is where a child process reads it.
+    assert_eq!(h.host().env.get("XMAS_TEST_TOKEN").as_deref(), Some("abc"));
+    h.eval("delete process.env.XMAS_TEST_TOKEN").unwrap();
+    assert_eq!(h.expect_text("String(process.env.XMAS_TEST_TOKEN)"), "undefined");
+    assert!(h.host().env.get("XMAS_TEST_TOKEN").is_none());
+}
+
+#[test]
+fn process_chdir_moves_the_working_directory() {
+    let mut h = Harness::with_modules();
+    let before = h.expect_text("process.cwd()");
+    let target = std::env::temp_dir();
+    h.eval(&format!("process.chdir({:?})", target.to_string_lossy())).unwrap();
+    let after = h.expect_text("process.cwd()");
+    assert_ne!(before, after);
+    h.eval(&format!("process.chdir({:?})", before)).unwrap();
+    assert_eq!(h.expect_text("process.cwd()"), before);
+}
+
+#[test]
+fn process_next_tick_runs_before_a_settled_promise() {
+    let mut h = Harness::with_modules();
+    h.eval("globalThis.order = []; process.nextTick(() => order.push('tick')); Promise.resolve().then(() => order.push('promise'));")
+        .unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_text("order.join(',')"), "tick,promise");
+}
+
+#[test]
+fn process_next_tick_takes_arguments() {
+    let mut h = Harness::with_modules();
+    h.eval("globalThis.seen = null; process.nextTick((a, b) => { seen = a + b; }, 2, 3);").unwrap();
+    idle(&mut h);
+    assert_eq!(h.expect_number("seen"), 5.0);
+}
+
+#[test]
+fn process_hrtime_counts_forward() {
+    let mut h = Harness::with_modules();
+    h.eval("globalThis.first = process.hrtime();")
+        .unwrap();
+    let seconds = h.expect_number("first[0]");
+    let nanos = h.expect_number("first[1]");
+    assert!(seconds >= 0.0 && nanos >= 0.0 && nanos < 1e9);
+    assert_eq!(
+        h.expect_text("String(typeof process.hrtime.bigint())"),
+        "bigint"
+    );
+}
+
+#[test]
+fn process_memory_usage_reports_the_heap() {
+    let mut h = Harness::with_modules();
+    h.eval("globalThis.usage = process.memoryUsage()").unwrap();
+    assert!(h.expect_number("usage.heapUsed") > 0.0);
+    assert_eq!(h.expect_number("usage.heapTotal"), 64.0 * 1024.0 * 1024.0);
+    assert!(h.expect_number("usage.rss") > 0.0);
+}
+
+#[test]
+fn process_exit_raises_under_a_capturing_host() {
+    let mut h = Harness::with_modules();
+    h.eval("process.on('exit', (code) => { globalThis.exitCode = code; })").unwrap();
+    let thrown = h.eval_err("process.exit(3)");
+    assert!(format!("{thrown:?}").contains("process.exit(3)"), "{thrown:?}");
+    assert_eq!(h.expect_number("exitCode"), 3.0);
+}
+
+#[test]
+fn process_stdout_writes_through_the_console() {
+    let mut h = Harness::with_modules();
+    h.eval("process.stdout.write('a'); process.stderr.write('b');")
+        .unwrap();
+    let out = h.host().console.take();
+    assert_eq!(out, "ab");
+    assert_eq!(h.expect_text("String(process.stdout.fd)"), "1");
+}
+
+#[test]
+fn process_is_a_module_too() {
+    let mut h = Harness::with_modules();
+    let namespace = h.module("node:process", "").unwrap();
+    assert_eq!(h.expect_text("typeof process.nextTick"), "function");
+    drop(namespace);
+}
+
+#[test]
+fn os_reports_the_machine() {
+    let mut h = Harness::with_modules();
+    assert_eq!(h.expect_text("typeof os.platform()"), "string");
+    assert_eq!(h.expect_text("String(os.cpus().length > 0)"), "true");
+    assert_eq!(h.expect_text("String(os.totalmem() > 0)"), "true");
+    assert_eq!(h.expect_text("String(os.uptime() > 0)"), "true");
+    assert_eq!(h.expect_text("String(os.loadavg().length)"), "3");
+    assert_eq!(h.expect_text("os.EOL"), "\n");
+    assert_eq!(h.expect_text("String(os.homedir().length > 0)"), "true");
+    assert_eq!(h.expect_text("String(os.tmpdir().length > 0)"), "true");
+    assert_eq!(h.expect_text("typeof os.userInfo().username"), "string");
+}
+
+#[test]
+fn os_is_a_module_too() {
+    let mut h = Harness::with_modules();
+    let namespace = h.module(
+        "probe",
+        "import { platform, EOL } from 'node:os'; export const values = [platform(), EOL];",
+    );
+    assert!(namespace.is_ok(), "{namespace:?}");
+}
