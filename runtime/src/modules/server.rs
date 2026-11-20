@@ -169,6 +169,12 @@ async fn answer(realm: Rc<RefCell<Driver>>, mut conn: Conn) -> Conn {
         let (id, receiver) = state.open();
         (state, id, receiver)
     };
+    // A connection that goes away mid-request drops this future, and with it the slot: otherwise
+    // every abandoned request would leave an entry behind for the life of the realm.
+    let slot = Slot {
+        state: Rc::clone(&state),
+        id,
+    };
 
     let thrown = {
         let mut driver = realm.borrow_mut();
@@ -195,15 +201,26 @@ async fn answer(realm: Rc<RefCell<Driver>>, mut conn: Conn) -> Conn {
     )
     .await;
 
+    drop(slot);
     match outcome {
         Some(Ok(ready)) => settle(conn, ready),
-        // The slot is still ours if we timed out, so drop it rather than leak it.
-        None => {
-            state.close(id);
-            conn.with_status(504)
-                .with_body(format!("the handler did not answer within {}s", ANSWER_WITHIN.as_secs()))
-        }
+        None => conn.with_status(504).with_body(format!(
+            "the handler did not answer within {}s",
+            ANSWER_WITHIN.as_secs()
+        )),
         Some(Err(error)) => server_error(conn, &format!("the answer was lost: {error}")),
+    }
+}
+
+/// Holds a request's slot open for as long as the connection is waiting for it.
+struct Slot {
+    state: Rc<server::State>,
+    id: u64,
+}
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        self.state.close(self.id);
     }
 }
 
