@@ -14,6 +14,7 @@ pub mod net;
 pub mod pending;
 pub mod server;
 pub mod timer;
+pub mod websocket;
 
 pub use clock::{CancelHandle, Clock};
 pub use console::{Console, Level};

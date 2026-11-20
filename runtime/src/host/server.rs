@@ -30,6 +30,10 @@ use trillium::Conn;
 use trillium_http::HttpContext;
 use trillium_smol::SmolTransport;
 
+pub use trillium_http::Upgrade;
+
+use crate::host::websocket::{Pipes, Ws};
+
 use crate::host::net::{Net, TcpListener, TcpStream};
 
 /// What a connection is carried on: smol's socket, wrapped so trillium can name its peer.
@@ -53,6 +57,9 @@ pub enum AnswerBody {
     /// server-sent events need: the client sees each chunk when the handler produces it, not when
     /// the handler is done.
     Stream(ChunkReader),
+    /// Nothing of our own: the connection stops being HTTP after this answer, and what happens on
+    /// it next is the WebSocket loop's business.
+    Upgrade,
 }
 
 /// How many chunks of a streaming body may be queued ahead of the connection. A handler that
@@ -113,6 +120,13 @@ pub struct State {
     pub dispatch: RefCell<Option<quickjs_oxide::engine::api::core::CallableRef>>,
     /// Streaming answers in flight: the end the realm writes chunks into, by request id.
     streams: RefCell<BTreeMap<u64, smol::channel::Sender<Vec<u8>>>>,
+    /// WebSocket sockets, by the id the realm named them.
+    ws: RefCell<BTreeMap<u64, Rc<Ws>>>,
+    /// Handshakes that have not been upgraded yet, by the client's key, and the ends their frame
+    /// loop will take.
+    ws_keys: RefCell<BTreeMap<String, u64>>,
+    ws_pipes: RefCell<BTreeMap<u64, Pipes>>,
+    next_ws: Cell<u64>,
 }
 
 impl State {
@@ -170,6 +184,39 @@ impl State {
     pub fn end_stream(&self, id: u64) {
         self.streams.borrow_mut().remove(&id);
     }
+
+    /// Register a socket the realm asked for, and compute the accept value its handler answers the
+    /// handshake with. The client's key is how the upgrade, when it arrives, finds its socket.
+    pub fn open_ws(&self, key: &str) -> (u64, String) {
+        let id = self.next_ws.get();
+        self.next_ws.set(id + 1);
+        let accept = crate::host::websocket::accept_for(key);
+        let (ws, pipes) = Ws::new(accept.clone());
+        self.ws.borrow_mut().insert(id, ws);
+        self.ws_pipes.borrow_mut().insert(id, pipes);
+        self.ws_keys.borrow_mut().insert(key.to_string(), id);
+        (id, accept)
+    }
+
+    /// The socket and its frame-loop ends for this handshake, once the connection has upgraded.
+    pub fn take_ws(&self, key: &str) -> Option<(Rc<Ws>, Pipes)> {
+        let id = self.ws_keys.borrow_mut().remove(key)?;
+        let ws = self.ws.borrow().get(&id).cloned()?;
+        let pipes = self.ws_pipes.borrow_mut().remove(&id)?;
+        Some((ws, pipes))
+    }
+
+    /// One socket the realm is holding, by the id it named it.
+    pub fn ws(&self, id: u64) -> Option<Rc<Ws>> {
+        self.ws.borrow().get(&id).cloned()
+    }
+
+    /// Drop a socket for good: the realm is done with it.
+    pub fn forget_ws(&self, id: u64) {
+        self.ws.borrow_mut().remove(&id);
+        self.ws_pipes.borrow_mut().remove(&id);
+        self.ws_keys.borrow_mut().retain(|_, value| *value != id);
+    }
 }
 
 /// A running server. Dropping it stops accepting and drops the connections in flight.
@@ -203,6 +250,15 @@ impl Drop for Server {
     }
 }
 
+/// What happens to a connection that stopped being HTTP. One per worker, built on the worker's
+/// thread, so it can hold the realm that owns the sockets on those connections.
+pub type Upgraded = Box<dyn Fn(Upgrade<Transport>)>;
+
+/// An upgrade handler for a server that has nothing to do with upgraded connections.
+pub fn no_upgrade() -> Upgraded {
+    Box::new(|_| {})
+}
+
 /// Serve on addr with one worker thread per core, each with its own listener and its own handler.
 ///
 /// make is called once per worker, on that worker's own thread, so whatever the handler holds is
@@ -213,7 +269,7 @@ impl Drop for Server {
 /// they just do not share the load as evenly; one worker is the safe choice there.
 pub fn serve<F, H, Fut>(addr: &str, workers: usize, make: F) -> io::Result<Server>
 where
-    F: Fn(usize, &'static LocalExecutor) -> H + Send + Sync + Clone + 'static,
+    F: Fn(usize, &'static LocalExecutor) -> (H, Upgraded) + Send + Sync + Clone + 'static,
     H: Fn(Conn) -> Fut + 'static,
     Fut: Future<Output = Conn> + 'static,
 {
@@ -263,7 +319,7 @@ where
 /// One worker: accept on this thread, run the connections on this thread.
 fn work<F, H, Fut>(listener: TcpListener, make: F, index: usize, stopped: smol::channel::Receiver<()>)
 where
-    F: Fn(usize, &'static LocalExecutor) -> H,
+    F: Fn(usize, &'static LocalExecutor) -> (H, Upgraded),
     H: Fn(Conn) -> Fut + 'static,
     Fut: Future<Output = Conn> + 'static,
 {
@@ -273,7 +329,9 @@ where
     let context = Arc::new(HttpContext::new());
     // The handler is built here, on this thread, and gets the executor so it can spawn the pump
     // that keeps its realm turning between requests.
-    let handler = Rc::new(make(index, executor));
+    let (handler, upgraded) = make(index, executor);
+    let handler = Rc::new(handler);
+    let upgraded = Rc::new(upgraded);
 
     smol::block_on(executor.run(async move {
         loop {
@@ -294,8 +352,9 @@ where
                 Ok((stream, _peer)) => {
                     let context = Arc::clone(&context);
                     let handler = Rc::clone(&handler);
+                    let upgraded = Rc::clone(&upgraded);
                     executor
-                        .spawn(async move { connection(stream, context, handler).await })
+                        .spawn(async move { connection(stream, context, handler, upgraded).await })
                         .detach();
                 }
                 // A connection that dies during the handshake is the peer's business, not ours.
@@ -311,8 +370,12 @@ where
 }
 
 /// One connection, from the first byte to whatever ends it.
-async fn connection<H, Fut>(stream: TcpStream, context: Arc<HttpContext>, handler: Rc<H>)
-where
+async fn connection<H, Fut>(
+    stream: TcpStream,
+    context: Arc<HttpContext>,
+    handler: Rc<H>,
+    upgraded: Rc<Upgraded>,
+) where
     H: Fn(Conn) -> Fut + 'static,
     Fut: Future<Output = Conn> + 'static,
 {
@@ -324,6 +387,16 @@ where
             async move { answered.await.into_inner() }
         })
         .await;
+    let served = match served {
+        // The connection stopped being HTTP: hand it to whoever asked for the upgrade.
+        Ok(Some(upgrade)) => {
+            upgraded(upgrade);
+            return;
+        }
+        Ok(None) => Ok(()),
+        Err(error) => Err(error),
+    };
+
     if let Err(error) = served {
         // A malformed request lands here, and so does a peer that vanished mid-request. The second
         // kind is ordinary (a closed tab, a failed load test) and does not deserve a log line.

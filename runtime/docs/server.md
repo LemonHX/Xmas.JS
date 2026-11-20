@@ -33,7 +33,9 @@ pipelining, trailers, 100-continue, graceful close, and the 400 it sends for a h
 6. The connection future writes the response and loops for the next request on that connection.
 
 An answer whose body is a `ReadableStream` does not go through step 5: `__serve_stream` settles the
-head, and each chunk the handler produces is written with `__serve_chunk` as it is produced.
+head, and each chunk the handler produces is written with `__serve_chunk` as it is produced. An
+answer that is a websocket handshake settles through `__serve_upgrade`, and the connection leaves
+HTTP for the frame loop instead of going back to step 6.
 
 A handler that goes async (a timer, a fetch, a file) calls `__serve_respond` later. The driver's
 pump is what runs the handler's microtasks: `Pending::notify` right after the dispatch call is what
@@ -77,6 +79,41 @@ Three things make that work:
 A connection goes back to serving requests normally once a streamed body ends; the chunked framing
 is what closes it off.
 
+## WebSockets
+
+A handler asks for the upgrade, gets a socket and a handshake response, and returns the response:
+
+```js
+Xmas.serve(function (request) {
+  if (request.headers.get('upgrade') !== 'websocket') {
+    return new Response('this endpoint wants a websocket');
+  }
+  const { socket, response } = Xmas.upgradeWebSocket(request);
+  socket.onopen = () => socket.send('hello');
+  socket.onmessage = (event) => socket.send('echo: ' + event.data);
+  socket.onclose = (event) => console.log('closed', event.code);
+  return response;
+});
+```
+
+What happens under that:
+
+- `__ws_new(key)` registers a socket under the client's `sec-websocket-key` and returns the id plus
+  the accept value. The handshake response is a normal `Response` with status 101 and the three
+  upgrade headers, so the handler can add headers of its own to it.
+- The answer's body is an upgrade rather than bytes, so the connection stops being HTTP after the
+  101 goes out: trillium's h1 loop hands its `Upgrade` back and `serve()` passes it to the worker's
+  upgrade closure. That closure finds the socket by the client's key and starts the frame loop on
+  the worker's own executor, on the same thread as the realm that holds the socket.
+- The frame loop (`runtime/src/host/websocket.rs`) masks nothing on the way out, unmasks what comes
+  in, assembles fragments, answers a ping with a pong, and echoes the peer's close before it ends.
+  A message is handed to JS as one buffer: the opcode byte and then the payload.
+- `runtime/js/websocket.js` is the object the handler sees: `readyState`, `onopen`, `onmessage`,
+  `onerror`, `onclose`, `send`, `close`, plus `addEventListener`. It keeps one read outstanding
+  and asks for the next message as soon as the last one is handled.
+- Binary messages arrive as an `ArrayBuffer`, copies of a buffer the runtime reuses. Text arrives as
+  a string.
+
 ## Numbers
 
 macOS, M5, release, client and server on the same machine (8 client threads, keep-alive, one
@@ -112,3 +149,12 @@ there, but the kernel does not distribute connections the way Linux does.
 - No graceful drain. Stopping the server drops the connections in flight instead of finishing them.
 - One address per server, no unix sockets, no sniffing of the listener's own address into
   `request.url` (the host header is used).
+- A websocket that the handler never answers parks one read on the socket and holds it; the entry is
+  only released when that read is answered or the connection ends.
+- Sending on a websocket is not a promise: a handler that produces faster than the wire can take it
+  buffers in memory. There is no `bufferedAmount` and no `drain`.
+- No permessage-deflate, no subprotocol negotiation beyond echoing nothing, and no server-side ping
+  timer. A connection that goes silent stays open.
+- A connection can only be upgraded when the request asked for it; the closure looks the socket up
+  by `sec-websocket-key`, so a hand-made 101 with no registered socket logs and drops the
+  connection.

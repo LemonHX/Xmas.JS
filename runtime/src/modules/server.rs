@@ -142,6 +142,33 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             .map_err(|error| format!("__serve_chunk: {error}"))?;
     }
 
+    // A websocket handshake: the answer is a 101 whose body is not ours to write.
+    {
+        let state = Rc::clone(&driver.server);
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__serve_upgrade",
+                4,
+                move |_scope: &mut Scope<'_>,
+                      id: f64,
+                      status: f64,
+                      status_text: String,
+                      headers: String|
+                      -> Result<Value, RuntimeError> {
+                    let answer = Answer {
+                        status: status as u16,
+                        status_text,
+                        headers,
+                        body: AnswerBody::Upgrade,
+                    };
+                    Ok(Value::Bool(state.settle(id as u64, Ok(answer))))
+                },
+            )
+            .map_err(|error| format!("__serve_upgrade: {error}"))?;
+    }
+
     // The body is complete.
     {
         let state = Rc::clone(&driver.server);
@@ -216,18 +243,46 @@ where
                     let text = format!("this worker could not start: {error}");
                     Box::pin(async move { server_error(conn, &text) })
                 });
-                return handle;
+                return (handle, server::no_upgrade());
             }
         };
 
         // Keep the realm turning between requests: jobs, timers and host results.
         executor.spawn(Driver::pump(Rc::clone(&realm))).detach();
 
+        let socket_realm = Rc::clone(&realm);
         let handle: Handler = Box::new(move |conn: Conn| {
             let realm = Rc::clone(&realm);
             Box::pin(answer(realm, conn))
         });
-        handle
+
+        // A connection that stopped being HTTP belongs to a socket the realm is holding. The
+        // client's key is what ties this upgrade to that socket: it was registered when the
+        // handler asked for the upgrade, before the answer went out.
+        let upgraded: server::Upgraded = Box::new(move |upgrade: server::Upgrade<server::Transport>| {
+            let key = upgrade
+                .received_headers()
+                .get("sec-websocket-key")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string());
+            let Some(key) = key else {
+                eprintln!("an upgrade arrived with no sec-websocket-key");
+                return;
+            };
+            let found = {
+                let driver = socket_realm.borrow();
+                Rc::clone(&driver.server).take_ws(&key)
+            };
+            let Some((ws, pipes)) = found else {
+                eprintln!("an upgrade arrived that no handler asked for");
+                return;
+            };
+            executor
+                .spawn(crate::host::websocket::serve(ws, pipes, upgrade))
+                .detach();
+        });
+
+        (handle, upgraded)
     })
     .map_err(|error| format!("serve {addr}: {error}"))
 }
@@ -368,6 +423,8 @@ fn settle(conn: Conn, ready: Result<Answer, String>) -> Conn {
         AnswerBody::Bytes(body) => conn.with_body(body),
         // No length: trillium frames it chunked and writes each chunk as the realm produces it.
         AnswerBody::Stream(reader) => conn.with_body(Body::new_streaming(reader, None)),
+        // The 101 goes out, and what is left of the connection belongs to the WebSocket loop.
+        AnswerBody::Upgrade => conn.upgrade(),
     }
 }
 

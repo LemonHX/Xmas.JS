@@ -35,7 +35,8 @@ fn rust_only(addr: &str, workers: usize) -> xmas_runtime::host::server::Server {
     use trillium::Conn;
     type Answer = Pin<Box<dyn Future<Output = Conn>>>;
     xmas_runtime::host::server::serve(addr, workers, |_, _| {
-        |conn: Conn| -> Answer { Box::pin(async move { conn.ok(BODY) }) }
+        let handler = |conn: Conn| -> Answer { Box::pin(async move { conn.ok(BODY) }) };
+        (handler, xmas_runtime::host::server::no_upgrade())
     })
     .expect("server starts")
 }

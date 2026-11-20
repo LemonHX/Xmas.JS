@@ -154,6 +154,14 @@
     });
     const headersText = out.join(SEP) + (out.length > 0 ? SEP : '');
 
+    // An answer to a websocket handshake: the connection stops being HTTP once the 101 is out, and
+    // the socket the handler made is already waiting for its frames.
+    const upgrade = response._upgrade;
+    if (upgrade !== undefined) {
+      hand_over_upgrade(id, response, upgrade, headersText);
+      return;
+    }
+
     // A body that is a stream goes out as it is produced: the head first, then each chunk. This is
     // what server-sent events need, and it is also how a long response avoids being held in memory.
     const source = response._source === undefined ? null : response._source;
@@ -181,6 +189,15 @@
         __serve_fail(id, 'reading the response body failed: ' + describe(error));
       },
     );
+  }
+
+  function hand_over_upgrade(id, response, socket, headersText) {
+    if (__serve_upgrade(id, response.status, response.statusText || '', headersText) !== true) {
+      // The connection was already gone, so the socket has nobody to talk to.
+      socket._failed('the client went away before the handshake');
+      return;
+    }
+    done(id);
   }
 
   function stream(id, response, headersText, source) {

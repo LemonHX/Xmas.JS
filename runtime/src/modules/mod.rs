@@ -28,6 +28,7 @@ pub mod timers;
 pub mod tty;
 pub mod url;
 pub mod util;
+pub mod websocket;
 pub mod zlib;
 
 use crate::driver::Driver;
@@ -64,6 +65,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     sockets::install(driver)?;
     // the server builds a Request out of a parsed head, so it needs Headers and Response
     server::install(driver)?;
+    websocket::install(driver)?;
     Ok(())
 }
 

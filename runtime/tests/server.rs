@@ -10,7 +10,7 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use trillium::Conn;
-use xmas_runtime::host::server::{serve, Server};
+use xmas_runtime::host::server::{no_upgrade, serve, Server};
 
 type Answer = Pin<Box<dyn Future<Output = Conn>>>;
 
@@ -28,7 +28,7 @@ fn echo() -> impl Fn(Conn) -> Answer {
 }
 
 fn start(workers: usize) -> Server {
-    serve("127.0.0.1:0", workers, |_, _| echo()).expect("server starts")
+    serve("127.0.0.1:0", workers, |_, _| (echo(), no_upgrade())).expect("server starts")
 }
 
 struct Client {
@@ -180,10 +180,11 @@ fn a_malformed_head_is_answered_and_not_fatal() {
 #[test]
 fn a_large_body_streams_back_out() {
     let server = serve("127.0.0.1:0", 1, |_, _| {
-        |conn: Conn| -> Answer {
+        let handler = |conn: Conn| -> Answer {
             let payload = "x".repeat(512 * 1024);
             Box::pin(async move { conn.ok(payload) })
-        }
+        };
+        (handler, no_upgrade())
     })
     .expect("server starts");
 
