@@ -81,12 +81,19 @@ impl Harness {
 
     pub fn with_host(host: Host) -> Self {
         let modules = host.modules.clone();
-        let driver = Driver::new(host).expect("建 runtime");
+        let driver = Driver::new(host).expect("build runtime");
         driver
             .runtime()
             .set_module_loader(TableLoader { modules })
-            .expect("装加载器");
+            .expect("install loader");
         Harness { driver }
+    }
+
+    /// Install the modules carried over from the old runtime (console, timers, ...).
+    pub fn with_modules() -> Self {
+        let mut harness = Self::new();
+        crate::modules::install(&mut harness.driver).expect("install modules");
+        harness
     }
 
 
@@ -106,22 +113,22 @@ impl Harness {
 
     pub fn expect_number(&mut self, source: &str) -> f64 {
         match self.eval(source) {
-            Ok(value) => number_of(&value).unwrap_or_else(|| panic!("{source} 不是数字：{value:?}")),
-            Err(error) => panic!("{source} 失败了：{error}"),
+            Ok(value) => number_of(&value).unwrap_or_else(|| panic!("{source} is not a number: {value:?}")),
+            Err(error) => panic!("{source} failed: {error}"),
         }
     }
 
     pub fn expect_text(&mut self, source: &str) -> String {
         match self.eval(source) {
-            Ok(value) => text_of(&value).unwrap_or_else(|| panic!("{source} 不是字符串：{value:?}")),
-            Err(error) => panic!("{source} 失败了：{error}"),
+            Ok(value) => text_of(&value).unwrap_or_else(|| panic!("{source} is not a string: {value:?}")),
+            Err(error) => panic!("{source} failed: {error}"),
         }
     }
 
     /// Expect an error to be thrown, and get name / message. The old call_test_err spot.
     pub fn eval_err(&mut self, source: &str) -> Thrown {
         match self.driver.eval_raw(source) {
-            Ok(value) => panic!("期望抛错，实际返回了 {value:?}"),
+            Ok(value) => panic!("expected an error, but got {value:?}"),
             Err(error) => self.describe(error),
         }
     }
@@ -133,7 +140,7 @@ impl Harness {
         self.driver
             .context_ref()
             .define_module(name, exports)
-            .unwrap_or_else(|error| panic!("定义模块 {name} 失败：{error}"));
+            .unwrap_or_else(|error| panic!("failed to define module {name}: {error}"));
     }
 
     /// Create a Rust function that can be passed into define_module. At most eight parameters; the types must be FromJs.
@@ -148,7 +155,7 @@ impl Harness {
             .driver
             .context()
             .new_function(options, body)
-            .unwrap_or_else(|error| panic!("造函数 {name} 失败：{error}"));
+            .unwrap_or_else(|error| panic!("failed to create function {name}: {error}"));
         Value::from(callable)
     }
 
@@ -159,32 +166,32 @@ impl Harness {
     /// so here a bootstrap module attaches import * as ns to global.
     pub fn module(&mut self, name: &str, source: &str) -> Result<Value, String> {
         if name.contains('\'') {
-            return Err(format!("模块名里别带单引号：{name}"));
+            return Err(format!("module name must not contain single quotes: {name}"));
         }
         let module = self
             .driver
             .host
             .modules
             .load(name, name, source)
-            .map_err(|error| format!("编译 {name} 失败：{error}"))?;
+            .map_err(|error| format!("failed to compile {name}: {error}"))?;
         let context = self.driver.context();
         context
             .compile_module_with_filename(&module.code, name)
-            .map_err(|error| format!("编译 {name} 失败：{error}"))?;
+            .map_err(|error| format!("failed to compile {name}: {error}"))?;
         let bootstrap = format!("import * as ns from '{name}'; globalThis.__xmas_ns = ns;");
         let bytecode = context
             .compile_module_with_filename(&bootstrap, "xmas:testkit-bootstrap")
-            .map_err(|error| format!("引导模块失败：{error}"))?;
+            .map_err(|error| format!("failed to bootstrap module: {error}"))?;
         context
             .execute_module(&bytecode)
-            .map_err(|error| format!("执行 {name} 失败：{error}"))?;
+            .map_err(|error| format!("failed to execute {name}: {error}"))?;
         self.driver.eval("globalThis.__xmas_ns")
     }
 
     /// Read a property on the namespace (or any object).
     pub fn property(&mut self, object: &Value, name: &str) -> Result<Value, String> {
         let Value::Object(object) = object else {
-            return Err("不是对象".into());
+            return Err("not an object".into());
         };
         let key = PropertyKey::from_js_string(
             JsString::try_from_utf8(name).map_err(|error| format!("{error}"))?,
@@ -201,31 +208,31 @@ impl Harness {
         let value = self.property(&this, function)?;
         let context = self.driver.context();
         let Value::Object(callable_object) = &value else {
-            return Err(format!("{function} 不是函数"));
+            return Err(format!("{function} is not a function"));
         };
         let callable = context
             .as_callable(callable_object)
             .map_err(|error| format!("{function}: {error}"))?
-            .ok_or_else(|| format!("{function} 不是函数"))?;
+            .ok_or_else(|| format!("{function} is not a function"))?;
         context
             .call(&callable, this, args)
-            .map_err(|error| format!("调用 {function} 失败：{error}"))
+            .map_err(|error| format!("failed to call {function}: {error}"))
     }
 
     /// Call a function, expecting it to throw. The old call_test_err.
     pub fn call_err(&mut self, namespace: &Value, function: &str, args: &[Value]) -> Thrown {
         let this = namespace.clone();
-        let value = self.property(&this, function).expect("取函数");
+        let value = self.property(&this, function).expect("get function");
         let context = self.driver.context();
         let Value::Object(callable_object) = &value else {
-            panic!("{function} 不是函数");
+            panic!("{function} is not a function");
         };
         let callable = context
             .as_callable(callable_object)
-            .expect("取 callable")
+            .expect("get callable")
             .expect("callable");
         match context.call(&callable, this, args) {
-            Ok(value) => panic!("期望抛错，实际返回了 {value:?}"),
+            Ok(value) => panic!("expected an error, but got {value:?}"),
             Err(error) => self.describe(error),
         }
     }
@@ -255,7 +262,7 @@ impl Harness {
                 return finish(snapshot);
             }
             if Instant::now() >= budget {
-                return Err("promise 一直没结算".into());
+                return Err("promise never settled".into());
             }
             self.driver.wait_ready().await?;
         }
@@ -303,8 +310,8 @@ impl Harness {
 fn finish(snapshot: PromiseSnapshot) -> Result<Value, String> {
     match snapshot.state() {
         PromiseState::Fulfilled => Ok(snapshot.result().clone()),
-        PromiseState::Rejected => Err(format!("promise 被拒绝：{:?}", snapshot.result())),
-        PromiseState::Pending => Err("promise 还在 pending".into()),
+        PromiseState::Rejected => Err(format!("promise was rejected: {:?}", snapshot.result())),
+        PromiseState::Pending => Err("promise is still pending".into()),
     }
 }
 
@@ -332,7 +339,7 @@ pub fn given_file(content: &str) -> PathBuf {
         "xmas-test-{}-{unique}",
         std::process::id()
     ));
-    std::fs::write(&path, content).expect("写临时文件");
+    std::fs::write(&path, content).expect("write temporary file");
     path
 }
 

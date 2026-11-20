@@ -88,7 +88,7 @@ impl Pending {
                     settle(context, reply);
                     settled += 1;
                 }
-                None => return Err(format!("结算编号 {id} 没有对应的闭包")),
+                None => return Err(format!("Settlement ID {id} has no corresponding closure")),
             }
         }
         Ok(settled)

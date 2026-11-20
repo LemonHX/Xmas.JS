@@ -20,7 +20,6 @@ members = [
 default-members = ["runtime"]
 
 [workspace.dependencies]
-xmas-runtime = { path = "runtime" }
 xmas-package-manager = { path = "package-manager" }
 xmas-vsys = { path = "vsys" }
 xmas-bundler = { path = "bundler" }

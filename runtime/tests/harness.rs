@@ -113,7 +113,7 @@ fn error_from_module_call() {
 fn broken_module_fails_to_compile() {
     let mut h = Harness::new();
     let error = h.module("broken.ts", "export function f(: number { return 1; }").unwrap_err();
-    assert!(error.contains("broken.ts"), "错误里要带上模块名：{error}");
+    assert!(error.contains("broken.ts"), "The error should include the module name: {error}");
 }
 
 #[test]
