@@ -13,6 +13,7 @@ pub mod console;
 pub mod crypto;
 pub mod event;
 pub mod exception;
+pub mod fetch;
 pub mod fs;
 pub mod os;
 pub mod path;
@@ -55,6 +56,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     zlib::install(driver)?;
     stream::install(driver)?;
     stream_web::install(driver)?;
+    // fetch needs Blob, ReadableStream and DOMException, so it comes last
+    fetch::install(driver)?;
     Ok(())
 }
 

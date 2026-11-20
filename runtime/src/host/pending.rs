@@ -42,6 +42,10 @@ struct Inner {
     slots: RefCell<BTreeMap<u64, Settle>>,
     sender: smol::channel::Sender<(u64, Reply)>,
     receiver: smol::channel::Receiver<(u64, Reply)>,
+    /// Woken whenever a job finishes, so the event loop waits for the next result instead of
+    /// asking again every millisecond.
+    wake: smol::channel::Sender<()>,
+    woken: smol::channel::Receiver<()>,
 }
 
 impl Default for Pending {
@@ -53,12 +57,15 @@ impl Default for Pending {
 impl Pending {
     pub fn new() -> Self {
         let (sender, receiver) = smol::channel::unbounded();
+        let (wake, woken) = smol::channel::unbounded();
         Pending {
             inner: Rc::new(Inner {
                 next_id: Cell::new(0),
                 slots: RefCell::new(BTreeMap::new()),
                 sender,
                 receiver,
+                wake,
+                woken,
             }),
         }
     }
@@ -71,6 +78,7 @@ impl Pending {
         Job {
             id,
             sender: self.inner.sender.clone(),
+            wake: self.inner.wake.clone(),
         }
     }
 
@@ -92,6 +100,17 @@ impl Pending {
             }
         }
         Ok(settled)
+    }
+
+    /// Wait until any job finishes. Used by the event loop instead of polling on a timer.
+    pub async fn wait(&self) {
+        let _ = self.inner.woken.recv().await;
+    }
+
+    /// The same, for the blocking loop. Waiting on a channel that has a message already
+    /// queued returns immediately, so a result that landed during the last slice is not missed.
+    pub fn wait_blocking(&self) {
+        let _ = self.inner.woken.recv_blocking();
     }
 
     /// How many things are still not done (started but the result has not come back, or it has come back but has not been settled).
@@ -139,6 +158,7 @@ where
 pub struct Job {
     id: u64,
     sender: smol::channel::Sender<(u64, Reply)>,
+    wake: smol::channel::Sender<()>,
 }
 
 impl Job {
@@ -146,5 +166,8 @@ impl Job {
         // channel is unbounded, so try_send only fails when 'the receiving end is gone';
         // At that point the realm no longer wants this result; just drop it.
         let _ = self.sender.try_send((self.id, reply));
+        // One wake-up per finished job. The channel is unbounded, so this never blocks and
+        // never loses a wake-up; extra ones just make the next wait return at once.
+        let _ = self.wake.try_send(());
     }
 }

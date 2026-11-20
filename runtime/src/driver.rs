@@ -292,9 +292,9 @@ impl Driver {
                         smol::Timer::after(wait).await;
                     }
                 }
-                // No timers, but there is still work in flight (fs reads/writes); give it a little time to come back
+                // No timers, but host work is still in flight: wait for it to report back.
                 None if self.host.pending.outstanding() > 0 => {
-                    smol::Timer::after(Duration::from_millis(1)).await;
+                    self.host.pending.wait().await;
                 }
                 None => return Ok(()),
             }
@@ -320,7 +320,7 @@ impl Driver {
                     }
                 }
                 None if self.host.pending.outstanding() > 0 => {
-                    std::thread::sleep(Duration::from_millis(1));
+                    self.host.pending.wait_blocking();
                 }
                 None => return Ok(()),
             }
