@@ -32,10 +32,50 @@ pipelining, trailers, 100-continue, graceful close, and the 400 it sends for a h
    its answer waiting when the call in step 3 comes back, so that request never awaits anything.
 6. The connection future writes the response and loops for the next request on that connection.
 
+An answer whose body is a `ReadableStream` does not go through step 5: `__serve_stream` settles the
+head, and each chunk the handler produces is written with `__serve_chunk` as it is produced.
+
 A handler that goes async (a timer, a fetch, a file) calls `__serve_respond` later. The driver's
 pump is what runs the handler's microtasks: `Pending::notify` right after the dispatch call is what
 wakes it, instead of waiting for the next timer. A handler that never settles is answered with 504
 after 30 seconds, and a connection that goes away mid-request drops its slot.
+
+## Server-sent events
+
+The handler returns a `Response` whose body is a `ReadableStream` and the chunks go out as the
+handler makes them, which is what SSE needs and what a buffered answer cannot do:
+
+```js
+Xmas.serve(function (request) {
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      const timer = setInterval(() => {
+        controller.enqueue(encoder.encode('data: ' + Date.now() + '\n\n'));
+      }, 1000);
+      request.signal.addEventListener('abort', () => {
+        clearInterval(timer);
+        controller.close();
+      });
+    },
+  });
+  return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
+});
+```
+
+Three things make that work:
+
+- The head is written before the body, framed chunked, because there is no length to declare.
+- Chunks go through a bounded channel of four, so a slow client pushes back into the handler
+  instead of the response growing in memory. The JS side sends one chunk at a time and waits for
+  the connection to take it.
+- `request.signal` is a real abort signal per request. It fires when the connection is gone, which
+  is discovered when the next chunk cannot be written: the reader is dropped, the channel closes,
+  and `__serve_chunk` resolves false. A handler that ignores it keeps its timer, so the listener in
+  the example is not decoration.
+
+A connection goes back to serving requests normally once a streamed body ends; the chunked framing
+is what closes it off.
 
 ## Numbers
 
@@ -61,8 +101,11 @@ there, but the kernel does not distribute connections the way Linux does.
 
 - A request body is read into memory before the handler sees it. A 100 MB upload is 100 MB of
   heap, and the handler cannot start work while the body is still arriving.
-- A response body is buffered in JS: `Response.arrayBuffer()` before answering. Streaming a
-  response needs a chunked answer path in the connection.
+- A streaming answer with nothing to send learns the client left only when it tries to send. A
+  handler that waits a minute between chunks holds a dead connection for that minute.
+- Backpressure is one chunk deep at a time: the JS side waits for each chunk to be taken before it
+  reads the next one. A handler that produces faster than the wire can take it is slowed down, but
+  the chunk it already handed over is not split.
 - No TLS listener. The acceptor slot is there (`smol::net::TcpStream` in, `SmolTransport` out),
   but a certificate story is not.
 - No HTTP/2: trillium-http has it, our accept loop only speaks h1.

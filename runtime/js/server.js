@@ -1,12 +1,13 @@
 // server: the JS half of the HTTP server.
 //
-// Rust parses the request with trillium, then calls __serve_dispatch with the parts. This file
-// builds a Request out of them, calls the app's handler and hands the answer back through
-// __serve_respond. Nothing here parses HTTP and nothing here touches a socket.
+// Rust parses the request with trillium and calls __serve_dispatch with the parts. This file builds
+// a Request out of them, calls the app's handler and hands the answer back: __serve_respond for a
+// body that is already in hand, __serve_stream plus __serve_chunk for one that is written as it is
+// produced. Nothing here parses HTTP and nothing here touches a socket.
 //
-// The handler may answer synchronously or return a promise; either way the answer arrives the
-// same way, so Rust has one path. A handler that answers before it returns is the fast path: the
-// answer is already waiting when the dispatch call comes back, and the connection never awaits.
+// The handler may answer synchronously or return a promise; either way the answer arrives the same
+// way, so Rust has one path. A handler that answers before it returns is the fast path: the answer
+// is already waiting when the dispatch call comes back, and the connection never awaits.
 
 (function () {
   'use strict';
@@ -14,6 +15,14 @@
   const SEP = '\u0000';
 
   let handler = null;
+  let env = Object.freeze({});
+
+  // One abort controller per request. A handler reads request.signal, and this is what fires when
+  // the client goes away, which is how a streaming handler learns to stop its own timers.
+  const controls = new Map();
+
+  // Anything the handler asked to finish after the answer went out.
+  const flights = new Set();
 
   // A thrown value read back for a human: the engine's stack for an Error carries only the
   // frames, so the name and message are put in front of it rather than trusted to be there.
@@ -37,9 +46,41 @@
     return out;
   }
 
+  // The request is over: nothing will fire abort any more.
+  function done(id) {
+    controls.delete(id);
+  }
+
+  // The client is gone. Firing abort is what lets a handler clean up; a handler that ignores it
+  // is still not wrong, it just keeps its timers until it produces the next chunk.
+  function giveUp(id, reason) {
+    const control = controls.get(id);
+    controls.delete(id);
+    if (control === undefined) return;
+    try {
+      control.abort(reason);
+    } catch (error) {
+      // An abort listener that throws is the handler's business, not the server's.
+    }
+  }
+
+  function waitUntil(value) {
+    const tracked = Promise.resolve(value).then(
+      () => {},
+      (error) => {
+        console.error('waitUntil task failed: ' + describe(error));
+      },
+    ).then(() => {
+      flights.delete(tracked);
+    });
+    flights.add(tracked);
+  }
+
+  const context = { waitUntil };
+
   globalThis.__serve_dispatch = function (id, method, target, headersText, body) {
     if (handler === null) {
-      __serve_fail(id, 'no handler: call Eta.serve(handler) before serving');
+      __serve_fail(id, 'no handler: call Xmas.serve(handler) before serving');
       return;
     }
 
@@ -58,23 +99,28 @@
       }
     }
 
+    const control = new AbortController();
+    controls.set(id, control);
+
     let request;
     try {
       const url = target.startsWith('http://') || target.startsWith('https://')
         ? target
         : 'http://' + host + target;
-      const init = { method, headers };
+      const init = { method, headers, signal: control.signal };
       if (hasBody && method !== 'GET' && method !== 'HEAD') init.body = body;
       request = new Request(url, init);
     } catch (error) {
+      giveUp(id, 'the request could not be built');
       __serve_fail(id, describe(error));
       return;
     }
 
     let result;
     try {
-      result = handler(request);
+      result = handler(request, env, context);
     } catch (error) {
+      giveUp(id, 'the handler threw');
       __serve_fail(id, describe(error));
       return;
     }
@@ -84,6 +130,7 @@
         answer(id, method, response);
       },
       (error) => {
+        giveUp(id, 'the handler rejected');
         __serve_fail(id, describe(error));
       },
     );
@@ -91,10 +138,12 @@
 
   function answer(id, method, response) {
     if (response === null || typeof response !== 'object') {
+      giveUp(id, 'no answer');
       __serve_fail(id, 'handler returned ' + (response === null ? 'null' : typeof response) + ', not a Response');
       return;
     }
     if (typeof response.status !== 'number' || !response.headers) {
+      giveUp(id, 'no answer');
       __serve_fail(id, 'handler returned an object that is not a Response');
       return;
     }
@@ -105,10 +154,19 @@
     });
     const headersText = out.join(SEP) + (out.length > 0 ? SEP : '');
 
+    // A body that is a stream goes out as it is produced: the head first, then each chunk. This is
+    // what server-sent events need, and it is also how a long response avoids being held in memory.
+    const source = response._source === undefined ? null : response._source;
+    if (source !== null && method !== 'HEAD') {
+      stream(id, response, headersText, source);
+      return;
+    }
+
     let reading;
     try {
       reading = response.arrayBuffer();
     } catch (error) {
+      giveUp(id, 'the body could not be read');
       __serve_fail(id, 'reading the response body failed: ' + describe(error));
       return;
     }
@@ -116,25 +174,96 @@
       (buffer) => {
         const body = method === 'HEAD' ? new Uint8Array(0) : new Uint8Array(buffer);
         __serve_respond(id, response.status, response.statusText || '', headersText, body);
+        done(id);
       },
       (error) => {
+        giveUp(id, 'the body could not be read');
         __serve_fail(id, 'reading the response body failed: ' + describe(error));
       },
     );
+  }
+
+  function stream(id, response, headersText, source) {
+    if (__serve_stream(id, response.status, response.statusText || '', headersText) === false) {
+      giveUp(id, 'the client went away');
+      return;
+    }
+
+    let reader;
+    try {
+      reader = source.getReader();
+    } catch (error) {
+      __serve_end(id);
+      giveUp(id, 'the body could not be read');
+      __serve_fail(id, 'reading the response body failed: ' + describe(error));
+      return;
+    }
+
+    const step = () => {
+      reader.read().then(
+        (result) => {
+          if (result.done === true) {
+            __serve_end(id);
+            done(id);
+            return;
+          }
+          let bytes;
+          try {
+            const value = result.value;
+            bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+          } catch (error) {
+            __serve_end(id);
+            giveUp(id, 'the body produced something that is not bytes');
+            return;
+          }
+          send(bytes);
+        },
+        (error) => {
+          __serve_end(id);
+          giveUp(id, 'the body failed');
+          __serve_fail(id, 'the response body failed: ' + describe(error));
+        },
+      );
+    };
+
+    // One chunk at a time: the next read waits until this one is on the connection, so a fast
+    // producer is slowed down by a slow client instead of filling memory.
+    const send = (bytes) => {
+      __serve_chunk(id, bytes).then(
+        (accepted) => {
+          if (accepted !== true) {
+            __serve_end(id);
+            giveUp(id, 'the client went away');
+            return;
+          }
+          step();
+        },
+        (error) => {
+          __serve_end(id);
+          giveUp(id, 'the body could not be written');
+          __serve_fail(id, 'writing the response body failed: ' + describe(error));
+        },
+      );
+    };
+
+    step();
   }
 
   function serve(target) {
     let fn = target;
     if (target !== null && typeof target === 'object') {
       fn = target.fetch;
+      // The environment is the caller's, not the platform's: whatever serve was given is handed to
+      // the handler unchanged, and an empty frozen object when it was given nothing.
+      if (target.env !== undefined) env = target.env;
     }
     if (typeof fn !== 'function') {
-      throw new TypeError('Eta.serve needs a function or an object with a fetch method');
+      throw new TypeError('Xmas.serve needs a function or an object with a fetch method');
     }
     handler = fn;
     return { fetch: fn };
   }
 
-  globalThis.Eta = { serve };
+  globalThis.Xmas = { serve };
   globalThis.__serve_module = { serve };
 })();

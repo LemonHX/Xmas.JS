@@ -172,8 +172,17 @@
 
   // ---------------------------------------------------------------- bytes
 
+  // A body that is already a stream is never turned into bytes: a server writes it out as it is
+  // produced, and the response getter hands the same stream back.
+  function isStreamBody(value) {
+    return value !== null && typeof value === 'object' && typeof value.getReader === 'function';
+  }
+
   function asBytes(value) {
     if (value === null || value === undefined) return null;
+    if (isStreamBody(value)) {
+      throw typeError('a stream body has to be handed over as a stream');
+    }
     if (typeof value === 'string') return encoder(value);
     if (value instanceof ArrayBuffer) return new Uint8Array(value);
     if (ArrayBuffer.isView(value)) {
@@ -560,7 +569,7 @@
     constructor(body, init) {
       const options = init || {};
       const status = options.status === undefined ? 200 : Number(options.status);
-      if (!(status >= 200 && status <= 599)) {
+      if (!(status >= 200 && status <= 599) && status !== 101) {
         throw new RangeError('a response status must be between 200 and 599');
       }
       if (body !== undefined && body !== null && (status === 204 || status === 205 || status === 304)) {
@@ -574,7 +583,10 @@
         redirected: false,
       });
       this._native = null;
-      this._bytes = asBytes(body);
+      // A body that is a stream is kept as one: the server writes it out as it is produced, and a
+      // response that came off the wire reads that way too.
+      this._source = isStreamBody(body) ? body : null;
+      this._bytes = this._source === null ? asBytes(body) : null;
       this._bodyUsed = false;
       this._stream = null;
     }
@@ -595,6 +607,7 @@
       const bodyless = fields[0] === '204' || fields[0] === '205' || fields[0] === '304';
       response._native = bodyless ? null : id;
       if (bodyless) __fetch_free(id);
+      response._source = null;
       response._bytes = null;
       response._bodyUsed = false;
       response._stream = null;
@@ -614,6 +627,7 @@
     get bodyUsed() { return this._bodyUsed; }
 
     get body() {
+      if (this._source !== null) return this._source;
       if (this._native !== null) {
         if (this._stream === null) this._stream = makeStream(this._native);
         return this._stream;
@@ -643,6 +657,7 @@
         redirected: this.redirected,
       });
       copy._native = null;
+      copy._source = null;
       copy._bytes = null;
       copy._bodyUsed = false;
       copy._stream = null;
@@ -685,6 +700,7 @@
         redirected: false,
       });
       response._native = null;
+      response._source = null;
       response._bytes = null;
       response._bodyUsed = false;
       response._stream = null;

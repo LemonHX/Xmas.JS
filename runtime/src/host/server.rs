@@ -17,11 +17,14 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::thread::JoinHandle;
 
 use futures_lite::future;
+use futures_lite::stream::Stream as _;
 use smol::LocalExecutor;
 use trillium::Conn;
 use trillium_http::HttpContext;
@@ -39,7 +42,61 @@ pub struct Answer {
     pub status_text: String,
     /// Response headers as a NUL-joined name/value list, which is how pairs cross this boundary.
     pub headers: String,
-    pub body: Vec<u8>,
+    pub body: AnswerBody,
+}
+
+/// The body of an answer, either in hand or still arriving from the realm.
+pub enum AnswerBody {
+    /// The whole body, so trillium frames it with its length.
+    Bytes(Vec<u8>),
+    /// A body written after the head has gone out, framed chunked as it arrives. This is what
+    /// server-sent events need: the client sees each chunk when the handler produces it, not when
+    /// the handler is done.
+    Stream(ChunkReader),
+}
+
+/// How many chunks of a streaming body may be queued ahead of the connection. A handler that
+/// ignores backpressure fills this and then waits for the socket instead of holding the whole
+/// response in memory.
+const STREAM_CHUNKS: usize = 4;
+
+/// Reads a streaming response body out of the channel the realm writes into.
+///
+/// The end of the body is the sender being dropped, which is what __serve_end does; the channel
+/// being closed that way is also how a connection that went away shows up on the writing side.
+pub struct ChunkReader {
+    // Boxed and pinned because the channel's receiver is deliberately not Unpin.
+    chunks: Pin<Box<smol::channel::Receiver<Vec<u8>>>>,
+    current: Vec<u8>,
+    offset: usize,
+}
+
+impl futures_lite::AsyncRead for ChunkReader {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
+        loop {
+            if self.offset < self.current.len() {
+                let take = (self.current.len() - self.offset).min(buf.len());
+                buf[..take].copy_from_slice(&self.current[self.offset..self.offset + take]);
+                self.offset += take;
+                return Poll::Ready(Ok(take));
+            }
+            if buf.is_empty() {
+                return Poll::Ready(Ok(0));
+            }
+            match self.chunks.as_mut().poll_next(cx) {
+                Poll::Ready(Some(chunk)) => {
+                    self.current = chunk;
+                    self.offset = 0;
+                }
+                Poll::Ready(None) => return Poll::Ready(Ok(0)),
+                Poll::Pending => return Poll::Pending,
+            }
+        }
+    }
 }
 
 /// The realm side of a server: which request is waiting for which answer.
@@ -54,6 +111,8 @@ pub struct State {
     /// The realm's request dispatcher, installed with the server module. Looked up once so a
     /// request never pays for a property lookup.
     pub dispatch: RefCell<Option<quickjs_oxide::engine::api::core::CallableRef>>,
+    /// Streaming answers in flight: the end the realm writes chunks into, by request id.
+    streams: RefCell<BTreeMap<u64, smol::channel::Sender<Vec<u8>>>>,
 }
 
 impl State {
@@ -78,6 +137,38 @@ impl State {
     /// Forget a slot: the connection gave up before the answer arrived.
     pub fn close(&self, id: u64) {
         self.waiting.borrow_mut().remove(&id);
+        self.streams.borrow_mut().remove(&id);
+    }
+
+    /// Forget only the slot. A streaming answer outlives the slot that carried its head: the body
+    /// is still being written, so its channel has to stay open until it ends.
+    pub fn forget(&self, id: u64) {
+        self.waiting.borrow_mut().remove(&id);
+    }
+
+    /// Start a streaming answer. The head is settled by the caller; the body is written into the
+    /// returned sender, and the reader is what trillium frames onto the connection.
+    pub fn open_stream(&self, id: u64) -> (smol::channel::Sender<Vec<u8>>, ChunkReader) {
+        let (sender, receiver) = smol::channel::bounded(STREAM_CHUNKS);
+        self.streams.borrow_mut().insert(id, sender.clone());
+        (
+            sender,
+            ChunkReader {
+                chunks: Box::pin(receiver),
+                current: Vec::new(),
+                offset: 0,
+            },
+        )
+    }
+
+    /// The writing end of a streaming answer, if it is still open.
+    pub fn stream(&self, id: u64) -> Option<smol::channel::Sender<Vec<u8>>> {
+        self.streams.borrow().get(&id).cloned()
+    }
+
+    /// End a streaming body: dropping the sender is what the reader sees as the end.
+    pub fn end_stream(&self, id: u64) {
+        self.streams.borrow_mut().remove(&id);
     }
 }
 
@@ -128,8 +219,13 @@ where
 {
     let workers = workers.max(1);
     // Bind here so a port of 0 resolves once, and so a bad address fails in the caller rather than
-    // in a worker thread nobody is watching.
-    let mut prebound = Some(Net.listen_reuseport(addr)?);
+    // in a worker thread nobody is watching. One worker needs no reuseport group, and asking for
+    // one on port 0 lets two servers land on the same port, which is a test's worst nightmare.
+    let mut prebound = Some(if workers == 1 {
+        Net.listen(addr)?
+    } else {
+        Net.listen_reuseport(addr)?
+    });
     let bound = Net::local_addr(prebound.as_ref().expect("just bound"))?;
 
     let mut stop_channels = Vec::with_capacity(workers);
@@ -229,8 +325,22 @@ where
         })
         .await;
     if let Err(error) = served {
-        // A malformed request, a peer that vanished mid-request: both land here, and neither is
-        // something the handler could have answered.
-        eprintln!("http error: {error:?}");
+        // A malformed request lands here, and so does a peer that vanished mid-request. The second
+        // kind is ordinary (a closed tab, a failed load test) and does not deserve a log line.
+        let quiet = match &error {
+            trillium_http::Error::Io(io) => matches!(
+                io.kind(),
+                io::ErrorKind::BrokenPipe
+                    | io::ErrorKind::ConnectionReset
+                    | io::ErrorKind::ConnectionAborted
+                    | io::ErrorKind::UnexpectedEof
+                    | io::ErrorKind::WouldBlock
+            ),
+            trillium_http::Error::Closed => true,
+            _ => false,
+        };
+        if !quiet {
+            eprintln!("http error: {error:?}");
+        }
     }
 }

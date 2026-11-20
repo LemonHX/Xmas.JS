@@ -14,6 +14,9 @@ use crate::driver::Driver;
 use crate::modules::bytes;
 
 const PRELUDE: &str = include_str!("../../js/buffer.js");
+/// TextEncoder and TextDecoder are globals every handler expects, and they convert through the
+/// same host call Buffer does.
+const TEXT: &str = include_str!("../../js/text.js");
 
 pub fn install(driver: &mut Driver) -> Result<(), String> {
     let global = driver
@@ -60,6 +63,9 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     driver
         .eval(PRELUDE)
         .map_err(|error| format!("buffer prelude: {error}"))?;
+    driver
+        .eval(TEXT)
+        .map_err(|error| format!("text prelude: {error}"))?;
     let module = driver
         .eval("globalThis.__buffer_module")
         .map_err(|error| format!("buffer module: {error}"))?;

@@ -17,9 +17,11 @@ use quickjs_oxide::engine::api::core::{
     CallableRef, Context, FromJs, IntoJs, RuntimeError, Scope, Value,
 };
 use trillium::Conn;
+use trillium_http::Body;
 
 use crate::driver::Driver;
-use crate::host::server::{self, Answer, Server};
+use crate::host::pending::{Payload, Pending};
+use crate::host::server::{self, Answer, AnswerBody, Server};
 use crate::modules::bytes;
 
 const PRELUDE: &str = include_str!("../../js/server.js");
@@ -64,13 +66,97 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
                         status: status as u16,
                         status_text,
                         headers,
-                        body,
+                        body: AnswerBody::Bytes(body),
                     };
-                    state.settle(id as u64, Ok(answer));
-                    Ok(Value::Undefined)
+                    // False means the connection is already gone, which is the realm's cue to
+                    // abort the request so a handler's timers stop.
+                    let delivered = state.settle(id as u64, Ok(answer));
+                    Ok(Value::Bool(delivered))
                 },
             )
             .map_err(|error| format!("__serve_respond: {error}"))?;
+    }
+
+    // A streaming answer: the head is settled now, the body follows through __serve_chunk.
+    {
+        let state = Rc::clone(&driver.server);
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__serve_stream",
+                4,
+                move |_scope: &mut Scope<'_>,
+                      id: f64,
+                      status: f64,
+                      status_text: String,
+                      headers: String|
+                      -> Result<Value, RuntimeError> {
+                    let id = id as u64;
+                    let (_, reader) = state.open_stream(id);
+                    let answer = Answer {
+                        status: status as u16,
+                        status_text,
+                        headers,
+                        body: AnswerBody::Stream(reader),
+                    };
+                    Ok(Value::Bool(state.settle(id, Ok(answer))))
+                },
+            )
+            .map_err(|error| format!("__serve_stream: {error}"))?;
+    }
+
+    // One chunk of a streaming body. The promise resolves to true once the connection has taken
+    // it (waiting for room if it has to), and to false once the connection is gone.
+    {
+        let state = Rc::clone(&driver.server);
+        let pending = driver.host.pending.clone();
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__serve_chunk",
+                2,
+                move |scope: &mut Scope<'_>, id: f64, chunk: Value| -> Result<Value, RuntimeError> {
+                    let id = id as u64;
+                    let bytes = bytes::take(scope, &chunk)?;
+                    let Some(sender) = state.stream(id) else {
+                        return resolved(scope, false);
+                    };
+                    match sender.try_send(bytes) {
+                        Ok(()) => resolved(scope, true),
+                        Err(smol::channel::TrySendError::Full(bytes)) => {
+                            // JS holds its next read until this resolves, so one send is in
+                            // flight per answer and the chunks keep their order.
+                            parked(scope, &pending, async move {
+                                sender.send(bytes).await.is_ok()
+                            })
+                        }
+                        Err(smol::channel::TrySendError::Closed(_)) => {
+                            state.end_stream(id);
+                            resolved(scope, false)
+                        }
+                    }
+                },
+            )
+            .map_err(|error| format!("__serve_chunk: {error}"))?;
+    }
+
+    // The body is complete.
+    {
+        let state = Rc::clone(&driver.server);
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__serve_end",
+                1,
+                move |_scope: &mut Scope<'_>, id: f64| -> Result<Value, RuntimeError> {
+                    state.end_stream(id as u64);
+                    Ok(Value::Undefined)
+                },
+            )
+            .map_err(|error| format!("__serve_end: {error}"))?;
     }
 
     {
@@ -115,7 +201,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
 /// Serve on addr with one realm per worker.
 ///
 /// boot runs on the worker thread: it builds the realm, installs the modules and evaluates the
-/// program, which is where the program calls Eta.serve and registers its handler. A realm cannot
+/// program, which is where the program calls Xmas.serve and registers its handler. A realm cannot
 /// be moved to a thread, so it has to be built there.
 pub fn serve<B>(addr: &str, workers: usize, boot: B) -> Result<Server, String>
 where
@@ -220,7 +306,8 @@ struct Slot {
 
 impl Drop for Slot {
     fn drop(&mut self) {
-        self.state.close(self.id);
+        // Only the slot: a streaming answer is still writing its body under the same id.
+        self.state.forget(self.id);
     }
 }
 
@@ -277,7 +364,41 @@ fn settle(conn: Conn, ready: Result<Answer, String>) -> Conn {
     for (name, value) in pairs(&answer.headers) {
         conn = conn.with_response_header(name, value);
     }
-    conn.with_body(answer.body)
+    match answer.body {
+        AnswerBody::Bytes(body) => conn.with_body(body),
+        // No length: trillium frames it chunked and writes each chunk as the realm produces it.
+        AnswerBody::Stream(reader) => conn.with_body(Body::new_streaming(reader, None)),
+    }
+}
+
+/// A promise that is already settled, so the JS side has one shape to await.
+fn resolved(scope: &mut Scope<'_>, answer: bool) -> Result<Value, RuntimeError> {
+    let capability = scope.new_promise()?;
+    let promise = capability.promise.clone();
+    let _ = capability.resolve(scope, Value::Bool(answer));
+    Ok(Value::Object(promise))
+}
+
+/// A promise settled by work that finishes later, resolved to the boolean the work produced.
+fn parked<F>(scope: &mut Scope<'_>, pending: &Pending, work: F) -> Result<Value, RuntimeError>
+where
+    F: Future<Output = bool> + Send + 'static,
+{
+    let capability = scope.new_promise()?;
+    let promise = capability.promise.clone();
+    let job = pending.park(Box::new(move |context: &mut Context, reply| {
+        let answer = match reply {
+            Ok(Payload::Text(text)) => text == "yes",
+            _ => false,
+        };
+        let _ = capability.resolve(context, Value::Bool(answer));
+    }));
+    smol::spawn(async move {
+        let answer = if work.await { "yes" } else { "no" };
+        job.finish(Ok(Payload::Text(answer.to_string())));
+    })
+    .detach();
+    Ok(Value::Object(promise))
 }
 
 fn server_error(conn: Conn, message: &str) -> Conn {

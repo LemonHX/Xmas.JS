@@ -12,7 +12,7 @@ use xmas_runtime::modules;
 
 const SCRIPT: &str = r#"
 let answered = 0;
-Eta.serve(function (request) {
+Xmas.serve(function (request) {
   answered = answered + 1;
   const path = new URL(request.url).pathname;
   return new Response('{"ok":true,"n":' + answered + ',"path":"' + path + '"}', {
