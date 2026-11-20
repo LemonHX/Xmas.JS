@@ -34,6 +34,22 @@ pub fn start_with(script: &'static str, workers: usize) -> Server {
     modules::server::serve("127.0.0.1:0", workers, boot(script)).expect("server starts")
 }
 
+/// Serve a module from disk the way the cli does: every worker evaluates the entry itself.
+pub fn start_file(path: &std::path::Path) -> Server {
+    xmas_runtime::entry::serve_app("127.0.0.1:0", 1, path).expect("server starts")
+}
+
+/// A temporary file with the given name and contents.
+pub fn written(name: &str, content: &str) -> std::path::PathBuf {
+    let unique = xmas_runtime::testkit::given_file(content);
+    let path = unique.with_file_name(format!(
+        "xmas-entry-{}-{name}",
+        unique.file_name().unwrap().to_string_lossy()
+    ));
+    std::fs::rename(&unique, &path).expect("rename temporary file");
+    path
+}
+
 /// A connection spoken to by hand.
 pub struct Client {
     stream: TcpStream,
@@ -82,12 +98,16 @@ impl Client {
     }
 
     /// A whole response, framed by its content-length.
+    ///
+    /// The read timeout is short so a streaming test can end a window; a whole response therefore
+    /// polls until its own deadline instead of treating one quiet moment as the end.
     pub fn response(&mut self) -> (String, String) {
+        let deadline = Instant::now() + Duration::from_secs(10);
         let head_end = loop {
             if let Some(index) = find(&self.buffer, b"\r\n\r\n") {
                 break index;
             }
-            assert!(self.fill() > 0, "server closed the connection");
+            assert!(self.fill_until(deadline) > 0, "server closed the connection");
         };
         let head = String::from_utf8_lossy(&self.buffer[..head_end]).to_string();
         let rest = self.buffer.split_off(head_end + 4);
@@ -104,7 +124,7 @@ impl Client {
             .unwrap_or(0);
 
         while self.buffer.len() < length {
-            assert!(self.fill() > 0, "server closed the connection");
+            assert!(self.fill_until(deadline) > 0, "server closed the connection");
         }
         let rest = self.buffer.split_off(length);
         let body = String::from_utf8_lossy(&self.buffer).to_string();
@@ -117,6 +137,17 @@ impl Client {
         let text = String::from_utf8_lossy(&self.buffer).to_string();
         self.buffer.clear();
         text
+    }
+
+    /// Read, and keep trying until something arrives or the deadline passes. A read timeout is not
+    /// an error here: it only means the server is still thinking.
+    fn fill_until(&mut self, deadline: Instant) -> usize {
+        loop {
+            let read = self.fill();
+            if read > 0 || Instant::now() >= deadline {
+                return read;
+            }
+        }
     }
 
     fn fill(&mut self) -> usize {

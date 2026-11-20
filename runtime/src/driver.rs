@@ -188,15 +188,20 @@ impl Driver {
                 _ => None,
             }
         };
-        if let Some(stack) = read(&mut self.context, "stack") {
-            return stack;
-        }
         let name = read(&mut self.context, "name").unwrap_or_else(|| "Error".to_string());
         let message = read(&mut self.context, "message").unwrap_or_default();
-        if message.is_empty() {
+        let head = if message.is_empty() {
             name
         } else {
             format!("{name}: {message}")
+        };
+        // The engine's stack carries the frames and not the message, so the message is what has to
+        // come first; a stack that already says it is left alone.
+        match read(&mut self.context, "stack") {
+            Some(stack) if stack.contains(&message) && !message.is_empty() => stack,
+            Some(stack) if stack.is_empty() => head,
+            Some(stack) => format!("{head}\n{stack}"),
+            None => head,
         }
     }
 

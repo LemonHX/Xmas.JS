@@ -19,6 +19,47 @@ created on, and no request pays for a thread hop.
 What trillium still gives us, unchanged: the request head parser, chunked request bodies, keep-alive,
 pipelining, trailers, 100-continue, graceful close, and the 400 it sends for a head that is not HTTP.
 
+## Serving a module
+
+`entry::serve_app(addr, workers, path)` is what a `serve` command does. Every worker builds its own
+realm, installs the modules, evaluates the entry on that realm and resolves the handler from what
+the entry exported. Three shapes work, in this order:
+
+1. the entry called `Xmas.serve(handler)` or `Xmas.serve({ fetch, env })` at the top level,
+2. the namespace has its own `fetch` (`export function fetch`),
+3. the default export has one (`export default { fetch }`).
+
+If none of the three is there the worker fails to start and every request it would have served is
+answered with a 500 that says so, rather than with a handler that was never set.
+
+```ts
+// app.ts
+export default {
+  fetch(request: Request): Response {
+    return new Response('hello from ' + request.url + '\n');
+  },
+};
+```
+
+```sh
+cargo run --example serve_app -- ./app.ts --port 8000 --workers 4
+```
+
+The address belongs to the listener, not to the entry: it is bound before any realm exists. An entry
+that asks for a different port (`Xmas.serve({ port: 3000 })`) is refused at startup with both numbers
+in the message, because the alternative is an app that answers on the wrong port and looks broken.
+When the listener is on port 0 there is nothing to compare against and the check is skipped.
+
+## The loader, for now
+
+The engine asks its loader for a module by name and gets already-compiled source; that is all the
+module table holds. The entry itself is put there before it is run, so a single-file app works, and
+a TSX entry is compiled the same way the rest of the runtime compiles TSX. A relative or bare
+import inside the entry fails with "Cannot find module", because resolving one needs the importing
+module's path, which the engine's loader call does not carry. That resolution belongs in a pre-pass
+over the module graph (rewrite each specifier to the path it resolves to, then load from disk), and
+it is not written yet.
+
 ## The path of one request
 
 1. `HttpContext::run` reads a request head and hands over a `Conn`.
@@ -149,6 +190,8 @@ there, but the kernel does not distribute connections the way Linux does.
 - No graceful drain. Stopping the server drops the connections in flight instead of finishing them.
 - One address per server, no unix sockets, no sniffing of the listener's own address into
   `request.url` (the host header is used).
+- Imports inside the entry are not resolved (see the loader section above), and there is no watch
+  mode: the realm is built once per worker and the entry is never re-evaluated.
 - A websocket that the handler never answers parks one read on the socket and holds it; the entry is
   only released when that read is answered or the connection ends.
 - Sending on a websocket is not a promise: a handler that produces faster than the wire can take it

@@ -273,6 +273,9 @@
       // The environment is the caller's, not the platform's: whatever serve was given is handed to
       // the handler unchanged, and an empty frozen object when it was given nothing.
       if (target.env !== undefined) env = target.env;
+      // The listener is already up by the time the entry runs, so a port asked for here can only be
+      // compared with the one it has. A silent mismatch would look like the app is on the wrong port.
+      checkAddress(target.port, target.hostname);
     }
     if (typeof fn !== 'function') {
       throw new TypeError('Xmas.serve needs a function or an object with a fetch method');
@@ -281,6 +284,54 @@
     return { fetch: fn };
   }
 
+  // The address this realm's server is listening on, put there before the entry ran. Absent when the
+  // realm was built by a test or an embedder with no listener.
+  function checkAddress(port, hostname) {
+    const addr = globalThis.__serve_addr;
+    if (addr === undefined || addr === null) return;
+    const at = addr.lastIndexOf(':');
+    const bound = Number(addr.slice(at + 1));
+    if (port !== undefined && Number(port) !== bound) {
+      throw new Error(
+        'the entry asked for port ' + port + ' but this server listens on ' + bound +
+        ' (pass --port ' + port + ' to move it)',
+      );
+    }
+    if (hostname !== undefined) {
+      const bound_host = addr.slice(0, at);
+      if (String(hostname) !== bound_host) {
+        throw new Error(
+          'the entry asked for hostname ' + hostname + ' but this server listens on ' +
+          bound_host + ' (pass --host ' + hostname + ' to move it)',
+        );
+      }
+    }
+  }
+
+  // An entry module's handler: its own fetch, then the fetch on its default export. Either shape
+  // works, and an entry that called Xmas.serve at the top level has already registered a handler
+  // that this never replaces.
+  function takeEntry(namespace) {
+    if (handler !== null) return;
+    if (namespace !== null && namespace !== undefined && typeof namespace === 'object') {
+      if (typeof namespace.fetch === 'function') {
+        handler = namespace.fetch;
+        return;
+      }
+      const named = namespace.default;
+      if (named !== null && (typeof named === 'object' || typeof named === 'function')) {
+        if (typeof named.fetch === 'function') {
+          handler = named.fetch;
+          return;
+        }
+      }
+    }
+    throw new TypeError(
+      'the entry has no fetch handler: export default { fetch }, export fetch, or call Xmas.serve(handler)',
+    );
+  }
+
   globalThis.Xmas = { serve };
+  globalThis.__serve_entry = takeEntry;
   globalThis.__serve_module = { serve };
 })();
