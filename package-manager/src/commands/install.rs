@@ -179,7 +179,11 @@ pub fn install(args: &Args) -> Result<()> {
 pub fn new_path() -> Result<OsString> {
     let path = env::var_os("PATH").unwrap_or_default();
     let mut paths = env::split_paths(&path).collect::<Vec<_>>();
-    let new = PathBuf::from("node_modules/.bin");
+    // Absolute, because this process changes directory under the PATH it just built: `x`
+    // installs into a temporary directory, sets PATH there, then goes back to the caller's
+    // directory to run the binary. A relative entry would be read from the wrong place and the
+    // binary would not be found.
+    let new = env::current_dir()?.join("node_modules").join(".bin");
     paths.insert(0, new);
     let new_path = env::join_paths(paths)?;
     Ok(new_path)

@@ -39,20 +39,35 @@ pub fn cmd_download_and_exec(
 }
 
 /// Execute a command with arguments
+///
+/// On unix this replaces the process, which is what makes `xmas dlx` and `xmas run` behave like
+/// the command itself: the exit code, the signals and the terminal are the child's. Windows has no
+/// way to become another process, so there we spawn it and exit with its code, which looks the
+/// same from the outside and costs one more process.
 #[tracing::instrument]
 pub fn exec_with_args(exe: &OsStr, args: &[OsString]) -> Result<()> {
     let mut args = args.to_vec();
     args.insert(0, exe.to_os_string());
-    let error = exec::execvp(&exe, &args);
-    match error {
-        exec::Error::BadArgument(nul_error) => Err(eyre!("Invalid argument: {}", nul_error)),
-        exec::Error::Errno(errno) => {
-            if errno.0 != 0 {
-                Err(eyre!("Failed to execute command: errno {}", errno.0))
-            } else {
-                Ok(())
+
+    #[cfg(unix)]
+    {
+        let error = exec::execvp(exe, &args);
+        match error {
+            exec::Error::BadArgument(nul_error) => Err(eyre!("Invalid argument: {}", nul_error)),
+            exec::Error::Errno(errno) => {
+                if errno.0 != 0 {
+                    Err(eyre!("Failed to execute command: errno {}", errno.0))
+                } else {
+                    Ok(())
+                }
             }
         }
+    }
+
+    #[cfg(not(unix))]
+    {
+        let status = Command::new(exe).args(&args[1..]).status()?;
+        std::process::exit(status.code().unwrap_or(1));
     }
 }
 
