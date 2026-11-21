@@ -178,6 +178,10 @@ What happens under that:
 - `runtime/js/websocket.js` is the object the handler sees: `readyState`, `onopen`, `onmessage`,
   `onerror`, `onclose`, `send`, `close`, plus `addEventListener`. It keeps one read outstanding
   and asks for the next message as soon as the last one is handled.
+- `__ws_read(id)` always answers with a promise, including when the message is already queued and
+  when the connection is over: the caller writes `__ws_read(id).then(...)` and has one shape to
+  handle. A read that answered with the buffer itself on the queued path broke every caller that
+  did that.
 - Binary messages arrive as an `ArrayBuffer`, copies of a buffer the runtime reuses. Text arrives as
   a string.
 

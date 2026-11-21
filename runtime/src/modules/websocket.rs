@@ -43,7 +43,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             .map_err(|error| format!("__ws_new: {error}"))?;
     }
 
-    // One message for the realm: the next one in the queue, or a promise that answers with it.
+    // One message for the realm, always as a promise: the caller writes __ws_read(id).then(...) and
+    // has one shape to handle, whether the message is already queued or not.
     {
         let state = Rc::clone(&driver.server);
         let pending = driver.host.pending.clone();
@@ -56,13 +57,16 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
                 move |scope: &mut Scope<'_>, id: f64| -> Result<Value, RuntimeError> {
                     let id = id as u64;
                     let Some(ws) = state.ws(id) else {
-                        return closed(scope);
+                        return answered(scope, &pending, None);
                     };
+                    // A message already here still comes back as an answered promise: a read that
+                    // sometimes answered with a value and sometimes with a promise left the caller
+                    // calling .then on an ArrayBuffer.
                     if let Some(message) = ws.pull() {
-                        return bytes::give(scope, &message);
+                        return answered(scope, &pending, Some(message));
                     }
                     if ws.ended() {
-                        return closed(scope);
+                        return answered(scope, &pending, None);
                     }
                     if ws.waiting() {
                         return Err(RuntimeError::Invariant(
@@ -158,12 +162,18 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     super::define_name(driver, "xmas:websocket", exports)
 }
 
-/// The answer a read gets once the connection is gone.
-fn closed(_scope: &mut Scope<'_>) -> Result<Value, RuntimeError> {
-    Ok(Value::String(
-        JsString::try_from_utf8("closed")
-            .map_err(|_| RuntimeError::Invariant("the closed marker is not text"))?,
-    ))
+/// A read answered before it returns: a message if there is one, the closed marker otherwise.
+fn answered(
+    scope: &mut Scope<'_>,
+    pending: &Pending,
+    message: Option<Vec<u8>>,
+) -> Result<Value, RuntimeError> {
+    let (promise, job) = park_read(scope, pending)?;
+    job.finish(Ok(match message {
+        Some(message) => Payload::Bytes(message),
+        None => Payload::Text("closed".to_owned()),
+    }));
+    Ok(promise)
 }
 
 /// A promise that a message will answer, plus the ticket the frame loop finishes it with.

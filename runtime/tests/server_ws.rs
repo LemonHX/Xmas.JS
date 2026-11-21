@@ -35,6 +35,28 @@ serve(function (request) {
 });
 "#;
 
+/// One masked client frame. A client always masks, which is what makes the server unmask it.
+fn masked_frame(opcode: u8, payload: &[u8], fin: bool) -> Vec<u8> {
+    let mut frame = Vec::with_capacity(payload.len() + 14);
+    frame.push(if fin { 0x80 | opcode } else { opcode });
+    let len = payload.len();
+    if len < 126 {
+        frame.push(0x80 | len as u8);
+    } else if len <= u16::MAX as usize {
+        frame.push(0x80 | 126);
+        frame.extend_from_slice(&(len as u16).to_be_bytes());
+    } else {
+        frame.push(0x80 | 127);
+        frame.extend_from_slice(&(len as u64).to_be_bytes());
+    }
+    let mask = [0x37u8, 0xfa, 0x21, 0x3d];
+    frame.extend_from_slice(&mask);
+    for (index, byte) in payload.iter().enumerate() {
+        frame.push(byte ^ mask[index % 4]);
+    }
+    frame
+}
+
 struct Ws {
     stream: TcpStream,
     buffer: Vec<u8>,
@@ -63,24 +85,17 @@ impl Ws {
 
     /// A client frame is always masked, which is what makes the server unmask it.
     fn send(&mut self, opcode: u8, payload: &[u8], fin: bool) {
-        let mut frame = Vec::with_capacity(payload.len() + 14);
-        frame.push(if fin { 0x80 | opcode } else { opcode });
-        let len = payload.len();
-        if len < 126 {
-            frame.push(0x80 | len as u8);
-        } else if len <= u16::MAX as usize {
-            frame.push(0x80 | 126);
-            frame.extend_from_slice(&(len as u16).to_be_bytes());
-        } else {
-            frame.push(0x80 | 127);
-            frame.extend_from_slice(&(len as u64).to_be_bytes());
-        }
-        let mask = [0x37u8, 0xfa, 0x21, 0x3d];
-        frame.extend_from_slice(&mask);
-        for (index, byte) in payload.iter().enumerate() {
-            frame.push(byte ^ mask[index % 4]);
-        }
+        let frame = masked_frame(opcode, payload, fin);
         self.stream.write_all(&frame).expect("write frame");
+    }
+
+    /// Several frames in one write, so they are all in the socket before the handler reads.
+    fn frames(&mut self, texts: &[&str]) {
+        let mut all = Vec::new();
+        for text in texts {
+            all.extend_from_slice(&masked_frame(0x1, text.as_bytes(), true));
+        }
+        self.stream.write_all(&all).expect("write frames");
     }
 
     fn text(&mut self, text: &str) {
@@ -171,6 +186,22 @@ fn a_binary_message_comes_back_as_binary() {
     let (opcode, payload) = ws.read();
     assert_eq!(opcode, 0x2);
     assert_eq!(payload, vec![0, 1, 2, 250]);
+}
+
+#[test]
+fn two_messages_that_arrive_together_are_both_delivered() {
+    let server = start(ECHO);
+    let (_head, mut ws) = Ws::connect(&server);
+    // One write, two frames: the second is already queued when the handler asks for the next
+    // message. That read used to answer with the buffer itself instead of a promise, and the
+    // caller's .then on it was the flake this test pins down.
+    ws.frames(&["one", "two"]);
+    let (opcode, first) = ws.read();
+    assert_eq!(opcode, 0x1);
+    assert_eq!(String::from_utf8_lossy(&first), "echo:one");
+    let (opcode, second) = ws.read();
+    assert_eq!(opcode, 0x1);
+    assert_eq!(String::from_utf8_lossy(&second), "echo:two");
 }
 
 #[test]
