@@ -11,10 +11,11 @@ use std::time::Duration;
 use common::{count, start, Client};
 
 const SSE: &str = r#"
+import { serve } from 'xmas:server';
 let ticks = 0;
 let aborts = 0;
 
-Xmas.serve(function (request) {
+serve(function (request) {
   const url = new URL(request.url);
 
   if (url.pathname === '/stats') {

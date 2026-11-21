@@ -38,6 +38,11 @@ directory and then in each directory above it, the way node walks up.
 A bare specifier naming a module this runtime ships (`fs`, `path`, `node:fs`, `node:path`) is in
 the table already and wins before any of this runs.
 
+The modules with no node counterpart carry the runtime's own prefix, so a package cannot claim the
+name: `xmas:server` (`serve`), `xmas:websocket` (`upgradeWebSocket`, `WebSocket`) and `xmas:shell`
+(the `$` helpers). `cloudflare:sockets` and `sockets` are the same module: the name is the
+proposal's.
+
 ### Probing
 
 Once a candidate path is in hand, the first of these that exists wins:

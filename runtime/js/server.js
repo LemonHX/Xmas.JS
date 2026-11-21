@@ -80,7 +80,7 @@
 
   globalThis.__serve_dispatch = function (id, method, target, headersText, body) {
     if (handler === null) {
-      __serve_fail(id, 'no handler: call Xmas.serve(handler) before serving');
+      __serve_fail(id, 'no handler: the entry never called serve() from xmas:server');
       return;
     }
 
@@ -278,7 +278,7 @@
       checkAddress(target.port, target.hostname);
     }
     if (typeof fn !== 'function') {
-      throw new TypeError('Xmas.serve needs a function or an object with a fetch method');
+      throw new TypeError('serve needs a function or an object with a fetch method');
     }
     handler = fn;
     return { fetch: fn };
@@ -311,8 +311,8 @@
   }
 
   // An entry module's handler: its own fetch, then the fetch on its default export. Either shape
-  // works, and an entry that called Xmas.serve at the top level has already registered a handler
-  // that this never replaces.
+  // works, and an entry that called serve() at the top level has already registered a handler that
+  // this never replaces.
   function takeEntry(namespace) {
     if (handler !== null) return;
     if (namespace !== null && namespace !== undefined && typeof namespace === 'object') {
@@ -329,14 +329,10 @@
       }
     }
     throw new TypeError(
-      'the entry has no fetch handler: export default { fetch }, export fetch, or call Xmas.serve(handler)',
+      'the entry has no fetch handler: export default { fetch }, export fetch, or call serve() from xmas:server',
     );
   }
 
-  // Whichever prelude ran first made the object; this one adds to it, so Xmas.shell and
-  // Xmas.upgradeWebSocket survive the server prelude loading after them.
-  const host = globalThis.Xmas === undefined || globalThis.Xmas === null ? (globalThis.Xmas = {}) : globalThis.Xmas;
-  host.serve = serve;
   globalThis.__serve_entry = takeEntry;
   globalThis.__serve_module = { serve };
 })();

@@ -1,7 +1,7 @@
 # `$`: running a command
 
-`$` is a global. The same objects are `Xmas.shell` and the `xmas:shell` module, for a script that
-would rather name where they come from:
+`$` is a global. The same objects are the `xmas:shell` module, for a script that would rather name
+where they come from:
 
     import { $, cd, glob } from 'xmas:shell';
 
@@ -73,22 +73,13 @@ platform decides (`sh -c` or `cmd /C`).
 
 A pipe runs the left side first and hands everything it said to the right side as input. Nothing
 streams through a pipe, so a left side that never stops never feeds the right side. A shell pipe
-(`# `$`: running a command
-
-`$` is a global. The same objects are `Xmas.shell` and the `xmas:shell` module, for a script that
-would rather name where they come from:
-
-    import { $, cd, glob } from 'xmas:shell';
-
-    const head = await $`git rev-parse --short HEAD`;
-    console.log(head.stdout.trim());
-
-A one-file script needs no import: every name in this document is a global as well.
+(`$`printf x | wc -c`) streams, because the shell owns it, and that is what a long-running producer
+should use.
 
 ## The helpers
 
-Every name below is a global, and the same object is a field of `Xmas.shell`, so `Xmas.shell.glob`
-and `glob` are one function.
+Every name below is a global, and the same function is exported by `xmas:shell`, so
+`import { glob } from 'xmas:shell'` and `glob` are one thing.
 
 | name | what it is |
 | --- | --- |
@@ -116,7 +107,7 @@ and `glob` are one function.
 | `kill(pid, signal)` | kill a process, through `kill`/`taskkill` |
 | `versions` | the version of this runtime |
 
-`fetch` is a global of its own (see docs/fetch.md), not part of `Xmas.shell`.
+`fetch` is a global of its own (see docs/fetch.md), not part of `xmas:shell`.
 
 ## Where it lives
 

@@ -8,7 +8,7 @@
 //! Input travels the same way, in the other direction: `$({ input })` and `.stdin()` write to
 //! the child's stdin and then close it. The helpers around `$` (cd, glob, which, tmpdir,
 //! minimist, dotenv, chalk, ps, kill) are JS in the same file, and are also reachable as
-//! `Xmas.shell`, which is where this runtime keeps them: not under another project's name.
+//! `xmas:shell`, which is where this runtime keeps them: not under another project's name.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -343,8 +343,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     // import { $, cd } from 'xmas:shell'. The globals stay, for the one-file script.
     let shell = driver
         .context()
-        .eval("globalThis.Xmas.shell")
-        .map_err(|error| format!("Xmas.shell: {error}"))?;
+        .eval("globalThis.__shell_module")
+        .map_err(|error| format!("xmas:shell: {error}"))?;
     let exports = super::collect(
         driver,
         &shell,

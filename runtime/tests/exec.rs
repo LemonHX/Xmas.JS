@@ -420,23 +420,16 @@ fn echo_sleep_and_retry_do_what_they_say() {
 }
 
 #[test]
-fn the_helpers_are_one_object_with_a_module_of_its_own() {
+fn every_entry_point_is_a_module_and_there_is_no_shared_object() {
     let mut h = harness();
-    // One object, whoever made it first: the server and websocket preludes add to it too.
+    // No shared runtime object: every entry point is a module now, and this one is gone for good.
     h.eval(
-        r#"globalThis.seen = [
-            typeof Xmas.serve,
-            typeof Xmas.upgradeWebSocket,
-            typeof Xmas.shell['$'],
-            typeof Xmas.shell.glob,
-            typeof globalThis.zx,
-        ].join('/');
-        "#,
+        "globalThis.seen = [typeof globalThis.Xmas, typeof globalThis.zx].join('/');",
     )
     .expect("eval");
-    assert_eq!(h.expect_text("String(seen)"), "function/function/function/function/undefined");
+    assert_eq!(h.expect_text("String(seen)"), "undefined/undefined");
 
-    // ...and the same helpers as a module of this runtime's own.
+    // The helpers as a module of this runtime's own.
     let shell = h
         .module(
             "uses-shell",
@@ -448,6 +441,21 @@ fn the_helpers_are_one_object_with_a_module_of_its_own() {
     assert_eq!(
         xmas_runtime::testkit::text_of(&kinds).as_deref(),
         Some("function/function/function")
+    );
+
+    // The server and the websocket handshake are modules too, named the same way.
+    let named = h
+        .module(
+            "uses-server",
+            "import { serve } from 'xmas:server';
+             import { upgradeWebSocket } from 'xmas:websocket';
+             export const kinds = [typeof serve, typeof upgradeWebSocket].join('/');",
+        )
+        .expect("import xmas:server and xmas:websocket");
+    let kinds = h.property(&named, "kinds").expect("kinds");
+    assert_eq!(
+        xmas_runtime::testkit::text_of(&kinds).as_deref(),
+        Some("function/function")
     );
 
     // Another project's name stays unresolvable.

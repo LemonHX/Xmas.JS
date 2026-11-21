@@ -9,19 +9,21 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use xmas_runtime::driver::Driver;
+use xmas_runtime::entry;
 use xmas_runtime::host::server::Server;
 use xmas_runtime::host::Host;
 use xmas_runtime::modules;
 
-/// Boot a realm the way the cli will: build it on the worker thread, install everything, run the
-/// program. The program is what calls Xmas.serve and registers the handler.
+/// Boot a realm the way the cli will: build it on the worker thread, install the modules, and run
+/// the program as a module, which is where it calls serve() and registers the handler.
 pub fn boot(
     script: &'static str,
 ) -> impl Fn(usize) -> Result<Rc<RefCell<Driver>>, String> + Send + Sync + Clone + 'static {
     move |_index| {
-        let mut driver = Driver::new(Host::capture())?;
-        modules::install(&mut driver)?;
-        driver.eval(script)?;
+        // No listener here: these programs register a handler and never ask for a port.
+        let mut driver = entry::realm(Host::capture(), "")?;
+        let namespace = entry::evaluate_named(&mut driver, "app.ts", script)?;
+        entry::resolve_handler(&mut driver, namespace)?;
         Ok(Rc::new(RefCell::new(driver)))
     }
 }

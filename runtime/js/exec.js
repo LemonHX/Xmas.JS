@@ -1002,9 +1002,7 @@
 
   for (const name of Object.keys(exported)) global[name] = exported[name];
 
-  // Both ways round: a global so a one-file script needs no import, and the same objects under
-  // Xmas.shell for a script that would rather name where they come from. Whichever prelude ran
-  // first made the object; this one adds to it.
-  const host = globalThis.Xmas === undefined || globalThis.Xmas === null ? (globalThis.Xmas = {}) : globalThis.Xmas;
-  host.shell = exported;
+  // Both ways round: a global so a one-file script needs no import, and the same objects as
+  // 'xmas:shell' for a script that would rather name where they come from.
+  globalThis.__shell_module = exported;
 })(globalThis);

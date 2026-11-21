@@ -11,19 +11,21 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use xmas_runtime::driver::Driver;
+use xmas_runtime::entry;
 use xmas_runtime::host::server::Server;
 use xmas_runtime::host::Host;
 use xmas_runtime::modules;
 
-/// Boot a realm the way the cli will: build it on the worker thread, install everything, run the
-/// program. The program is what calls Xmas.serve and registers the handler.
+/// Boot a realm the way the cli will: build it on the worker thread, install the modules, and run
+/// the program as a module, which is where it calls serve() and registers the handler.
 fn boot(
     script: &'static str,
 ) -> impl Fn(usize) -> Result<Rc<RefCell<Driver>>, String> + Send + Sync + Clone + 'static {
     move |_index| {
-        let mut driver = Driver::new(Host::capture())?;
-        modules::install(&mut driver)?;
-        driver.eval(script)?;
+        // No listener here: these programs register a handler and never ask for a port.
+        let mut driver = entry::realm(Host::capture(), "")?;
+        let namespace = entry::evaluate_named(&mut driver, "app.ts", script)?;
+        entry::resolve_handler(&mut driver, namespace)?;
         Ok(Rc::new(RefCell::new(driver)))
     }
 }
@@ -100,7 +102,8 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 fn a_synchronous_handler_answers() {
     let server = start(
         r#"
-        Xmas.serve(function (request) {
+        import { serve } from 'xmas:server';
+        serve(function (request) {
           return new Response('hello ' + new URL(request.url).pathname);
         });
         "#,
@@ -116,7 +119,8 @@ fn a_synchronous_handler_answers() {
 fn a_promise_answering_handler_gets_there() {
     let server = start(
         r#"
-        Xmas.serve(async function (request) {
+        import { serve } from 'xmas:server';
+        serve(async function (request) {
           await new Promise((resolve) => setTimeout(resolve, 10));
           return new Response('late', { status: 201 });
         });
@@ -133,7 +137,8 @@ fn a_promise_answering_handler_gets_there() {
 fn the_request_body_and_headers_reach_the_handler() {
     let server = start(
         r#"
-        Xmas.serve(async function (request) {
+        import { serve } from 'xmas:server';
+        serve(async function (request) {
           const text = await request.text();
           return new Response(request.method + ' ' + request.headers.get('x-test') + ' [' + text + ']');
         });
@@ -151,7 +156,8 @@ fn the_request_body_and_headers_reach_the_handler() {
 fn response_headers_survive_the_trip() {
     let server = start(
         r#"
-        Xmas.serve(function () {
+        import { serve } from 'xmas:server';
+        serve(function () {
           return new Response('ok', { headers: { 'x-made-by': 'js', 'content-type': 'text/plain' } });
         });
         "#,
@@ -168,7 +174,8 @@ fn response_headers_survive_the_trip() {
 fn a_handler_that_throws_becomes_a_500() {
     let server = start(
         r#"
-        Xmas.serve(function () {
+        import { serve } from 'xmas:server';
+        serve(function () {
           throw new Error('nope');
         });
         "#,
@@ -184,7 +191,8 @@ fn a_handler_that_throws_becomes_a_500() {
 fn a_handler_that_returns_something_else_becomes_a_500() {
     let server = start(
         r#"
-        Xmas.serve(function () {
+        import { serve } from 'xmas:server';
+        serve(function () {
           return { status: 200 };
         });
         "#,
@@ -200,8 +208,9 @@ fn a_handler_that_returns_something_else_becomes_a_500() {
 fn one_realm_serves_a_whole_connection() {
     let server = start(
         r#"
+        import { serve } from 'xmas:server';
         let seen = 0;
-        Xmas.serve(function () {
+        serve(function () {
           seen = seen + 1;
           return new Response('request ' + seen);
         });

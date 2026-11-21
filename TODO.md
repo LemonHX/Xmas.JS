@@ -6,8 +6,9 @@ what we do on our side, and what stays unsupported is in `runtime/docs/wnjr.md`.
 
 # Networking API
 
-`fetch` is trillium-client over smol with rustls, and `Xmas.serve` is trillium's server. Both
-are in the tree already (`runtime/src/host/http.rs`, `runtime/src/modules/server.rs`); no hyper.
+`fetch` is trillium-client over smol with rustls, and `serve` (from `xmas:server`) is trillium's
+server. Both are in the tree already (`runtime/src/host/http.rs`, `runtime/src/modules/server.rs`);
+no hyper.
 
 # bundler / minifier / optimizer / typescript / lint / etc...
 

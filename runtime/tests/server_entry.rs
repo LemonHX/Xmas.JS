@@ -38,7 +38,7 @@ fn an_entry_that_exports_fetch_itself_is_served() {
 fn an_entry_that_calls_serve_keeps_its_own_handler() {
     let path = written(
         "app.ts",
-        "Xmas.serve(function (request: Request) {\n  return new Response('from serve');\n});\nexport function fetch() {\n  return new Response('from the export');\n}\n",
+        "import { serve } from 'xmas:server';\nserve(function (request: Request) {\n  return new Response('from serve');\n});\nexport function fetch() {\n  return new Response('from the export');\n}\n",
     );
     let server = start_file(&path);
     let mut client = Client::to(&server);

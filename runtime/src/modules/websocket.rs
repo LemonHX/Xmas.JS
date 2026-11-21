@@ -153,9 +153,9 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     let module = driver
         .context()
         .eval("globalThis.__ws_module")
-        .map_err(|error| format!("websocket module: {error}"))?;
+        .map_err(|error| format!("xmas:websocket: {error}"))?;
     let exports = super::collect(driver, &module, &["WebSocket", "upgradeWebSocket"])?;
-    super::define_name(driver, "websocket", exports)
+    super::define_name(driver, "xmas:websocket", exports)
 }
 
 /// The answer a read gets once the connection is gone.

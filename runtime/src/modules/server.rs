@@ -222,14 +222,14 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         .eval("__serve_module")
         .map_err(|error| format!("__serve_module: {error}"))?;
     let exports = super::collect(driver, &module, &["serve"])?;
-    super::define_name(driver, "server", exports)
+    super::define_name(driver, "xmas:server", exports)
 }
 
 /// Serve on addr with one realm per worker.
 ///
 /// boot runs on the worker thread: it builds the realm, installs the modules and evaluates the
-/// program, which is where the program calls Xmas.serve and registers its handler. A realm cannot
-/// be moved to a thread, so it has to be built there.
+/// program, which is where the program calls serve() from xmas:server and registers its handler. A
+/// realm cannot be moved to a thread, so it has to be built there.
 pub fn serve<B>(addr: &str, workers: usize, boot: B) -> Result<Server, String>
 where
     B: Fn(usize) -> Result<Rc<RefCell<Driver>>, String> + Send + Sync + Clone + 'static,

@@ -1,4 +1,5 @@
-// websocket: the browser-shaped WebSocket a handler gets from Xmas.upgradeWebSocket.
+// websocket: the browser-shaped WebSocket, and upgradeWebSocket, which a handler imports from
+// xmas:websocket.
 //
 // The frames, the masking and the control frames are Rust (host/websocket.rs). This file is the
 // object a handler sees: readyState, onopen, onmessage, onclose, send and close, and one read loop
@@ -190,6 +191,4 @@
 
   globalThis.WebSocket = WebSocket;
   globalThis.__ws_module = { WebSocket, upgradeWebSocket };
-  const host = globalThis.Xmas === undefined || globalThis.Xmas === null ? (globalThis.Xmas = {}) : globalThis.Xmas;
-  host.upgradeWebSocket = upgradeWebSocket;
 })();

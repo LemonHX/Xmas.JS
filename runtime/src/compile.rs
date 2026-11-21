@@ -71,6 +71,36 @@ fn transform_options() -> TransformOptions {
     }
 }
 
+/// The location of a byte offset, 1-based, so a diagnostic points at the line that caused it.
+fn position(source: &str, offset: usize) -> (usize, usize) {
+    let offset = offset.min(source.len());
+    let (mut line, mut column) = (1, 1);
+    for (at, character) in source.char_indices() {
+        if at >= offset {
+            break;
+        }
+        if character == '\n' {
+            line += 1;
+            column = 1;
+        } else {
+            column += 1;
+        }
+    }
+    (line, column)
+}
+
+/// One line for a diagnostic: where it is, then what it says. The engine only carries the message
+/// and the span, so the position is worked out from the source we already have.
+fn report(path: &str, source: &str, offset: Option<usize>, message: &str) -> String {
+    match offset {
+        Some(offset) => {
+            let (line, column) = position(source, offset);
+            format!("{path}:{line}:{column}: {message}")
+        }
+        None => format!("{path}: {message}"),
+    }
+}
+
 /// Compile a piece of source code. Kind::Js is returned directly as-is, without even creating an allocator.
 pub fn compile(path: &str, source: &str) -> Result<String, String> {
     let kind = kind_of(path);
@@ -87,11 +117,18 @@ pub fn compile(path: &str, source: &str) -> Result<String, String> {
             ..ParseOptions::default()
         })
         .parse();
-    if parsed.panicked {
-        return Err(format!("{path}: parser panicked"));
-    }
+    // A diagnostic first: a parser that gave up still usually left one, and the line it names is
+    // worth more than "the parser gave up".
     if let Some(error) = parsed.errors.first() {
-        return Err(format!("{path}: {error:?}"));
+        let offset = error
+            .labels
+            .as_ref()
+            .and_then(|labels| labels.first())
+            .map(|label| label.offset());
+        return Err(report(path, source, offset, &error.message));
+    }
+    if parsed.panicked {
+        return Err(format!("{path}: the parser gave up without a diagnostic"));
     }
     let mut program = parsed.program;
 
@@ -103,7 +140,12 @@ pub fn compile(path: &str, source: &str) -> Result<String, String> {
     let transformed = Transformer::new(&allocator, Path::new(path), &options)
         .build_with_scoping(scoping, &mut program);
     if let Some(error) = transformed.errors.first() {
-        return Err(format!("{path}: {error:?}"));
+        let offset = error
+            .labels
+            .as_ref()
+            .and_then(|labels| labels.first())
+            .map(|label| label.offset());
+        return Err(report(path, source, offset, &error.message));
     }
 
     let codegen = Codegen::new().with_options(CodegenOptions {

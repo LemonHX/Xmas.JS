@@ -16,11 +16,13 @@ const KEY: &str = "dGhlIHNhbXBsZSBub25jZQ==";
 const ACCEPT: &str = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
 
 const ECHO: &str = r#"
-Xmas.serve(function (request) {
+import { serve } from 'xmas:server';
+import { upgradeWebSocket } from 'xmas:websocket';
+serve(function (request) {
   if (request.headers.get('upgrade') === null) {
     return new Response('plain');
   }
-  const { socket, response } = Xmas.upgradeWebSocket(request);
+  const { socket, response } = upgradeWebSocket(request);
   socket.onmessage = function (event) {
     if (typeof event.data === 'string') {
       socket.send('echo:' + event.data);
@@ -206,8 +208,10 @@ fn a_close_frame_is_answered_and_the_connection_ends() {
 }
 
 const CLOSER: &str = r#"
-Xmas.serve(function (request) {
-  const { socket, response } = Xmas.upgradeWebSocket(request);
+import { serve } from 'xmas:server';
+import { upgradeWebSocket } from 'xmas:websocket';
+serve(function (request) {
+  const { socket, response } = upgradeWebSocket(request);
   socket.onopen = function () {
     setTimeout(function () { socket.close(1000, 'done'); }, 10);
   };
@@ -226,9 +230,11 @@ fn the_handler_can_close_the_socket() {
 }
 
 const SHOUT: &str = r#"
-Xmas.serve(function (request) {
+import { serve } from 'xmas:server';
+import { upgradeWebSocket } from 'xmas:websocket';
+serve(function (request) {
   if (request.headers.get('upgrade') === null) return new Response('still http');
-  const { socket, response } = Xmas.upgradeWebSocket(request);
+  const { socket, response } = upgradeWebSocket(request);
   socket.onopen = function () { socket.send('onopen ran'); };
   socket.onmessage = function (event) { socket.send('got ' + event.data); };
   return response;

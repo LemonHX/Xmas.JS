@@ -7,12 +7,14 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use xmas_runtime::driver::Driver;
+use xmas_runtime::entry;
 use xmas_runtime::host::Host;
 use xmas_runtime::modules;
 
 const SCRIPT: &str = r#"
+import { serve } from 'xmas:server';
 let answered = 0;
-Xmas.serve(function (request) {
+serve(function (request) {
   answered = answered + 1;
   const path = new URL(request.url).pathname;
   return new Response('{"ok":true,"n":' + answered + ',"path":"' + path + '"}', {
@@ -22,9 +24,10 @@ Xmas.serve(function (request) {
 "#;
 
 fn boot(_index: usize) -> Result<Rc<RefCell<Driver>>, String> {
-    let mut driver = Driver::new(Host::new())?;
-    modules::install(&mut driver)?;
-    driver.eval(SCRIPT)?;
+    // No listener address here: the script registers a handler and never asks for a port.
+    let mut driver = entry::realm(Host::new(), "")?;
+    let namespace = entry::evaluate_named(&mut driver, "serve.ts", SCRIPT)?;
+    entry::resolve_handler(&mut driver, namespace)?;
     Ok(Rc::new(RefCell::new(driver)))
 }
 

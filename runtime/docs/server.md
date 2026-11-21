@@ -26,7 +26,8 @@ pipelining, trailers, 100-continue, graceful close, and the 400 it sends for a h
 realm, installs the modules, evaluates the entry on that realm and resolves the handler from what
 the entry exported. Three shapes work, in this order:
 
-1. the entry called `Xmas.serve(handler)` or `Xmas.serve({ fetch, env })` at the top level,
+1. the entry called `serve(handler)` or `serve({ fetch, env })` at the top level, having imported
+   `serve` from `xmas:server`,
 2. the namespace has its own `fetch` (`export function fetch`),
 3. the default export has one (`export default { fetch }`).
 
@@ -39,13 +40,22 @@ that did start and returns the first reason. Half a server answering 500 on one 
 harder to read than a start that fails with the reason in it.
 
 ```ts
-// app.ts
+// app.ts, a handler registered by the module itself
+import { serve } from 'xmas:server';
+
+serve((request: Request) => new Response('hello from ' + request.url + '\n'));
+```
+
+```ts
+// app.ts, a handler the module exports
 export default {
   fetch(request: Request): Response {
     return new Response('hello from ' + request.url + '\n');
   },
 };
 ```
+
+The second shape needs no import: the server reads the handler from the entry's exports.
 
 ```sh
 cargo run --example serve_app -- ./app.ts --port 8000 --workers 4
@@ -56,7 +66,7 @@ xmas serve ./app.ts --port 8000 --host 127.0.0.1 --workers 4
 `--host` defaults to `0.0.0.0`, and a wildcard listener satisfies any hostname an entry asks for.
 
 The address belongs to the listener, not to the entry: it is bound before any realm exists. An entry
-that asks for a different port (`Xmas.serve({ port: 3000 })`) is refused at startup with both numbers
+that asks for a different port (`serve({ port: 3000 })`) is refused at startup with both numbers
 in the message, because the alternative is an app that answers on the wrong port and looks broken.
 When the listener is on port 0 there is nothing to compare against and the check is skipped.
 
@@ -100,7 +110,9 @@ The handler returns a `Response` whose body is a `ReadableStream` and the chunks
 handler makes them, which is what SSE needs and what a buffered answer cannot do:
 
 ```js
-Xmas.serve(function (request) {
+import { serve } from 'xmas:server';
+
+serve(function (request) {
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
@@ -136,11 +148,14 @@ is what closes it off.
 A handler asks for the upgrade, gets a socket and a handshake response, and returns the response:
 
 ```js
-Xmas.serve(function (request) {
+import { serve } from 'xmas:server';
+import { upgradeWebSocket } from 'xmas:websocket';
+
+serve(function (request) {
   if (request.headers.get('upgrade') !== 'websocket') {
     return new Response('this endpoint wants a websocket');
   }
-  const { socket, response } = Xmas.upgradeWebSocket(request);
+  const { socket, response } = upgradeWebSocket(request);
   socket.onopen = () => socket.send('hello');
   socket.onmessage = (event) => socket.send('echo: ' + event.data);
   socket.onclose = (event) => console.log('closed', event.code);

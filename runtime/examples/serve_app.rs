@@ -2,7 +2,7 @@
 //!
 //!   cargo run --example serve_app -- ./app.ts --port 8000 --host 127.0.0.1 --workers 4
 //!
-//! The entry either exports a fetch handler or calls Xmas.serve; see docs/server.md.
+//! The entry either exports a fetch handler or calls serve() from xmas:server; see docs/server.md.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -58,8 +58,13 @@ fn main() -> ExitCode {
     );
 
     // Ctrl-C ends the process; the server's threads stop when it is dropped, so park until then.
+    // Enter does the same, unless there is no terminal to press it on: then it stays up, which is
+    // what a script that starts this in the background needs.
     let mut line = String::new();
     let _ = std::io::stdin().read_line(&mut line);
+    if line.is_empty() {
+        std::thread::park();
+    }
     drop(server);
     println!("stopped");
     ExitCode::SUCCESS
