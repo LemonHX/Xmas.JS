@@ -13,6 +13,7 @@ pub mod console;
 pub mod crypto;
 pub mod event;
 pub mod exception;
+pub mod exec;
 pub mod fetch;
 pub mod fs;
 pub mod os;
@@ -68,6 +69,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     // the server builds a Request out of a parsed head, so it needs Headers and Response
     server::install(driver)?;
     websocket::install(driver)?;
+    // $ runs a command through the platform shell, and needs nothing above it.
+    exec::install(driver)?;
     Ok(())
 }
 

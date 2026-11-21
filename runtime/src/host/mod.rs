@@ -7,6 +7,7 @@
 pub mod clock;
 pub mod console;
 pub mod env;
+pub mod exec;
 pub mod fs;
 pub mod http;
 pub mod modules;
