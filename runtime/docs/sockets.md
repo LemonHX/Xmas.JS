@@ -85,8 +85,8 @@ edges the caller did not ask for.
 
 There is also no end of stream to send: writable.close() does nothing on the
 wire, and socket.close() is what ends the readable side - it wakes a read that is
-waiting and reports done. A datagram socket has no EOF of its own, so the only
-honest way a pending read can hear about a close is the socket telling it.
+waiting and reports done. A datagram socket has no EOF of its own, so a pending
+read hears about a close only when the socket says so.
 
 ## Cost
 
@@ -114,8 +114,8 @@ pace itself measures the kernel's queue, not the runtime.
 
 ## Deliberate gaps
 
-- No TLS. secureTransport 'on' and startTls() are refused with a TypeError
-  instead of being pretended. fetch has its own HTTPS client, using rustls.
+- No TLS. secureTransport 'on' and startTls() are refused with a TypeError.
+  fetch has its own HTTPS client, using rustls.
 - No UDP, no listening side, no unix sockets.
 - connect() takes { hostname, port } only. The proposal also allows a
   "host:port" string; that is a five line change if it is wanted.

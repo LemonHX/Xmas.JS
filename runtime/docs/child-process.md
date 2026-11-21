@@ -37,5 +37,4 @@ which is what they are for.
   hand.
 - **No `detached`, no `input` option, no `uid`/`gid`.** Same reason as the signal one: they are
   process attributes that need the platform's own API.
-- **`pid` is always -1.** The id the caller sees is this runtime's, not the operating system's,
-  and reporting one while meaning the other would be a lie.
+- **`pid` is always -1.** The id the caller sees is this runtime's, not the operating system's.

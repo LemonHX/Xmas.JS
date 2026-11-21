@@ -420,23 +420,37 @@ fn echo_sleep_and_retry_do_what_they_say() {
 }
 
 #[test]
-fn the_helpers_hang_off_the_runtime_object_and_zx_is_not_a_module() {
+fn the_helpers_are_one_object_with_a_module_of_its_own() {
     let mut h = harness();
+    // One object, whoever made it first: the server and websocket preludes add to it too.
     h.eval(
         r#"globalThis.seen = [
+            typeof Xmas.serve,
+            typeof Xmas.upgradeWebSocket,
             typeof Xmas.shell['$'],
             typeof Xmas.shell.glob,
-            typeof Xmas.shell.chalk,
-            typeof Xmas.shell.ProcessOutput,
             typeof globalThis.zx,
-        ].join('/');"#,
+        ].join('/');
+        "#,
     )
     .expect("eval");
+    assert_eq!(h.expect_text("String(seen)"), "function/function/function/function/undefined");
+
+    // ...and the same helpers as a module of this runtime's own.
+    let shell = h
+        .module(
+            "uses-shell",
+            "import { $, glob, chalk } from 'xmas:shell';
+             export const kinds = [typeof $, typeof glob, typeof chalk].join('/');",
+        )
+        .expect("import xmas:shell");
+    let kinds = h.property(&shell, "kinds").expect("kinds");
     assert_eq!(
-        h.expect_text("String(seen)"),
-        "function/function/function/function/undefined"
+        xmas_runtime::testkit::text_of(&kinds).as_deref(),
+        Some("function/function/function")
     );
-    // and the name belongs to somebody else, so 'zx' does not resolve.
+
+    // Another project's name stays unresolvable.
     let refused = h.module("zx-user", "import { $ } from 'zx'; export const value = 1;");
     assert!(refused.is_err(), "zx resolved as a module: {refused:?}");
 }

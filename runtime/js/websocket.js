@@ -190,7 +190,6 @@
 
   globalThis.WebSocket = WebSocket;
   globalThis.__ws_module = { WebSocket, upgradeWebSocket };
-  if (globalThis.Xmas !== undefined) {
-    Xmas.upgradeWebSocket = upgradeWebSocket;
-  }
+  const host = globalThis.Xmas === undefined || globalThis.Xmas === null ? (globalThis.Xmas = {}) : globalThis.Xmas;
+  host.upgradeWebSocket = upgradeWebSocket;
 })();

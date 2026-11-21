@@ -22,7 +22,7 @@ The engine is quickjs-oxide, which is also pure Rust.
 
 | need | crate | notes |
 | --- | --- | --- |
-| TLS | rustls with the rustls-rustcrypto provider | zero C at build time: no ring, no aws-lc. ring was the first choice but it compiles vendored C and asm, and a C toolchain in the build is the thing we are avoiding. rustls-rustcrypto is younger, so TLS gets its own tests rather than trust. |
+| TLS | rustls with the rustls-rustcrypto provider | no C at build time: no ring, no aws-lc (ring compiles vendored C and assembly). The provider is young, so TLS has its own tests. |
 | gzip, deflate | flate2 with default-features off, feature rust_backend | that routes to miniz_oxide, pure Rust. The default backend is already miniz_oxide but the C one is one feature flag away, so pin it. |
 | brotli | brotli-decompressor | pure Rust |
 | AES, GCM, CBC | aes, aes-gcm, cbc, ctr | RustCrypto |

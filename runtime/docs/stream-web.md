@@ -7,10 +7,10 @@ knows.
 ## Where the line between Rust and JS falls
 
 LLRT writes this module as 14,908 lines of rquickjs classes: the spec algorithms
-run in Rust over rquickjs promises. That does not port. Our engine hands promises
-to JS and only lets one be resolved from the thread holding the realm, so a
-WHATWG algorithm written in Rust would hop to JS to settle something every other
-line, which is both slower and far harder to keep correct.
+run in Rust over rquickjs promises. That does not port: in this engine a promise
+is resolved only from the thread holding the realm, so a WHATWG algorithm
+written in Rust would hop to JS to settle something every other line, which is
+slower and harder to keep correct.
 
 The split is the one node:stream already uses here:
 

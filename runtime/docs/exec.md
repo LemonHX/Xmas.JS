@@ -1,24 +1,25 @@
 # `$`: running a command
 
-`$` is a global, the way zx makes it a global. The same objects are also on this runtime's own
-object, so a script can say where they come from:
+`$` is a global. The same objects are `Xmas.shell` and the `xmas:shell` module, for a script that
+would rather name where they come from:
 
-    const { $, cd, glob } = Xmas.shell;
+    import { $, cd, glob } from 'xmas:shell';
 
     const head = await $`git rev-parse --short HEAD`;
     console.log(head.stdout.trim());
 
-There is no `'zx'` module and never will be: that name is Google's, and this runtime is not
-Google. `Xmas.shell` is the whole surface, and the globals are the same objects.
+A one-file script needs no import: every name in this document is a global as well.
 
-## A template is a command line, not an argv. Everything between the backticks is the line as the shell
-sees it: `| grep foo`, `&&`, redirection and globs all work, because the platform's own shell parses
-it (`/bin/sh -c` on unix, `cmd /C` on windows). Interpolated values are quoted for that shell, so a
-value with spaces, quotes or a semicolon goes in as one word and nothing else. `$.raw(text)` is for the
-pieces quoting would break: a pipe, a redirection, a name the shell already knows.
+## A template is a command line
 
-`$.prefix` and `$.postfix` wrap every line, which is how zx recommends setting up a toolchain for the
-commands that follow:
+It is not an argv. Everything between the backticks is the line as the shell sees it: `| grep foo`,
+`&&`, redirection and globs all work, because the platform's own shell parses it (`/bin/sh -c` on
+unix, `cmd /C` on windows). Interpolated values are quoted for that shell, so a value with spaces,
+quotes or a semicolon goes in as one word and nothing else. `$.raw(text)` is for the pieces quoting
+would break: a pipe, a redirection, a name the shell already knows.
+
+`$.prefix` and `$.postfix` wrap every line, which is how a toolchain is set up for the commands that
+follow:
 
     $.prefix += 'export PATH="$HOME/.local/bin:$PATH";'
 
@@ -59,11 +60,10 @@ returns a `ProcessOutput` instead of a promise:
     const out = $.sync`git rev-parse HEAD`;
     const quietOne = $({ nothrow: true }).sync`exit 4`;   // exitCode 4
 
-Options that zx documents and this runtime accepts but does not act on: `stdio`, `detached`, `spawn`,
-`spawnSync`, `store`, `log`, `killSignal`, `timeoutSignal`, `halt`, `delimiter`. They are about a
-process model this runtime does not expose — a third stream, a custom spawner, a signal to send — and
-quietly ignoring them is better than pretending. `shell` is accepted and does not change anything: the
-platform decides (`sh -c` or `cmd /C`), because that is the only shell this runtime has.
+Accepted and not acted on: `stdio`, `detached`, `spawn`, `spawnSync`, `store`, `log`, `killSignal`,
+`timeoutSignal`, `halt`, `delimiter`. Each one belongs to a process model this runtime does not have:
+a third stream, a custom spawner, a signal to send. `shell` is accepted and changes nothing; the
+platform decides (`sh -c` or `cmd /C`).
 
 ## Input and pipes
 
@@ -71,10 +71,19 @@ platform decides (`sh -c` or `cmd /C`), because that is the only shell this runt
     await $`printf one`.pipe`wc -w`;                // 1
     await $`printf hello`.pipe($`tr a-z A-Z`);      // HELLO
 
-A pipe runs the left side first and hands everything it said to the right side as input. That is a
-deliberate difference from zx: nothing streams through a pipe here, so a left side that never stops
-never feeds the right side. A shell pipe (`$`printf x | wc -c``) streams, because the shell owns it,
-and that is what a long-running producer should use.
+A pipe runs the left side first and hands everything it said to the right side as input. Nothing
+streams through a pipe, so a left side that never stops never feeds the right side. A shell pipe
+(`# `$`: running a command
+
+`$` is a global. The same objects are `Xmas.shell` and the `xmas:shell` module, for a script that
+would rather name where they come from:
+
+    import { $, cd, glob } from 'xmas:shell';
+
+    const head = await $`git rev-parse --short HEAD`;
+    console.log(head.stdout.trim());
+
+A one-file script needs no import: every name in this document is a global as well.
 
 ## The helpers
 
@@ -107,7 +116,7 @@ and `glob` are one function.
 | `kill(pid, signal)` | kill a process, through `kill`/`taskkill` |
 | `versions` | the version of this runtime |
 
-`fetch` is a global of its own (see docs/fetch.md); it is not part of `Xmas.shell`.
+`fetch` is a global of its own (see docs/fetch.md), not part of `Xmas.shell`.
 
 ## Where it lives
 
@@ -122,7 +131,7 @@ command that writes more than that waits in the pipe until the reader catches up
 
 - **No async context.** `within` restores its defaults when its callback's promise settles, not when
   the async chain ends: another task that runs while that promise is pending sees the changed settings
-  too. zx uses AsyncLocalStorage; this runtime has no such thing yet.
+  too. zx uses AsyncLocalStorage for this; there is no async context in this runtime yet.
 - **No streaming pipe.** See above.
 - **`question` has no raw mode and no picker.** Reading a line is all there is — no key handling, no
   arrow keys, no hiding what is typed. `choices` prints the list and accepts either the value or its
@@ -131,9 +140,9 @@ command that writes more than that waits in the pipe until the reader catches up
   `ansi256`, no template tags, no `chalk.level` beyond on/off.
 - **`glob` is a subset.** No `!negation` patterns, no `ignore` option, no `.dot` option: dot files are
   matched only when the pattern names the dot.
-- **`YAML` and `MAML` are not bundled.** zx re-exports both parsers; this runtime has neither.
-- **`ps` and `kill` shell out.** Listing processes and signalling one are the platform's job and both
-  mean libc, so `ps` parses `ps -Ao pid,ppid,comm` and `kill` runs `kill`/`taskkill`. Neither works on
-  a system without those tools.
+- **No `YAML` or `MAML`.** Neither parser ships here.
+- **`ps` and `kill` shell out.** Listing processes and signalling one would mean libc, so `ps` parses
+  `ps -Ao pid,ppid,comm` and `kill` runs `kill`/`taskkill`. Neither works on a system without those
+  tools.
 - **`$.sync` counts on nothing being shared.** It blocks the realm thread, so a script that keeps a
   server or a timer alive across one will see it stop answering for the length of the command.

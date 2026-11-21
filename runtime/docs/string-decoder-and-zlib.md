@@ -18,9 +18,9 @@ The algorithm is line for line, comments included. What changed is the binding:
 - `__sd_create` returns one string, `label\0id`, so a constructor is one host
   call instead of two.
 
-One behaviour differs from my first version, and it is Node's: `end()` flushes
-the pending bytes but does not destroy the decoder, so `write` after `end`
-still works. Destroying it made a legitimate Node pattern throw.
+`end()` flushes the pending bytes but does not destroy the decoder, so `write`
+after `end` still works, which is Node's behaviour. Destroying it made a
+legitimate Node pattern throw.
 
 Encodings covered: utf8, utf16le, latin1/binary, ascii, hex, base64, base64url
 and their aliases.
@@ -38,8 +38,8 @@ Three departures:
 - **Async work leaves the realm thread.** LLRT ran the conversion inline in
   `spawn_exit`; here the bytes are copied and the conversion runs on
   `smol::unblock`'s blocking pool, settled through `host::pending`. A 45 KiB gzip
-  is 46 us, and blocking the realm for that inside a request would be worse than
-  the copy.
+  is 46 us, and blocking the realm for that inside a request costs more than the
+  copy.
 - **The JS layer owns the class shape.** `__zlib_run` returns a raw ArrayBuffer
   and the prelude wraps it in `Buffer.from`, which is a view, not a copy (0.5 us
   for 45 KiB). Errors: the engine's native errors all come out named `Error`

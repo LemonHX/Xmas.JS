@@ -339,6 +339,25 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         .eval(PRELUDE)
         .map_err(|error| format!("exec prelude: {error}"))?;
 
+    // The same objects as a module of this runtime's own, so a script can name where it gets them:
+    // import { $, cd } from 'xmas:shell'. The globals stay, for the one-file script.
+    let shell = driver
+        .context()
+        .eval("globalThis.Xmas.shell")
+        .map_err(|error| format!("Xmas.shell: {error}"))?;
+    let exports = super::collect(
+        driver,
+        &shell,
+        &[
+            "$", "cd", "within", "syncProcessCwd", "sleep", "echo", "stdin", "question", "retry",
+            "expBackoff", "spinner", "glob", "which", "tmpdir", "tmpfile", "minimist", "argv",
+            "dotenv", "chalk", "ps", "kill", "fs", "os", "path", "quote", "quotePowerShell",
+            "useBash", "usePowerShell", "usePwsh", "versions", "ProcessOutput", "ProcessError",
+            "ProcessPromise",
+        ],
+    )?;
+    super::define_name(driver, "xmas:shell", exports)?;
+
     Ok(())
 }
 

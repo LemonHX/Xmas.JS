@@ -18,10 +18,9 @@ writes, and exit.
 ## The os module reports the realm, not the machine
 
 Nothing in this module asks the kernel anything: no libc, no sysctl, no /proc.
-That is the point. There is no permission model to gate host access with, so the
-only defensible answer is to not have the facts: a script here cannot learn the
-machine's memory, its load average, its kernel version, its hostname or its user
-ids.
+There is no permission model to gate host access with, so the module does not
+hold those facts: a script cannot learn the machine's memory, its load average,
+its kernel version, its hostname or its user ids.
 
 The names and shapes stay Node's, so code written against Node keeps running.
 The numbers are ours:
@@ -63,10 +62,9 @@ that would take the harness down, so there it raises instead and a test can
 assert on the message.
 
 os.cpus() returns one entry per core with an empty model and zeroed times: this
-runtime does not report per-core data, and inventing it would be worse than an
-empty string.
+runtime reports no per-core data.
 
-## No unsafe, and no FFI of our own
+## No unsafe, and no FFI
 
 host/sysinfo.rs used to hold uname, gethostname, sysctl, sysconf, getrusage,
 getppid, getuid, getgid, isatty and a TIOCGWINSZ ioctl: 336 lines and twenty
@@ -88,8 +86,8 @@ Two consequences worth knowing:
 
 The libc crate is still in the dependency tree, reached through cpufeatures and
 through rustix (which smol uses for io). Nothing in this crate calls it directly,
-and std already links the platform C library into every Rust binary, so its
-presence is not a system dependency we added.
+and std already links the platform C library into every Rust binary, so nothing
+here adds a system dependency.
 
 runtime/tests/purity.rs holds both guards: the dependency tree carries no system
 library (openssl, native-tls, libz-sys, zstd-sys, aws-lc-sys and friends), and no

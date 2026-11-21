@@ -333,7 +333,10 @@
     );
   }
 
-  globalThis.Xmas = { serve };
+  // Whichever prelude ran first made the object; this one adds to it, so Xmas.shell and
+  // Xmas.upgradeWebSocket survive the server prelude loading after them.
+  const host = globalThis.Xmas === undefined || globalThis.Xmas === null ? (globalThis.Xmas = {}) : globalThis.Xmas;
+  host.serve = serve;
   globalThis.__serve_entry = takeEntry;
   globalThis.__serve_module = { serve };
 })();

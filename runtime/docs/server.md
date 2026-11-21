@@ -1,7 +1,8 @@
 # The HTTP server
 
-Trillium parses, we own the thread. A worker is one listener, one single-threaded executor, one
-realm, and every connection that worker accepts is served on the thread the realm lives on.
+Trillium parses the bytes and the worker owns the thread. A worker is one listener, one
+single-threaded executor, one realm, and every connection it accepts is served on the thread the
+realm lives on.
 
 ## Why not trillium_smol::config().run()
 
@@ -196,7 +197,7 @@ there, but the kernel does not distribute connections the way Linux does.
   the chunk it already handed over is not split.
 - No TLS listener. The acceptor slot is there (`smol::net::TcpStream` in, `SmolTransport` out),
   but a certificate story is not.
-- No HTTP/2: trillium-http has it, our accept loop only speaks h1.
+- No HTTP/2: trillium-http has it, the accept loop speaks h1 only.
 - No graceful drain. Stopping the server drops the connections in flight instead of finishing them.
 - One address per server, no unix sockets, no sniffing of the listener's own address into
   `request.url` (the host header is used).

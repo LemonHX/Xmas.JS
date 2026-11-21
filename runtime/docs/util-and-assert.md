@@ -36,7 +36,7 @@ Differences from LLRT worth knowing:
   Node prints `Map(1) { 'a' => 1 }`. Nothing needs it yet.
 
 Not implemented: `util.getSystemErrorName` (Node's names come from libuv's errno
-table; our errors carry their code as a string), `util.transferableAbortSignal`,
+table; errors here carry their code as a string), `util.transferableAbortSignal`,
 `util.TextEncoder`/`TextDecoder` (they are globals in Node and ours come from
 t27). `util.inspect` honours `colors`; `depth`, `showHidden` and `breakLength` are
 accepted and ignored, the walker's depth is LLRT's fixed four.

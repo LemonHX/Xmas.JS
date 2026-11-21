@@ -1,7 +1,7 @@
 # Modules
 
 A served app is a module graph, not a single file. This is the whole of the rule that turns the
-string in an `import` into a file, and the list of what it deliberately does not do.
+string in an `import` into a file, and what it does not do.
 
 ## What the engine asks for
 
@@ -48,8 +48,8 @@ Once a candidate path is in hand, the first of these that exists wins:
    (how a project written in types spells its own source),
 4. the name plus `.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.mjs`, in that order.
 
-TypeScript before JavaScript on purpose: this runtime compiles types, so a project that writes them
-should not have to say so in every import.
+TypeScript first: this runtime compiles types, so a project that writes them does not say so in
+every import.
 
 ### Packages
 

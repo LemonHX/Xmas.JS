@@ -31,7 +31,7 @@ an empty JS call is 26 ns and is the floor everything else sits on):
 30 ns because v8 answers it in the isolate. If a hot path ever needs the clock
 more than a few thousand times per request, this is the number to beat.
 
-Two things were made cheap on purpose:
+Two paths that stay cheap:
 
 - `getEntriesByName` and `getEntriesByType` are plain for loops, not `filter`.
   A closure call per entry turned 16 us of scanning into 30 us on a thousand
@@ -40,8 +40,7 @@ Two things were made cheap on purpose:
   calling `getEntriesByName` and allocating a result array. 1.6 us became 0.84.
 
 The entry list grows with every mark, and lookups walk it, so a long-running
-process that marks per request keeps paying more. Node behaves the same way;
-nothing here pretends otherwise.
+process that marks per request keeps paying more. Node behaves the same way.
 
 ## tty
 
@@ -94,10 +93,8 @@ native: the WebIDL name table, the legacy `code` numbers and the
 `QuotaExceededError` subclass are data, so the whole module is the prelude
 `js/exception.js` and `modules/exception.rs` only evaluates it.
 
-Like LLRT, `DOMException` derives from `Error` so `instanceof Error` holds;
-the spec says otherwise and Node follows the spec. This is a deliberate match
-to LLRT, and one of the few places where Node compatibility was traded for the
-thing being copied.
+`DOMException` derives from `Error`, so `instanceof Error` holds. The spec says
+otherwise and Node follows the spec; this follows LLRT.
 
 Installed as a global, not as a module: `DOMException` is a global in Node and
 in every browser.
