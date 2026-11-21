@@ -3,4 +3,5 @@ pub mod driver;
 pub mod entry;
 pub mod host;
 pub mod modules;
+pub mod resolve;
 pub mod testkit;

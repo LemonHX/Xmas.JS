@@ -115,6 +115,9 @@ pub(crate) fn define_name(
     name: &str,
     exports: Vec<(String, Value)>,
 ) -> Result<(), String> {
+    // The loader resolves specifiers; a module the engine defines itself must not be looked for on
+    // disk, so it is recorded where the loader can see it.
+    driver.host.modules.declare_native(name);
     driver
         .context()
         .define_module(name, exports)

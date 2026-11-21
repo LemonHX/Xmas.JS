@@ -269,19 +269,22 @@ impl Driver {
         let started = Instant::now();
         let mut jobs = 0u64;
         while started.elapsed() < SLICE {
-            if !self
-                .runtime
-                .is_job_pending()
-                .map_err(|error| format!("{error}"))?
-            {
+            // A job that throws carries its own message, so it is rendered rather than printed: the
+            // engine's own word for "a JavaScript exception" says nothing about what it was.
+            let waiting = self.runtime.is_job_pending();
+            let waiting = match waiting {
+                Ok(waiting) => waiting,
+                Err(error) => return Err(self.render(error)),
+            };
+            if !waiting {
                 break;
             }
-            if !self
-                .runtime
-                .run_pending_job()
-                .map_err(|error| format!("{error}"))?
-                .executed()
-            {
+            let outcome = self.runtime.run_pending_job();
+            let outcome = match outcome {
+                Ok(outcome) => outcome,
+                Err(error) => return Err(self.render(error)),
+            };
+            if !outcome.executed() {
                 break;
             }
             jobs += 1;

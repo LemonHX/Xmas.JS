@@ -25,12 +25,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use quickjs_oxide::engine::api::core::{
-    FunctionOptions, Js, JsString, ModuleImportAttributes, ModuleLoader, ModuleScope, ModuleSource,
-    NativeErrorKind, ObjectRef, PromiseSnapshot, PromiseState, PropertyKey, Scope, Value,
+    FunctionOptions, Js, JsString, ObjectRef, PromiseSnapshot, PromiseState, PropertyKey, Scope,
+    Value,
 };
 
 use crate::driver::Driver;
-use crate::host::{Host, Modules};
+use crate::host::{Host, Loader};
 
 /// How long a test waits at most. If it times out, report an error; don't let CI hang.
 pub const TIMEOUT: Duration = Duration::from_secs(5);
@@ -40,31 +40,6 @@ pub struct Thrown {
     pub name: String,
     pub message: String,
     pub text: String,
-}
-
-/// Get a module from the table in src/host/modules.rs. Same shape as the production loader:
-/// name in, compiled source out; the loader does not run JS.
-struct TableLoader {
-    modules: Modules,
-}
-
-impl ModuleLoader for TableLoader {
-    fn load(
-        &mut self,
-        scope: &mut ModuleScope<'_>,
-        name: &str,
-        _attributes: &ModuleImportAttributes,
-    ) -> Result<ModuleSource, Value> {
-        match self.modules.get(name) {
-            Some(module) => Ok(ModuleSource::source(module.code.clone().into_bytes())),
-            None => Err(scope
-                .new_native_error(
-                    NativeErrorKind::Type,
-                    &format!("Cannot find module '{name}'"),
-                )
-                .unwrap_or(Value::Undefined)),
-        }
-    }
 }
 
 pub struct Harness {
@@ -87,7 +62,7 @@ impl Harness {
         let driver = Driver::new(host).expect("build runtime");
         driver
             .runtime()
-            .set_module_loader(TableLoader { modules })
+            .set_module_loader(Loader::new(modules))
             .expect("install loader");
         Harness { driver }
     }
@@ -105,7 +80,7 @@ impl Harness {
         let driver = crate::driver::Driver::with_heap(host, bytes).expect("build runtime");
         driver
             .runtime()
-            .set_module_loader(TableLoader { modules })
+            .set_module_loader(Loader::new(modules))
             .expect("install loader");
         let mut harness = Harness { driver };
         crate::modules::install(&mut harness.driver).expect("install modules");
@@ -156,6 +131,8 @@ impl Harness {
 
     /// Install a module implemented in Rust. This replaces the old harness's ModuleDef.
     pub fn define_module(&mut self, name: &str, exports: Vec<(String, Value)>) {
+        // The loader must know this name is the engine's, not a file to go looking for.
+        self.driver.host.modules.declare_native(name);
         self.driver
             .context_ref()
             .define_module(name, exports)

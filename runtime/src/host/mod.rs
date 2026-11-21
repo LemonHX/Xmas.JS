@@ -20,7 +20,7 @@ pub use clock::{CancelHandle, Clock};
 pub use console::{Console, Level};
 pub use env::Env;
 pub use fs::{DirItem, Fs, Meta};
-pub use modules::{Module, Modules};
+pub use modules::{Loader, Module, Modules};
 pub use net::Net;
 pub use pending::{Job, Payload, Pending, Reply, Settle};
 pub use server::Server;

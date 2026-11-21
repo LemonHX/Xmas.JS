@@ -5,46 +5,19 @@
 //! the entry either exports a fetch handler or calls Xmas.serve, and either way a request ends up
 //! in the same place.
 //!
-//! Imports inside the entry are not resolved yet: the loader only knows modules that are already in
-//! the table, so a bare or relative import fails with the module name in the message. See the
-//! loader section of docs/server.md.
+//! Imports inside the entry and inside everything it reaches are resolved against the file that
+//! wrote them (crate::resolve) and loaded from disk once per realm. See docs/modules.md.
 
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
-use quickjs_oxide::engine::api::core::{
-    ModuleImportAttributes, ModuleLoader, ModuleScope, ModuleSource, NativeErrorKind, Value,
-};
+use quickjs_oxide::engine::api::core::Value;
 
 use crate::driver::Driver;
-use crate::host::{Host, Modules};
+use crate::host::{Host, Loader};
 use crate::host::Server;
 use crate::modules::server::serve;
-
-/// The loader for a table of already-compiled modules: the engine asks by name, the table answers.
-struct TableLoader {
-    modules: Modules,
-}
-
-impl ModuleLoader for TableLoader {
-    fn load(
-        &mut self,
-        scope: &mut ModuleScope<'_>,
-        name: &str,
-        _attributes: &ModuleImportAttributes,
-    ) -> Result<ModuleSource, Value> {
-        match self.modules.get(name) {
-            Some(module) => Ok(ModuleSource::source(module.code.clone().into_bytes())),
-            None => Err(scope
-                .new_native_error(
-                    NativeErrorKind::Type,
-                    &format!("Cannot find module '{name}'"),
-                )
-                .unwrap_or(Value::Undefined)),
-        }
-    }
-}
 
 /// Serve the module at path on addr, with one realm per worker.
 pub fn serve_app(addr: &str, workers: usize, entry: &Path) -> Result<Server, String> {
@@ -68,7 +41,7 @@ fn build(addr: &str) -> Result<Driver, String> {
     let modules = driver.host.modules.clone();
     driver
         .runtime()
-        .set_module_loader(TableLoader { modules })
+        .set_module_loader(Loader::new(modules))
         .map_err(|error| format!("install loader: {error}"))?;
     crate::modules::install(&mut driver)?;
     // Where this realm is reachable, so an entry that calls Xmas.serve({ port }) can be told when
@@ -100,9 +73,12 @@ fn evaluate(driver: &mut Driver, path: &Path, source: &str) -> Result<Value, Str
     let bytecode = context
         .compile_module_with_filename(&bootstrap, "xmas:entry")
         .map_err(|error| format!("xmas:entry: {error}"))?;
-    context
-        .execute_module(&bytecode)
-        .map_err(|error| format!("{name}: {error}"))?;
+    // A failed import linking is thrown, and a thrown value carries its own message; the engine's own
+    // Display for one is only "JavaScript exception", which says nothing about which import failed.
+    let executed = context.execute_module(&bytecode);
+    if let Err(error) = executed {
+        return Err(format!("{name}: {}", driver.render(error)));
+    }
 
     // Module evaluation is promise-driven, so a throw at the top level of the entry arrives as a
     // rejected promise rather than an error above. Drain the jobs it queued and report it here:

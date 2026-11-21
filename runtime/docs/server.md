@@ -59,15 +59,16 @@ that asks for a different port (`Xmas.serve({ port: 3000 })`) is refused at star
 in the message, because the alternative is an app that answers on the wrong port and looks broken.
 When the listener is on port 0 there is nothing to compare against and the check is skipped.
 
-## The loader, for now
+## The loader
 
-The engine asks its loader for a module by name and gets already-compiled source; that is all the
-module table holds. The entry itself is put there before it is run, so a single-file app works, and
-a TSX entry is compiled the same way the rest of the runtime compiles TSX. A relative or bare
-import inside the entry fails with "Cannot find module", because resolving one needs the importing
-module's path, which the engine's loader call does not carry. That resolution belongs in a pre-pass
-over the module graph (rewrite each specifier to the path it resolves to, then load from disk), and
-it is not written yet.
+The engine asks its loader twice for one import: once to normalize a specifier against the module
+that wrote it, and once to get that module's source. Normalizing is `runtime/src/resolve.rs`
+(relative paths, extension probing, `node_modules` with `exports`/`module`/`main`); loading reads
+the file and compiles it into the realm's table, once per realm. `runtime/docs/modules.md` has the
+rules and what they do not cover.
+
+Each worker reads and compiles the graph for itself: the compiled code lives in that realm's heap,
+and nothing compiled is shared across threads.
 
 ## The path of one request
 
@@ -199,8 +200,8 @@ there, but the kernel does not distribute connections the way Linux does.
 - No graceful drain. Stopping the server drops the connections in flight instead of finishing them.
 - One address per server, no unix sockets, no sniffing of the listener's own address into
   `request.url` (the host header is used).
-- Imports inside the entry are not resolved (see the loader section above), and there is no watch
-  mode: the realm is built once per worker and the entry is never re-evaluated.
+- No watch mode: the module graph is read once per realm (see docs/modules.md), the realm is built
+  once per worker, and the entry is never re-evaluated.
 - A websocket that the handler never answers parks one read on the socket and holds it; the entry is
   only released when that read is answered or the connection ends.
 - Sending on a websocket is not a promise: a handler that produces faster than the wire can take it

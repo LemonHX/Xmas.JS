@@ -50,6 +50,23 @@ pub fn written(name: &str, content: &str) -> std::path::PathBuf {
     path
 }
 
+/// A temporary directory holding the given files, so an entry can import its neighbours.
+pub fn tree(files: &[(&str, &str)]) -> std::path::PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let unique = NEXT.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("xmas-tree-{}-{unique}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("make temporary directory");
+    for (name, content) in files {
+        let path = dir.join(name);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("make parent directory");
+        }
+        std::fs::write(&path, content).expect("write file");
+    }
+    dir
+}
+
 /// A connection spoken to by hand.
 pub struct Client {
     stream: TcpStream,
