@@ -78,6 +78,9 @@ and that is what a long-running producer should use.
 
 ## The helpers
 
+Every name below is a global, and the same object is a field of `Xmas.shell`, so `Xmas.shell.glob`
+and `glob` are one function.
+
 | name | what it is |
 | --- | --- |
 | `cd(dir)` | change where the next command runs (a `ProcessOutput` is accepted, newline trimmed) |
@@ -104,7 +107,7 @@ and that is what a long-running producer should use.
 | `kill(pid, signal)` | kill a process, through `kill`/`taskkill` |
 | `versions` | the version of this runtime |
 
-`fetch` is a global of its own (see docs/fetch.md), not a zx export.
+`fetch` is a global of its own (see docs/fetch.md); it is not part of `Xmas.shell`.
 
 ## Where it lives
 
