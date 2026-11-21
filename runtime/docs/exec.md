@@ -1,16 +1,17 @@
 # `$`: running a command
 
-`$` is a global, the way zx makes it a global, and it is also a module: `import { $, cd, glob } from
-'zx'` hands back the same objects. One line of shell, run as a command, resolved with what it said.
+`$` is a global, the way zx makes it a global. The same objects are also on this runtime's own
+object, so a script can say where they come from:
+
+    const { $, cd, glob } = Xmas.shell;
 
     const head = await $`git rev-parse --short HEAD`;
     console.log(head.stdout.trim());
 
-    await $`exit 3`;                                  // throws ProcessError, exitCode 3
-    const bad = await $`exit 3`.nothrow();            // no throw, read the output instead
-    const files = await $`ls -la ${directory}`;       // the value is quoted for the shell
+There is no `'zx'` module and never will be: that name is Google's, and this runtime is not
+Google. `Xmas.shell` is the whole surface, and the globals are the same objects.
 
-A template is a command line, not an argv. Everything between the backticks is the line as the shell
+## A template is a command line, not an argv. Everything between the backticks is the line as the shell
 sees it: `| grep foo`, `&&`, redirection and globs all work, because the platform's own shell parses
 it (`/bin/sh -c` on unix, `cmd /C` on windows). Interpolated values are quoted for that shell, so a
 value with spaces, quotes or a semicolon goes in as one word and nothing else. `$.raw(text)` is for the

@@ -418,3 +418,25 @@ fn echo_sleep_and_retry_do_what_they_say() {
     run(&mut h, "done");
     assert_eq!(h.expect_text("String(seen)"), "true/third/3");
 }
+
+#[test]
+fn the_helpers_hang_off_the_runtime_object_and_zx_is_not_a_module() {
+    let mut h = harness();
+    h.eval(
+        r#"globalThis.seen = [
+            typeof Xmas.shell['$'],
+            typeof Xmas.shell.glob,
+            typeof Xmas.shell.chalk,
+            typeof Xmas.shell.ProcessOutput,
+            typeof globalThis.zx,
+        ].join('/');"#,
+    )
+    .expect("eval");
+    assert_eq!(
+        h.expect_text("String(seen)"),
+        "function/function/function/function/undefined"
+    );
+    // and the name belongs to somebody else, so 'zx' does not resolve.
+    let refused = h.module("zx-user", "import { $ } from 'zx'; export const value = 1;");
+    assert!(refused.is_err(), "zx resolved as a module: {refused:?}");
+}

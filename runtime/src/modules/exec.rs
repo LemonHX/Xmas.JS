@@ -5,8 +5,10 @@
 //! quoting and the promises. Nothing here buffers output the caller did not ask for: a read is a
 //! promise that resolves when the child writes, and it resolves with "eof" when the pipe closes.
 //!
-//! There is no stdin yet. A command that wants input is a command that needs the `| file` form of
-//! the shell, and that arrives with the piping this first version does not have.
+//! Input travels the same way, in the other direction: `$({ input })` and `.stdin()` write to
+//! the child's stdin and then close it. The helpers around `$` (cd, glob, which, tmpdir,
+//! minimist, dotenv, chalk, ps, kill) are JS in the same file, and are also reachable as
+//! `Xmas.shell`, which is where this runtime keeps them: not under another project's name.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -336,25 +338,6 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         .context()
         .eval(PRELUDE)
         .map_err(|error| format!("exec prelude: {error}"))?;
-
-    // Both ways round: the helpers are globals (what a zx script expects without importing
-    // anything) and a 'zx' module (what a script that does import { $, cd } from 'zx' expects).
-    let module = driver
-        .context()
-        .eval("globalThis.__exec_module")
-        .map_err(|error| format!("__exec_module: {error}"))?;
-    let exports = super::collect(
-        driver,
-        &module,
-        &[
-            "$", "cd", "within", "syncProcessCwd", "sleep", "echo", "stdin", "question", "retry",
-            "expBackoff", "spinner", "glob", "which", "tmpdir", "tmpfile", "minimist", "argv",
-            "dotenv", "chalk", "ps", "kill", "fs", "os", "path", "quote", "quotePowerShell",
-            "useBash", "usePowerShell", "usePwsh", "versions", "ProcessOutput", "ProcessError",
-            "ProcessPromise", "default",
-        ],
-    )?;
-    super::define_name(driver, "zx", exports)?;
 
     Ok(())
 }

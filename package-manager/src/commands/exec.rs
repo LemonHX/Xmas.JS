@@ -51,17 +51,15 @@ pub fn exec_with_args(exe: &OsStr, args: &[OsString]) -> Result<()> {
 
     #[cfg(unix)]
     {
-        let error = exec::execvp(exe, &args);
-        match error {
-            exec::Error::BadArgument(nul_error) => Err(eyre!("Invalid argument: {}", nul_error)),
-            exec::Error::Errno(errno) => {
-                if errno.0 != 0 {
-                    Err(eyre!("Failed to execute command: errno {}", errno.0))
-                } else {
-                    Ok(())
-                }
-            }
-        }
+        // std's own exec(), which is execvp underneath and needs no crate of its own. It returns
+        // only when the command could not be run at all.
+        use std::os::unix::process::CommandExt;
+        let error = Command::new(exe).args(&args[1..]).exec();
+        Err(eyre!(
+            "Failed to execute {}: {}",
+            exe.to_string_lossy(),
+            error
+        ))
     }
 
     #[cfg(not(unix))]

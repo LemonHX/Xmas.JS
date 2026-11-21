@@ -43,10 +43,6 @@ rand = "0.8.5"
 which = "8.0.0"
 owo-colors = "4.2.3"
 
-# execvp exists on unix only, and this crate is the only user of it.
-[target.'cfg(unix)'.dependencies]
-exec = "0.3.1"
-
 # Directory links on windows: there is no symlink without a privilege, so a junction stands in.
 [target.'cfg(windows)'.dependencies]
 junction = "1.3.0"
