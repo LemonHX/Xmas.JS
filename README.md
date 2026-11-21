@@ -10,7 +10,6 @@
 [![License: Apache-2.0 OR GPL-3.0](https://img.shields.io/badge/License-Apache%202.0%20OR%20GPL%203.0-blue.svg)](LICENSE)
 [![WinterTC Compatible](https://img.shields.io/badge/WinterTC-Compatible-green.svg)](https://wintertc.org/)
 [![Built with QuickJS](https://img.shields.io/badge/Built%20with-QuickJS-orange.svg)](https://bellard.org/quickjs/)
-[![Powered by Tokio](https://img.shields.io/badge/Powered%20by-Tokio-red.svg)](https://tokio.rs/)
 
 [Features](#-features) • [Installation](#-installation) • [Quick Start](#-quick-start) • [Benchmarks](#-benchmarks) • [Documentation](#-documentation) • [Contributing](#-contributing)
 
@@ -77,7 +76,7 @@ Traditional System Scripts          Modern System Scripts with Xmas.JS
 - ✅ **Modern JavaScript/TypeScript** - Full ES2023+ support including async/await, modules, decorators
 - ✅ **Ultra-Fast Startup** - Cold start in ~5-15ms, perfect for CLI and serverless
 - ✅ **Minimal Memory Footprint** - Runs comfortably in <5MB RAM
-- ✅ **Async I/O** - Powered by Tokio for high-performance concurrent operations
+- ✅ **Async I/O** - smol drives the event loop; promises, timers and I/O run on it
 - ✅ **Rust Extensions** - Native module system for system-level access
 - ✅ **Interactive REPL** - Built-in read-eval-print loop for rapid prototyping
 
@@ -260,7 +259,7 @@ See [TODO.md](TODO.md) for detailed progress.
 **2025 Q4**
 - [x] Core runtime foundation
 - [x] Basic WinterTC APIs
-- [x] Async I/O with Tokio
+- [x] Async I/O on smol
 - [x] REPL implementation
 - [x] TypeScript support **(repl also supports tsx/jsx)**
 - [ ] Bytecode compilation
@@ -394,7 +393,7 @@ See our [embedding guide](docs/embedding.md) for detailed instructions.
 
 ### How does Xmas.JS handle async/await?
 
-Xmas.JS uses **Tokio** for async I/O, providing:
+Xmas.JS runs its event loop on **smol**, providing:
 
 - ✅ Full `async/await` support in JavaScript
 - ✅ `Promise` API compatible with web standards
@@ -450,9 +449,9 @@ This dual-license ensures open collaboration while preventing service provider l
 Xmas.JS stands on the shoulders of giants:
 
 - **[QuickJS](https://bellard.org/quickjs/)** by Fabrice Bellard - The amazing JavaScript engine
-- **[rquickjs](https://github.com/DelSkayn/rquickjs)** - Rust bindings (we maintain a fork)
+- **[quickjs-oxide](https://github.com/0xfe-project/quickjs-oxide)** - Rust bindings for QuickJS, embedded as a package (rquickjs descendant)
 - **[LLRT](https://github.com/awslabs/llrt)** - Inspiration and code for AWS Lambda optimization
-- **[Tokio](https://tokio.rs/)** - Async runtime that powers our I/O
+- **[smol](https://github.com/smol-rs/smol)** - The async runtime, everywhere in the workspace. Nothing depends on tokio.
 - **[Cotton](https://github.com/danielhuang/cotton)** - Package manager forked for our needs
 
 **Inspired by:**

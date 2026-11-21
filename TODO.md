@@ -1,34 +1,13 @@
 
 # WASM
 
-i decided to use WAMR,
-because it is more lightweight and mature than other runtimes like wasmtime or wasmer.
-in addition, WAMR has GC support and both JIT and AOT compilation modes.
-
+WebAssembly comes in through WNJR (`wnjr-core`), embedded as a package. What WNJR has to grow,
+what we do on our side, and what stays unsupported is in `runtime/docs/wnjr.md`.
 
 # Networking API
 
-i decided to use hyper for implementing networking API's like fetch,
-because it is a mature and widely used HTTP library in rust ecosystem.
-
-# Privilege API
-
-like deno, i want to implement privilege API's,
-so that scripts can request permissions for certain operations,
-and the host application can grant or deny those permissions.
-
-- fs
-    - read
-    - write
-- os
-    - process
-- net
-    - blacklist / whitelist
-- env
-    - read
-    - write
-
-for both main thread and worker threads.
+`fetch` is trillium-client over smol with rustls, and `Xmas.serve` is trillium's server. Both
+are in the tree already (`runtime/src/host/http.rs`, `runtime/src/modules/server.rs`); no hyper.
 
 # bundler / minifier / optimizer / typescript / lint / etc...
 
@@ -46,9 +25,10 @@ xmas: start repl
 - [x] list ls : list all dependencies in project.json, or global cache if not in project
 - [x] execute exec <script> [args...] : execute script from project.json scripts
 
-- [x] compile <input> <output> (compile to quickjs bytecode)
+- [-] compile <input> <output>: gone. quickjs-oxide does not serialize bytecode.
 - [ ] init (project): create a new xmas project
-- [x] bundle <input> <output>
+- [-] bundle <input> <output>: gone. There is no bundler; the loader resolves and compiles each
+      module on its own.
 
 # Winter TC API
 
@@ -149,21 +129,11 @@ Global methods / properties:
 
 ---
 
-# Vsys (Virtual System Layer)
+# Module loading
 
+Done in the rewrite: `runtime/src/resolve.rs` turns a specifier into a path (relative, absolute,
+bare through `node_modules`, `package.json` `exports`/`main`, extension probing), and
+`runtime/src/host/modules.rs` loads and compiles each file once. See `runtime/docs/modules.md`.
 
-- [x] vsys crate 
-- [x] FsVTable 
-- [x] Permissions
-- [x] ModuleLoaderVTable
-- [x] modules/src/fs
-
-
-- [ ] modules/src/module/package/resolver.rs
-  - `fs::read`, `Path::is_file()`, `Path::is_dir()`, `Path::exists()`, `read_link()`
-- [ ] modules/src/module/package/loader.rs - `std::fs::read`, `File::open`
-- [ ] modules/src/module/module/require.rs - `fs::read_to_string`
-- [ ] NetVTable
-- [ ] EnvVTable
 
 ---
