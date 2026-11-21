@@ -7,8 +7,8 @@ use std::ffi::OsStr;
 use crate::commands::exec::{exec_with_args, install_bin_temp};
 
 /// Execute the create command.
-pub async fn cmd_create(args: &crate::Args, name: &CompactString) -> Result<()> {
+pub fn cmd_create(args: &crate::Args, name: &CompactString) -> Result<()> {
     let name = format!("create-{name}");
-    install_bin_temp(args, &name).await?;
+    install_bin_temp(args, &name)?;
     exec_with_args(OsStr::new(&name), &[])
 }

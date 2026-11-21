@@ -1,53 +1,32 @@
-use std::{fmt::Debug, hash::Hash, sync::Arc};
+//! A cache whose misses are filled by one thread and waited on by the rest.
 
 use dashmap::DashMap;
-use futures::{
-    future::{BoxFuture, Shared},
-    Future, FutureExt,
+use std::{
+    fmt::Debug,
+    hash::Hash,
+    sync::{Arc, OnceLock},
 };
 
-use crate::progress::PROGRESS_BAR;
-
-type SharedBoxFuture<T> = Shared<BoxFuture<'static, T>>;
-
 pub struct Cache<K: Eq + Hash + Clone + Send + Debug + 'static, V: Clone + Send + 'static> {
-    loader: Box<dyn Fn(K) -> BoxFuture<'static, V> + Send + Sync + 'static>,
-    map: DashMap<K, SharedBoxFuture<V>>,
+    loader: Box<dyn Fn(&K) -> V + Send + Sync + 'static>,
+    map: DashMap<K, Arc<OnceLock<V>>>,
 }
 
 impl<K: Eq + Hash + Clone + Send + Debug + 'static, V: Clone + Send + 'static> Cache<K, V> {
-    pub fn new<T, F>(loader: T) -> Self
-    where
-        F: Future<Output = V> + Sized + Send + 'static,
-        T: Fn(K) -> F + Send + Sync + Clone + 'static,
-    {
-        let loader = Arc::new(loader);
-
+    pub fn new(loader: impl Fn(&K) -> V + Send + Sync + 'static) -> Self {
         Self {
-            loader: Box::new({
-                move |key| {
-                    let loader = loader.clone();
-                    Box::pin({
-                        async move {
-                            PROGRESS_BAR.inc_length(1);
-                            let v = loader(key).await;
-                            PROGRESS_BAR.inc(1);
-                            v
-                        }
-                    })
-                }
-            }),
+            loader: Box::new(loader),
             map: DashMap::new(),
         }
     }
 
-    pub async fn get(&self, key: K) -> V {
-        let f = self
+    /// The value for a key, loaded once no matter how many threads ask at the same time.
+    pub fn get(&self, key: K) -> V {
+        let cell = self
             .map
             .entry(key.clone())
-            .or_insert_with(|| (self.loader)(key).boxed().shared())
+            .or_insert_with(|| Arc::new(OnceLock::new()))
             .clone();
-
-        f.await
+        cell.get_or_init(|| (self.loader)(&key)).clone()
     }
 }

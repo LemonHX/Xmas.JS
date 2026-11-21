@@ -86,6 +86,8 @@ enum Commands {
         /// Package name
         name: CompactString,
         /// Package version
+        // The id cannot be "version": clap already has one, from the --version flag.
+        #[arg(id = "package_version")]
         version: Option<node_semver::Version>,
     },
 
@@ -124,8 +126,7 @@ enum Commands {
     },
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     if let Some(cwd) = &cli.working_dir {
@@ -137,62 +138,37 @@ async fn main() -> anyhow::Result<()> {
             anyhow::bail!("the runtime is being rewritten; only the package manager works")
         }
 
-        Some(Commands::Install) => {
-            run_pm(xmas_package_manager::Subcommand::Install, cli.verbose).await
-        }
-        Some(Commands::Add { names, dev, pin }) => {
-            run_pm(
-                xmas_package_manager::Subcommand::Add { names, dev, pin },
-                cli.verbose,
-            )
-            .await
-        }
-        Some(Commands::Remove { names, dev }) => {
-            run_pm(
-                xmas_package_manager::Subcommand::Remove { names, dev },
-                cli.verbose,
-            )
-            .await
-        }
-        Some(Commands::Run { name, watch }) => {
-            run_pm(
-                xmas_package_manager::Subcommand::Run { name, watch },
-                cli.verbose,
-            )
-            .await
-        }
-        Some(Commands::Update) => {
-            run_pm(xmas_package_manager::Subcommand::Update, cli.verbose).await
-        }
-        Some(Commands::Upgrade { pin }) => {
-            run_pm(
-                xmas_package_manager::Subcommand::Upgrade { pin },
-                cli.verbose,
-            )
-            .await
-        }
-        Some(Commands::Clean) => run_pm(xmas_package_manager::Subcommand::Clean, cli.verbose).await,
-        Some(Commands::Exec { exe, args }) => {
-            run_pm(
-                xmas_package_manager::Subcommand::Exec { exe, args },
-                cli.verbose,
-            )
-            .await
-        }
-        Some(Commands::Why { name, version }) => {
-            run_pm(
-                xmas_package_manager::Subcommand::Why { name, version },
-                cli.verbose,
-            )
-            .await
-        }
-        Some(Commands::Create { name }) => {
-            run_pm(
-                xmas_package_manager::Subcommand::Create { name },
-                cli.verbose,
-            )
-            .await
-        }
+        Some(Commands::Install) => run_pm(xmas_package_manager::Subcommand::Install, cli.verbose),
+        Some(Commands::Add { names, dev, pin }) => run_pm(
+            xmas_package_manager::Subcommand::Add { names, dev, pin },
+            cli.verbose,
+        ),
+        Some(Commands::Remove { names, dev }) => run_pm(
+            xmas_package_manager::Subcommand::Remove { names, dev },
+            cli.verbose,
+        ),
+        Some(Commands::Run { name, watch }) => run_pm(
+            xmas_package_manager::Subcommand::Run { name, watch },
+            cli.verbose,
+        ),
+        Some(Commands::Update) => run_pm(xmas_package_manager::Subcommand::Update, cli.verbose),
+        Some(Commands::Upgrade { pin }) => run_pm(
+            xmas_package_manager::Subcommand::Upgrade { pin },
+            cli.verbose,
+        ),
+        Some(Commands::Clean) => run_pm(xmas_package_manager::Subcommand::Clean, cli.verbose),
+        Some(Commands::Exec { exe, args }) => run_pm(
+            xmas_package_manager::Subcommand::Exec { exe, args },
+            cli.verbose,
+        ),
+        Some(Commands::Why { name, version }) => run_pm(
+            xmas_package_manager::Subcommand::Why { name, version },
+            cli.verbose,
+        ),
+        Some(Commands::Create { name }) => run_pm(
+            xmas_package_manager::Subcommand::Create { name },
+            cli.verbose,
+        ),
         Some(Commands::Serve {
             entry,
             port,
@@ -200,13 +176,10 @@ async fn main() -> anyhow::Result<()> {
             workers,
         }) => serve(&entry, &host, port, workers),
 
-        Some(Commands::Dlx { name, args }) => {
-            run_pm(
-                xmas_package_manager::Subcommand::DownloadAndExec { name, args },
-                cli.verbose,
-            )
-            .await
-        }
+        Some(Commands::Dlx { name, args }) => run_pm(
+            xmas_package_manager::Subcommand::DownloadAndExec { name, args },
+            cli.verbose,
+        ),
     }
 }
 
@@ -233,14 +206,12 @@ fn serve(entry: &PathBuf, host: &str, port: u16, workers: Option<usize>) -> anyh
     }
 }
 
-async fn run_pm(cmd: xmas_package_manager::Subcommand, verbose: bool) -> anyhow::Result<()> {
+fn run_pm(cmd: xmas_package_manager::Subcommand, verbose: bool) -> anyhow::Result<()> {
     let args = xmas_package_manager::Args {
         verbose,
         immutable: false,
         working_dir: None,
         cmd,
     };
-    xmas_package_manager::package_manager(&args)
-        .await
-        .map_err(|e| anyhow::anyhow!("{}", e))
+    xmas_package_manager::package_manager(&args).map_err(|e| anyhow::anyhow!("{}", e))
 }

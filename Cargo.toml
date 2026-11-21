@@ -13,8 +13,7 @@ members = [
   "runtime",
   "package-manager",
 ]
-# The runtime is what we are building; the package manager still pulls tokio,
-# so keep it out of the default build.
+# The runtime is what we are building, so it is what a bare cargo build builds.
 default-members = ["runtime"]
 
 [workspace.dependencies]
@@ -24,7 +23,6 @@ xmas-runtime = { path = "runtime" }
 [dependencies]
 xmas-package-manager = { workspace = true }
 xmas-runtime = { workspace = true }
-tokio = { version = "1.36", features = ["full"] }
 anyhow = "1.0.100"
 clap = { version = "4.5", features = ["derive"] }
 compact_str = { version = "0.9.0", features = ["serde"] }

@@ -1,35 +1,46 @@
-use futures::{
-    channel::mpsc::{channel, Receiver},
-    SinkExt, StreamExt,
-};
-use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
+//! Watching files, so a script can be run again when they change.
+
+use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher as _};
 use std::path::Path;
+use std::sync::mpsc::{channel, Receiver};
 
-fn async_watcher() -> notify::Result<(RecommendedWatcher, Receiver<Event>)> {
-    let (mut tx, rx) = channel(1);
+/// A running watch. Dropping it stops watching.
+pub struct Watcher {
+    events: Receiver<Event>,
+    _watcher: RecommendedWatcher,
+}
 
-    let watcher = RecommendedWatcher::new(
-        move |res: notify::Result<Event>| {
-            futures::executor::block_on(async {
-                if let Ok(res) = res {
-                    if res.kind.is_access() {
-                        let _ = tx.send(res).await;
-                    }
+impl Watcher {
+    /// Block until something changes.
+    pub fn next(&self) -> Event {
+        self.events
+            .recv()
+            .expect("the watcher thread stopped while it was still watching")
+    }
+}
+
+/// Watch these paths, recursively.
+pub fn watch<'a>(paths: impl IntoIterator<Item = &'a Path>) -> notify::Result<Watcher> {
+    let (tx, events) = channel();
+
+    // notify calls back on its own thread; a channel is all the hand-off that needs.
+    let mut watcher = RecommendedWatcher::new(
+        move |result: notify::Result<Event>| {
+            if let Ok(event) = result {
+                if event.kind.is_access() {
+                    let _ = tx.send(event);
                 }
-            })
+            }
         },
         Config::default(),
     )?;
-
-    Ok((watcher, rx))
-}
-
-pub async fn async_watch(paths: impl IntoIterator<Item = &Path>) -> notify::Result<Event> {
-    let (mut watcher, mut rx) = async_watcher()?;
 
     for path in paths {
         watcher.watch(path, RecursiveMode::Recursive)?;
     }
 
-    Ok(rx.next().await.unwrap())
+    Ok(Watcher {
+        events,
+        _watcher: watcher,
+    })
 }

@@ -14,10 +14,10 @@ use crate::resolve::Graph;
 use crate::util::{load_graph_from_lockfile, read_package};
 
 /// Execute the why command.
-pub async fn cmd_why(name: &CompactString, version: Option<&Version>) -> Result<()> {
-    let package = read_package().await?;
+pub fn cmd_why(name: &CompactString, version: Option<&Version>) -> Result<()> {
+    let package = read_package()?;
 
-    let graph = load_graph_from_lockfile().await;
+    let graph = load_graph_from_lockfile();
 
     let map = build_map(&graph)?;
 

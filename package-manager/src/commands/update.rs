@@ -13,20 +13,20 @@ use crate::util::{read_package, write_json};
 use crate::Args;
 
 /// Execute the update command.
-pub async fn cmd_update(args: &Args) -> Result<()> {
+pub fn cmd_update(args: &Args) -> Result<()> {
     if args.immutable {
         return Err(eyre!("Cannot update lockfile").suggestion("Remove the --immutable flag"));
     }
 
-    let package = read_package().await?;
+    let package = read_package()?;
 
-    init_storage().await?;
+    init_storage()?;
 
     let start = Instant::now();
 
     let mut graph = Graph::default();
-    graph.append(package.iter_all(), false).await?;
-    write_json("xmas.lock", Lockfile::new(graph.clone())).await?;
+    graph.append(package.iter_all(), false)?;
+    write_json("xmas.lock", Lockfile::new(graph.clone()))?;
 
     PROGRESS_BAR.suspend(|| {
         println!(

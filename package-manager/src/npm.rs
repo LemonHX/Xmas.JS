@@ -1,12 +1,8 @@
-use async_compression::tokio::bufread::GzipDecoder;
-use async_recursion::async_recursion;
-use cached::proc_macro::cached;
 use color_eyre::{
     eyre::{eyre, ContextCompat, Result},
     Report,
 };
 use compact_str::{CompactString, ToCompactString};
-use futures::TryStreamExt;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use node_semver::Version;
@@ -18,18 +14,18 @@ use std::{
     path::MAIN_SEPARATOR,
     sync::{Arc, LazyLock},
 };
-use std::{fmt::Debug, io};
-use tap::Pipe;
-use tokio::{io::AsyncReadExt, sync::Semaphore};
-use tokio_tar::Archive;
-use tokio_util::io::StreamReader;
+use std::{fmt::Debug, io::Read};
+
+use flate2::read::GzDecoder;
+use tar::Archive;
 
 use crate::{
     cache::Cache,
-    config::{client_auth, read_config, Registry},
+    config::{read_config, Registry},
+    net,
     package::{Dist, PackageInfo, PackageMetadata, PackageSpecifier},
     progress::{log_progress, log_verbose},
-    util::{decode_json, retry, ArcResult, VersionSpecifier, CLIENT, CLIENT_LIMIT, CLIENT_Z},
+    util::{decode_json, retry, ArcResult, VersionSpecifier},
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -67,8 +63,8 @@ impl PlatformMap {
     }
 }
 
-async fn select_registry(name: &str) -> Result<Registry> {
-    for registry in read_config().await?.registry {
+fn select_registry(name: &str) -> Result<Registry> {
+    for registry in read_config()?.registry {
         if let Some(scope) = &registry.scope {
             if name.starts_with(scope) {
                 return Ok(registry);
@@ -86,52 +82,35 @@ async fn select_registry(name: &str) -> Result<Registry> {
 }
 
 #[tracing::instrument]
-pub async fn fetch_package(name: &str) -> Result<Arc<RegistryResponse>> {
+pub fn fetch_package(name: &str) -> Result<Arc<RegistryResponse>> {
     #[tracing::instrument]
-    async fn fetch_package(name: &str) -> Result<RegistryResponse> {
-        static S: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(CLIENT_LIMIT));
-        let _permit = S.acquire().await.unwrap();
+    fn fetch_package(name: &str) -> Result<RegistryResponse> {
+        let selected_registry = select_registry(name)?;
 
-        let selected_registry = select_registry(name).await?;
-
-        retry(|| async {
-            decode_json(
-                &CLIENT_Z
-                    .get(format!("{}/{name}", selected_registry.url))
-                    .pipe(|x| client_auth(x, selected_registry.auth.as_ref()))?
-                    .send()
-                    .await?
-                    .error_for_status()?
-                    .bytes()
-                    .await?,
-            )
-            .map_err(|e| eyre!("[{name}] {e}"))
+        retry(|| {
+            let body = net::get(
+                &format!("{}/{name}", selected_registry.url),
+                selected_registry.auth.as_ref(),
+            )?;
+            decode_json(&body).map_err(|e| eyre!("[{name}] {e}"))
         })
-        .await
     }
 
     static CACHE: LazyLock<Cache<CompactString, ArcResult<Arc<RegistryResponse>>>> =
         LazyLock::new(|| {
-            Cache::new(|key: CompactString| async move {
-                fetch_package(&key).await.map(Arc::new).map_err(Arc::new)
-            })
+            Cache::new(|key: &CompactString| fetch_package(key).map(Arc::new).map_err(Arc::new))
         });
 
-    CACHE
-        .get(name.to_compact_string())
-        .await
-        .map_err(Report::msg)
+    CACHE.get(name.to_compact_string()).map_err(Report::msg)
 }
 
 #[tracing::instrument]
-#[cached(result)]
-#[async_recursion]
-pub async fn fetch_versioned_package(d: PackageSpecifier) -> Result<(Version, Arc<PackageInfo>)> {
+pub fn fetch_versioned_package(d: PackageSpecifier) -> Result<(Version, Arc<PackageInfo>)> {
     log_progress(&format!("Fetched {}", d.name.bright_blue()));
 
     match &d.version {
         VersionSpecifier::Other(tag) => {
-            let res = fetch_package(&d.name).await?;
+            let res = fetch_package(&d.name)?;
             let tag = res
                 .dist_tags
                 .get(tag)
@@ -149,7 +128,7 @@ pub async fn fetch_versioned_package(d: PackageSpecifier) -> Result<(Version, Ar
             Ok((version, Arc::new(package.clone().info())))
         }
         VersionSpecifier::Range(_) => {
-            let res = fetch_package(&d.name).await?;
+            let res = fetch_package(&d.name)?;
             let (version, package) = res
                 .versions
                 .iter()
@@ -171,24 +150,15 @@ pub async fn fetch_versioned_package(d: PackageSpecifier) -> Result<(Version, Ar
                 d.name, d.version
             ));
 
-            let res = CLIENT
-                .get(url.clone())
-                .send()
-                .await?
-                .error_for_status()?
-                .bytes_stream()
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e));
-
-            let reader = StreamReader::new(res);
-            let reader = GzipDecoder::new(reader);
-
-            let mut archive = Archive::new(reader);
+            // A tarball URL given as the version: the package's own package.json is inside it.
+            let tarball = net::get(url.as_str(), None)?;
+            let mut archive = Archive::new(GzDecoder::new(&tarball[..]));
             let mut entries = archive.entries()?;
 
-            while let Some(mut entry) = entries.try_next().await? {
+            while let Some(mut entry) = entries.next().transpose()? {
                 if entry.path()?.to_str() == Some("package/package.json") {
                     let mut buf = String::new();
-                    entry.read_to_string(&mut buf).await?;
+                    entry.read_to_string(&mut buf)?;
 
                     let mut package: PackageMetadata = serde_json::from_str(&buf)?;
                     let version = package.version.clone().wrap_err_with(|| {
@@ -218,7 +188,7 @@ pub async fn fetch_versioned_package(d: PackageSpecifier) -> Result<(Version, Ar
                     optional: d.optional,
                 };
 
-                let (inner_version, mut inner_pkg) = fetch_versioned_package(inner_req).await?;
+                let (inner_version, mut inner_pkg) = fetch_versioned_package(inner_req)?;
                 Arc::make_mut(&mut inner_pkg).name = d.name;
 
                 Ok((inner_version, inner_pkg))

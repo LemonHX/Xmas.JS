@@ -3,16 +3,15 @@
 use color_eyre::eyre::{eyre, Result};
 use color_eyre::owo_colors::OwoColorize;
 use compact_str::{CompactString, ToCompactString};
-use deno_task_shell::KillSignal;
 use itertools::Itertools;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
+use std::fs::{create_dir_all, read_to_string};
 use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::time::Instant;
-use tokio::fs::{create_dir_all, read_to_string};
 
 use crate::commands::exec::shell;
 use crate::config::read_config;
@@ -26,19 +25,19 @@ use crate::util::{load_graph_from_lockfile, read_package, write_json};
 use crate::Args;
 
 /// Execute the install command.
-pub async fn cmd_install(args: &Args) -> Result<()> {
-    install(args).await
+pub fn cmd_install(args: &Args) -> Result<()> {
+    install(args)
 }
 
 /// Prepare a plan for installing packages.
-pub async fn prepare_plan(args: &Args, package: &PackageMetadata) -> Result<Plan> {
+pub fn prepare_plan(args: &Args, package: &PackageMetadata) -> Result<Plan> {
     log_progress("Preparing");
 
-    let mut graph = load_graph_from_lockfile().await;
+    let mut graph = load_graph_from_lockfile();
 
     if !args.immutable {
-        graph.append(package.iter_all(), true).await?;
-        write_json("xmas.lock", Lockfile::new(graph.clone())).await?;
+        graph.append(package.iter_all(), true)?;
+        write_json("xmas.lock", Lockfile::new(graph.clone()))?;
     }
 
     log_progress("Retrieved dependency graph");
@@ -61,14 +60,14 @@ pub async fn prepare_plan(args: &Args, package: &PackageMetadata) -> Result<Plan
     Ok(plan)
 }
 
-async fn read_plan(path: &str) -> Result<Plan> {
-    let plan = read_to_string(path).await?;
+fn read_plan(path: &str) -> Result<Plan> {
+    let plan = read_to_string(path)?;
     Ok(serde_json::from_str(&plan)?)
 }
 
 /// Verify that the current installation matches the plan.
-pub async fn verify_installation(package: &PackageMetadata, plan: &Plan) -> Result<bool> {
-    let installed = read_plan("node_modules/.xmas/plan.json").await?;
+pub fn verify_installation(package: &PackageMetadata, plan: &Plan) -> Result<bool> {
+    let installed = read_plan("node_modules/.xmas/plan.json")?;
 
     if &installed != plan {
         return Ok(false);
@@ -77,12 +76,12 @@ pub async fn verify_installation(package: &PackageMetadata, plan: &Plan) -> Resu
     Ok(installed.satisfies(package))
 }
 
-async fn exec_install_scripts_in(stack: &[CompactString]) -> Result<()> {
+fn exec_install_scripts_in(stack: &[CompactString]) -> Result<()> {
     let path = stack.join("/node_modules/");
 
     let dir = scoped_join("node_modules", path)?;
 
-    let package_json = match read_to_string(dir.join("package.json")).await {
+    let package_json = match read_to_string(dir.join("package.json")) {
         Ok(x) => x,
         Err(e) if e.kind() == ErrorKind::NotFound => {
             return Ok(());
@@ -100,7 +99,7 @@ async fn exec_install_scripts_in(stack: &[CompactString]) -> Result<()> {
 
             let mut new_env = HashMap::new();
             new_env.insert(OsString::from("PATH"), new_path()?);
-            let child = shell(script, dir.clone(), new_env, KillSignal::default()).await?;
+            let child = shell(script, dir.clone(), new_env)?;
 
             if child > 0 {
                 return Err(eyre!(
@@ -115,15 +114,12 @@ async fn exec_install_scripts_in(stack: &[CompactString]) -> Result<()> {
     Ok(())
 }
 
-async fn exec_install_scripts(
-    tree: &DependencyTree,
-    initial_stack: &[CompactString],
-) -> Result<()> {
+fn exec_install_scripts(tree: &DependencyTree, initial_stack: &[CompactString]) -> Result<()> {
     let mut work_stack: Vec<(&DependencyTree, Vec<CompactString>)> =
         vec![(tree, initial_stack.to_vec())];
 
     while let Some((current_tree, mut stack)) = work_stack.pop() {
-        exec_install_scripts_in(&stack).await?;
+        exec_install_scripts_in(&stack)?;
 
         stack.push(current_tree.root.name.clone());
         for child_tree in current_tree.children.values() {
@@ -135,22 +131,22 @@ async fn exec_install_scripts(
 }
 
 /// Install packages based on package.json.
-pub async fn install(args: &Args) -> Result<()> {
-    let package = read_package().await?;
+pub fn install(args: &Args) -> Result<()> {
+    let package = read_package()?;
 
-    init_storage().await?;
-    let config = read_config().await?;
+    init_storage()?;
+    let config = read_config()?;
 
     let start = Instant::now();
 
-    let plan = prepare_plan(args, &package).await?;
+    let plan = prepare_plan(args, &package)?;
     let size = tree_size(&plan.trees);
     set_total(size as u64 * 2); // download + install
 
-    if matches!(verify_installation(&package, &plan).await, Ok(true)) {
+    if matches!(verify_installation(&package, &plan), Ok(true)) {
         log_verbose("Packages already installed")
     } else {
-        execute_plan(plan.clone()).await?;
+        execute_plan(plan.clone())?;
 
         finish_progress();
         PROGRESS_BAR.suspend(|| {
@@ -165,13 +161,13 @@ pub async fn install(args: &Args) -> Result<()> {
 
         if !config.disallow_install_scripts {
             for (name, tree) in plan.trees.iter() {
-                exec_install_scripts(tree, &mut vec![name.clone()]).await?;
+                exec_install_scripts(tree, &mut vec![name.clone()])?;
             }
         }
 
-        setup_bins(&plan).await?;
+        setup_bins(&plan)?;
 
-        write_json("node_modules/.xmas/plan.json", &plan).await?;
+        write_json("node_modules/.xmas/plan.json", &plan)?;
     }
 
     PROGRESS_BAR.finish_and_clear();
@@ -199,10 +195,10 @@ pub fn join_paths() -> Result<()> {
 }
 
 /// Initialize storage directories.
-pub async fn init_storage() -> Result<()> {
-    create_dir_all(".xmas/store").await?;
-    create_dir_all("node_modules/.xmas").await?;
-    create_dir_all("node_modules/.bin").await?;
+pub fn init_storage() -> Result<()> {
+    create_dir_all(".xmas/store")?;
+    create_dir_all("node_modules/.xmas")?;
+    create_dir_all("node_modules/.bin")?;
 
     Ok(())
 }

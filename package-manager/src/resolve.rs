@@ -15,7 +15,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, VecDeque};
 use std::mem::take;
 use std::sync::Arc;
-use tokio::task::JoinHandle;
+
+use crate::pool::Pool;
 
 #[derive(Deserialize, Debug, Default, Clone)]
 pub struct Graph {
@@ -24,13 +25,19 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub async fn append(
+    /// Resolve every requirement, and everything those requirements need.
+    ///
+    /// One job per package, queued on the pool: a package already resolved is answered from the
+    /// map instead of fetched again, which is what makes a diamond in the graph cost one request.
+    /// When download is set the tarball fetch starts as soon as the version is known, so the
+    /// store fills while the rest of the graph is still being walked.
+    pub fn append(
         &mut self,
         remaining: impl Iterator<Item = PackageSpecifier>,
         download: bool,
     ) -> color_eyre::Result<()> {
         fn queue_resolve(
-            send: async_channel::Sender<JoinHandle<color_eyre::Result<()>>>,
+            pool: &Pool,
             req: PackageSpecifier,
             relations: Arc<DashMap<PackageSpecifier, VersionedPackageInfo>>,
             seen: Arc<DashSet<PackageSpecifier>>,
@@ -42,53 +49,40 @@ impl Graph {
 
             if let Some(subpackage) = relations.get(&req) {
                 for child_req in subpackage.package.iter() {
-                    queue_resolve(
-                        send.clone(),
-                        child_req,
-                        relations.clone(),
-                        seen.clone(),
-                        download,
-                    )?;
+                    queue_resolve(pool, child_req, relations.clone(), seen.clone(), download)?;
                 }
 
                 return Ok(());
             }
 
-            send.clone()
-                .try_send(tokio::spawn(async move {
-                    let (version, subpackage) = npm::fetch_versioned_package(req.clone()).await?;
+            pool.spawn(move |pool| {
+                let (version, subpackage) = npm::fetch_versioned_package(req.clone())?;
 
-                    if download && subpackage.supported() {
-                        tokio::spawn(download_package_shared(Dependency {
-                            name: req.name.to_compact_string(),
-                            version: version.clone(),
-                            dist: subpackage.dist.clone(),
-                            bins: subpackage.bins().into_iter().collect(),
-                            scripts: subpackage.scripts.clone(),
-                        }));
-                    }
+                if download && subpackage.supported() {
+                    let dep = Dependency {
+                        name: req.name.to_compact_string(),
+                        version: version.clone(),
+                        dist: subpackage.dist.clone(),
+                        bins: subpackage.bins().into_iter().collect(),
+                        scripts: subpackage.scripts.clone(),
+                    };
+                    pool.spawn(move |_| download_package_shared(dep));
+                }
 
-                    relations.insert(
-                        req.clone(),
-                        VersionedPackageInfo {
-                            package: subpackage.clone(),
-                            version,
-                        },
-                    );
+                relations.insert(
+                    req.clone(),
+                    VersionedPackageInfo {
+                        package: subpackage.clone(),
+                        version,
+                    },
+                );
 
-                    for child_req in subpackage.iter() {
-                        queue_resolve(
-                            send.clone(),
-                            child_req,
-                            relations.clone(),
-                            seen.clone(),
-                            download,
-                        )?;
-                    }
+                for child_req in subpackage.iter() {
+                    queue_resolve(pool, child_req, relations.clone(), seen.clone(), download)?;
+                }
 
-                    Ok(()) as color_eyre::Result<_>
-                }))
-                .map_err(|_| color_eyre::eyre::eyre!("could not queue a resolve task"))?;
+                Ok(())
+            });
 
             Ok(())
         }
@@ -96,19 +90,14 @@ impl Graph {
         let relations: Arc<DashMap<_, _>> =
             Arc::new(take(&mut self.relations).into_iter().collect());
 
-        let (send, recv) = async_channel::unbounded();
-
         let seen = Arc::new(DashSet::new());
+        let pool = Pool::new(Pool::workers());
 
         for req in remaining {
-            queue_resolve(send.clone(), req, relations.clone(), seen.clone(), download)?;
+            queue_resolve(&pool, req, relations.clone(), seen.clone(), download)?;
         }
 
-        drop(send);
-
-        while let Ok(f) = recv.recv().await {
-            f.await??;
-        }
+        pool.run()?;
 
         self.relations = relations
             .iter()

@@ -1,8 +1,7 @@
 use color_eyre::eyre::Result;
-use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 use std::env;
-use tokio::fs::read_to_string;
+use std::fs::read_to_string;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, Default)]
 #[serde(deny_unknown_fields)]
@@ -36,19 +35,31 @@ pub enum RegistryAuth {
     },
 }
 
-pub fn client_auth(req: RequestBuilder, auth: Option<&RegistryAuth>) -> Result<RequestBuilder> {
-    Ok(match auth {
-        Some(RegistryAuth::Token { token }) => {
-            let token = token.read_token()?;
-            req.bearer_auth(token)
-        }
-        Some(RegistryAuth::Basic { username, password }) => {
-            let username = username.read_token()?;
-            let password = password.as_ref().map(|x| x.read_token()).transpose()?;
-            req.basic_auth(username, password)
-        }
-        None => req,
-    })
+impl RegistryAuth {
+    /// The one header this credential adds, as (name, value).
+    pub fn header(&self) -> Result<(&'static str, String)> {
+        use base64::Engine as _;
+        Ok(match self {
+            RegistryAuth::Token { token } => {
+                ("authorization", format!("Bearer {}", token.read_token()?))
+            }
+            RegistryAuth::Basic { username, password } => {
+                let username = username.read_token()?;
+                let password = password.as_ref().map(|x| x.read_token()).transpose()?;
+                let pair = match password {
+                    Some(password) => format!("{username}:{password}"),
+                    None => format!("{username}:"),
+                };
+                (
+                    "authorization",
+                    format!(
+                        "Basic {}",
+                        base64::engine::general_purpose::STANDARD.encode(pair)
+                    ),
+                )
+            }
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug)]
@@ -70,8 +81,8 @@ impl AuthSource {
     }
 }
 
-pub async fn read_config() -> Result<Config> {
-    let config = read_to_string("xmas.toml").await;
+pub fn read_config() -> Result<Config> {
+    let config = read_to_string("xmas.toml");
     if let Ok(config) = config {
         Ok(toml::from_str(&config)?)
     } else {

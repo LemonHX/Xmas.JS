@@ -26,26 +26,26 @@ use crate::{cli::Subcommand, Args};
 use color_eyre::eyre::Result;
 
 /// Execute the appropriate command based on CLI arguments.
-pub async fn execute_command(args: &Args) -> Result<()> {
+pub fn execute_command(args: &Args) -> Result<()> {
     match &args.cmd {
-        Subcommand::Install => cmd_install(&args).await,
-        Subcommand::Update => cmd_update(&args).await,
-        Subcommand::Add { names, dev, pin } => cmd_add(&names, *dev, *pin).await,
-        Subcommand::Run { name, watch } => cmd_run(&args, &name, &watch).await,
+        Subcommand::Install => cmd_install(&args),
+        Subcommand::Update => cmd_update(&args),
+        Subcommand::Add { names, dev, pin } => cmd_add(&names, *dev, *pin),
+        Subcommand::Run { name, watch } => cmd_run(&args, &name, &watch),
         Subcommand::Clean => cmd_clean(),
-        Subcommand::Upgrade { pin } => cmd_upgrade(*pin).await,
+        Subcommand::Upgrade { pin } => cmd_upgrade(*pin),
 
         // TODO: fix with deno task shell
         Subcommand::Exec {
             exe,
             args: cmd_args,
-        } => cmd_exec(&args, exe, cmd_args).await,
-        Subcommand::Remove { names, dev } => cmd_remove(&names, *dev).await,
-        Subcommand::Why { name, version } => cmd_why(&name, version.as_ref()).await,
-        Subcommand::Create { name } => cmd_create(&args, &name).await,
+        } => cmd_exec(&args, exe, cmd_args),
+        Subcommand::Remove { names, dev } => cmd_remove(&names, *dev),
+        Subcommand::Why { name, version } => cmd_why(&name, version.as_ref()),
+        Subcommand::Create { name } => cmd_create(&args, &name),
         Subcommand::DownloadAndExec {
             name,
             args: cmd_args,
-        } => exec::cmd_download_and_exec(&args, name, cmd_args).await,
+        } => exec::cmd_download_and_exec(&args, name, cmd_args),
     }
 }

@@ -1,32 +1,31 @@
-use async_compression::tokio::bufread::GzipDecoder;
 use color_eyre::{
     eyre::{eyre, Result},
     Report,
 };
 use compact_str::{CompactString, ToCompactString};
-use futures::{StreamExt, TryStreamExt};
+use flate2::read::GzDecoder;
 use owo_colors::OwoColorize;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use std::fs::{create_dir_all, exists, metadata, read_dir, remove_dir_all, File};
 use std::{
-    io::{self, ErrorKind},
+    io,
+    io::ErrorKind,
     path::{Path, PathBuf},
     sync::{Arc, LazyLock},
 };
-use tap::Pipe;
-use tokio::{sync::Semaphore, task::JoinHandle};
-use tokio_tar::Archive;
-use tokio_util::io::StreamReader;
+use tar::Archive;
 
 use crate::{
     cache::Cache,
-    config::{client_auth, read_config},
+    config::read_config,
+    net,
     npm::{Dependency, DependencyTree},
     package::PackageMetadata,
+    pool::Pool,
     progress::{log_progress, log_verbose, log_warning},
     scoped_path::scoped_join,
-    util::{retry, VersionSpecifier, CLIENT, CLIENT_LIMIT},
+    util::{retry, VersionSpecifier},
 };
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
@@ -65,8 +64,9 @@ pub fn tree_size(trees: &FxHashMap<CompactString, DependencyTree>) -> usize {
             .sum::<usize>()
 }
 
+/// Fetch one package's tarball into the store, once.
 #[tracing::instrument]
-async fn download_package(dep: &Dependency) -> Result<()> {
+fn download_package(dep: &Dependency) -> Result<()> {
     let target_path = scoped_join(".xmas/store", dep.id())?;
 
     create_dir_all(&target_path)?;
@@ -76,50 +76,20 @@ async fn download_package(dep: &Dependency) -> Result<()> {
         return Ok(());
     }
 
-    static S: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(CLIENT_LIMIT));
-    let permit = S.acquire().await.unwrap();
-
     log_verbose(&format!("Downloading {}@{}", dep.name, dep.version));
 
-    let registry_auth = read_config()
-        .await?
+    let registry_auth = read_config()?
         .registry
         .into_iter()
         .find(|x| dep.dist.tarball.starts_with(&x.url))
         .and_then(|x| x.auth);
 
-    let mut res = CLIENT
-        .get(&*dep.dist.tarball)
-        .pipe(|x| client_auth(x, registry_auth.as_ref()))?
-        .send()
-        .await?
-        .error_for_status()?
-        .bytes_stream()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e));
+    // A tarball is small enough to hold whole: the archive is then unpacked straight from
+    // memory, which is one read and no temporary file.
+    let tarball = retry(|| net::get(&dep.dist.tarball, registry_auth.as_ref()))?;
 
-    let res = {
-        let (tx, rx) = async_channel::unbounded();
-        tokio::spawn(async move {
-            while let Some(buf) = res.next().await {
-                if tx.send(buf).await.is_err() {
-                    break;
-                }
-            }
-            drop(permit);
-        });
-        rx.into_stream()
-    };
-
-    let reader = StreamReader::new(res);
-    let reader = GzipDecoder::new(reader);
-    let reader = Box::pin(reader);
-
-    let mut archive = Archive::new(reader);
-
-    archive
-        .unpack(&target_path)
-        .await
-        .map_err(|e| eyre!("{e:?}"))?;
+    let mut archive = Archive::new(GzDecoder::new(&tarball[..]));
+    archive.unpack(&target_path).map_err(|e| eyre!("{e:?}"))?;
 
     File::create(target_path.join("_complete"))?;
 
@@ -128,14 +98,13 @@ async fn download_package(dep: &Dependency) -> Result<()> {
     Ok(())
 }
 
-pub async fn download_package_shared(dep: Dependency) -> Result<()> {
+/// The same download, shared: a package two branches of the tree need is fetched once.
+pub fn download_package_shared(dep: Dependency) -> Result<()> {
     static CACHE: LazyLock<Cache<Dependency, Result<(), Arc<Report>>>> = LazyLock::new(|| {
-        Cache::new(|key: Dependency| async move {
-            retry(|| download_package(&key)).await.map_err(Arc::new)
-        })
+        Cache::new(|key: &Dependency| retry(|| download_package(key)).map_err(Arc::new))
     });
 
-    CACHE.get(dep).await.map_err(Report::msg)
+    CACHE.get(dep).map_err(Report::msg)
 }
 
 fn hardlink_dir(src: PathBuf, dst: PathBuf) -> Result<()> {
@@ -165,8 +134,8 @@ fn get_package_src(src: &Path) -> Result<PathBuf> {
 }
 
 #[tracing::instrument]
-pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Result<()> {
-    download_package_shared(dep.clone()).await?;
+pub fn install_package(prefix: &[CompactString], dep: &Dependency) -> Result<()> {
+    download_package_shared(dep.clone())?;
 
     let mut target_path = PathBuf::new();
 
@@ -203,50 +172,42 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
     Ok(())
 }
 
-fn warmup_dep_tree(dep: &DependencyTree) {
-    tokio::spawn(download_package_shared(dep.root.clone()));
-    for child in dep.children.values() {
-        warmup_dep_tree(child);
+/// Start every download in the tree now, so the store fills while the installs run.
+fn warmup_dep_tree(pool: &Pool, tree: &DependencyTree) {
+    let root = tree.root.clone();
+    pool.spawn(move |_| download_package_shared(root));
+    for child in tree.children.values() {
+        warmup_dep_tree(pool, child);
     }
 }
 
-pub async fn execute_plan(plan: Plan) -> Result<()> {
-    let (send, recv) = async_channel::unbounded();
+/// Download and install every package in the plan.
+///
+/// One job per package: it installs its own package, then queues a job for each child. The pool
+/// decides how many of those run at once, so a wide tree is wide, not deep.
+pub fn execute_plan(plan: Plan) -> Result<()> {
+    fn queue_install(pool: &Pool, tree: DependencyTree, prefix: Vec<CompactString>) {
+        pool.spawn(move |pool| {
+            install_package(&prefix, &tree.root)?;
 
-    fn queue_install(
-        send: async_channel::Sender<JoinHandle<Result<()>>>,
-        tree: DependencyTree,
-        prefix: Vec<CompactString>,
-    ) -> Result<()> {
-        send.clone()
-            .try_send(tokio::spawn(async move {
-                install_package(&prefix, &tree.root).await?;
+            for (_, dep) in tree.children {
+                let mut prefix = prefix.clone();
+                prefix.push(tree.root.name.clone());
+                queue_install(pool, dep, prefix);
+            }
 
-                for (_, dep) in tree.children {
-                    let mut prefix = prefix.clone();
-                    prefix.push(tree.root.name.clone());
-                    queue_install(send.clone(), dep, prefix)?;
-                }
-
-                Result::Ok(())
-            }))
-            .map_err(|_| eyre!("could not queue an install task"))?;
-
-        Ok(())
+            Result::Ok(())
+        });
     }
+
+    let pool = Pool::new(Pool::workers());
 
     for (_, tree) in plan.trees.into_iter() {
-        warmup_dep_tree(&tree);
-        queue_install(send.clone(), tree, vec![])?;
+        warmup_dep_tree(&pool, &tree);
+        queue_install(&pool, tree, vec![]);
     }
 
-    drop(send);
-
-    while let Ok(x) = recv.recv().await {
-        x.await??;
-    }
-
-    Ok(())
+    pool.run()
 }
 
 pub(crate) fn symlink(target: &str, path: &str, type_value: Option<String>) -> io::Result<()> {
@@ -277,7 +238,7 @@ pub(crate) fn symlink(target: &str, path: &str, type_value: Option<String>) -> i
     }
 }
 
-pub async fn setup_bins(plan: &Plan) -> Result<()> {
+pub fn setup_bins(plan: &Plan) -> Result<()> {
     create_dir_all("node_modules/.bin")?;
 
     for tree in plan.trees.values() {
@@ -324,7 +285,7 @@ pub async fn setup_bins(plan: &Plan) -> Result<()> {
                     }
                 }
 
-                if read_config().await?.disallow_install_scripts {
+                if read_config()?.disallow_install_scripts {
                     log_warning(
                         &format!("Package {} may require install scripts; consider disabling `disallow_install_scripts`", dep.id())
                     );

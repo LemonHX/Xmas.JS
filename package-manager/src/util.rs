@@ -2,37 +2,24 @@ use color_eyre::eyre::{Context, Result};
 use color_eyre::Report;
 use compact_str::{CompactString, ToCompactString};
 use node_semver::{Range, Version};
-use reqwest::{Client, ClientBuilder, Url};
 use serde::de::DeserializeOwned;
 use serde::{de::Error, Deserialize, Serialize};
 use serde_json::Value;
-use std::future::Future;
+use std::fs::{read_to_string, File};
 use std::io::ErrorKind;
+use std::io::Write;
 use std::path::Path;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use std::{
     env::consts::{ARCH, OS},
     fmt::Display,
 };
-use tokio::fs::{read_to_string, File};
-use tokio::io::AsyncWriteExt;
 use tracing::instrument;
+use url::Url;
 
 use crate::package::PackageMetadata;
 use crate::progress::log_warning;
 use crate::resolve::{Graph, Lockfile};
-
-pub const CLIENT_LIMIT: usize = 100;
-
-pub static CLIENT: LazyLock<Client> = LazyLock::new(Client::new);
-pub static CLIENT_Z: LazyLock<Client> = LazyLock::new(|| {
-    ClientBuilder::new()
-        .brotli(true)
-        .gzip(true)
-        .deflate(true)
-        .build()
-        .unwrap()
-});
 
 pub fn decode_json<T: DeserializeOwned>(
     x: &[u8],
@@ -133,10 +120,10 @@ pub fn get_node_cpu() -> &'static str {
 
 const RETRY_LIMIT: usize = 3;
 
-pub async fn retry<T, Fut: Future<Output = Result<T>>>(mut f: impl FnMut() -> Fut) -> Result<T> {
+pub fn retry<T>(mut f: impl FnMut() -> Result<T>) -> Result<T> {
     let mut last = None;
     for _ in 0..RETRY_LIMIT {
-        match f().await {
+        match f() {
             Ok(x) => return Ok(x),
             Err(e) => {
                 log_warning(&format!("Retrying {e}"));
@@ -147,12 +134,12 @@ pub async fn retry<T, Fut: Future<Output = Result<T>>>(mut f: impl FnMut() -> Fu
     Err(last.unwrap()).wrap_err("Failed all retries")
 }
 
-pub async fn read_package() -> Result<PackageMetadata> {
-    read_json("package.json").await
+pub fn read_package() -> Result<PackageMetadata> {
+    read_json("package.json")
 }
 
-pub async fn read_package_or_default<T: DeserializeOwned>() -> Result<T> {
-    let s = match read_to_string("package.json").await {
+pub fn read_package_or_default<T: DeserializeOwned>() -> Result<T> {
+    let s = match read_to_string("package.json") {
         Ok(s) => s,
         Err(e) if e.kind() == ErrorKind::NotFound => "{}".into(),
         r => r?,
@@ -160,28 +147,27 @@ pub async fn read_package_or_default<T: DeserializeOwned>() -> Result<T> {
     Ok(serde_json::from_str(&s)?)
 }
 
-pub async fn save_package(package: &Value) -> Result<()> {
-    write_json("package.json", package).await
+pub fn save_package(package: &Value) -> Result<()> {
+    write_json("package.json", package)
 }
 
 #[instrument]
-pub async fn read_json<T: DeserializeOwned>(path: impl AsRef<Path> + std::fmt::Debug) -> Result<T> {
-    Ok(serde_json::from_str(&read_to_string(path).await?)?)
+pub fn read_json<T: DeserializeOwned>(path: impl AsRef<Path> + std::fmt::Debug) -> Result<T> {
+    Ok(serde_json::from_str(&read_to_string(path)?)?)
 }
 
-pub async fn write_json<T: Serialize>(path: impl AsRef<Path>, data: T) -> Result<()> {
-    let mut file = File::create(path).await?;
+pub fn write_json<T: Serialize>(path: impl AsRef<Path>, data: T) -> Result<()> {
+    let mut file = File::create(path)?;
 
-    file.write_all(serde_json::to_string_pretty(&data)?.as_bytes())
-        .await?;
+    file.write_all(serde_json::to_string_pretty(&data)?.as_bytes())?;
 
-    file.flush().await?;
+    file.flush()?;
 
     Ok(())
 }
 
-pub async fn load_graph_from_lockfile() -> Graph {
-    let lockfile: Lockfile = read_json("xmas.lock").await.unwrap_or_default();
+pub fn load_graph_from_lockfile() -> Graph {
+    let lockfile: Lockfile = read_json("xmas.lock").unwrap_or_default();
     lockfile.into_graph()
 }
 

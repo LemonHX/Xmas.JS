@@ -2,7 +2,6 @@
 
 use color_eyre::eyre::{eyre, ContextCompat, Result};
 use compact_str::ToCompactString;
-use deno_task_shell::KillSignal;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use serde_json::{Map, Value};
@@ -10,7 +9,7 @@ use std::collections::HashMap;
 use std::env::{current_dir, current_exe, set_current_dir, set_var, temp_dir};
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
-use tokio::fs::create_dir;
+use std::process::Command;
 use which::which;
 
 use crate::commands::add::add_packages;
@@ -19,22 +18,22 @@ use crate::progress::log_verbose;
 use crate::util::save_package;
 
 /// Execute the exec command.
-pub async fn cmd_exec(args: &crate::Args, exe: &OsString, cmd_args: &[OsString]) -> Result<()> {
-    install(args).await?;
+pub fn cmd_exec(args: &crate::Args, exe: &OsString, cmd_args: &[OsString]) -> Result<()> {
+    install(args)?;
     join_paths()?;
 
     exec_with_args(exe.as_ref(), cmd_args)
 }
 
 /// Execute the download-and-exec (x) command.
-pub async fn cmd_download_and_exec(
+pub fn cmd_download_and_exec(
     args: &crate::Args,
     name: &OsString,
     cmd_args: &[OsString],
 ) -> Result<()> {
     if let Err(e) = which(name) {
         log_verbose(&e.to_string());
-        install_bin_temp(args, name.to_str().wrap_err("package name invalid")?).await?;
+        install_bin_temp(args, name.to_str().wrap_err("package name invalid")?)?;
     }
     exec_with_args(name.as_ref(), cmd_args)
 }
@@ -58,7 +57,7 @@ pub fn exec_with_args(exe: &OsStr, args: &[OsString]) -> Result<()> {
 }
 
 /// Install a binary package to a temporary directory.
-pub async fn install_bin_temp(args: &crate::Args, package_name: &str) -> Result<()> {
+pub fn install_bin_temp(args: &crate::Args, package_name: &str) -> Result<()> {
     let orig_dir = current_dir()?;
 
     let dir_name: String = rand::thread_rng()
@@ -69,13 +68,13 @@ pub async fn install_bin_temp(args: &crate::Args, package_name: &str) -> Result<
 
     let mut temp_dir = temp_dir();
     temp_dir.push(dir_name);
-    create_dir(&temp_dir).await?;
+    std::fs::create_dir(&temp_dir)?;
     set_current_dir(&temp_dir)?;
     log_verbose(&format!("Now in {temp_dir:?}"));
 
-    save_package(&Value::Object(Map::new())).await?;
-    add_packages(&[package_name.to_compact_string()], false, false).await?;
-    install(args).await?;
+    save_package(&Value::Object(Map::new()))?;
+    add_packages(&[package_name.to_compact_string()], false, false)?;
+    install(args)?;
     set_var("npm_config_user_agent", "yarn/1.22.19 npm/none xmas/0.0.0");
     let current_exe = current_exe().map(|p| p.to_string_lossy().to_string())?;
 
@@ -102,30 +101,48 @@ pub async fn install_bin_temp(args: &crate::Args, package_name: &str) -> Result<
     Ok(())
 }
 
-pub async fn shell(
-    text: &str,
-    cwd: PathBuf,
-    new_env: HashMap<OsString, OsString>,
-    kill_signal: KillSignal,
-) -> Result<i32> {
-    // parse
-    let list =
-        deno_task_shell::parser::parse(&text).map_err(|e| eyre!("Shell parse error: {}", e))?;
+/// Run one script the way a shell would.
+///
+/// The platform's own shell does the parsing: sh on unix, cmd on windows. That is what npm does,
+/// so a script gets the shell its author tested against instead of a reimplementation with gaps
+/// of its own. The child inherits this process's terminal, so a prompt or a colour still works,
+/// and a ctrl-C reaches it the way it reaches anything else in the foreground.
+pub fn shell(text: &str, cwd: PathBuf, new_env: HashMap<OsString, OsString>) -> Result<i32> {
+    #[cfg(windows)]
+    let mut command = {
+        let mut command = Command::new("cmd");
+        command.arg("/C").arg(text);
+        command
+    };
+    #[cfg(not(windows))]
+    let mut command = {
+        let mut command = Command::new("/bin/sh");
+        command.arg("-c").arg(text);
+        command
+    };
 
-    // execute
-    let mut env_vars = std::env::vars_os().collect::<HashMap<_, _>>();
-    for (k, v) in new_env {
-        let _ = env_vars.insert(k, v);
+    command.current_dir(cwd);
+    for (name, value) in new_env {
+        command.env(name, value);
     }
 
-    let exit_code = deno_task_shell::execute(
-        list,
-        env_vars,
-        cwd,
-        Default::default(), // custom commands
-        kill_signal,
-    )
-    .await;
+    let status = command.status()?;
 
-    Ok(exit_code)
+    Ok(exit_code(status))
+}
+
+/// The code a script ended with, in the shell's own convention: 128 plus the signal that
+/// stopped it when a signal did.
+fn exit_code(status: std::process::ExitStatus) -> i32 {
+    if let Some(code) = status.code() {
+        return code;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return 128 + signal;
+        }
+    }
+    1
 }
