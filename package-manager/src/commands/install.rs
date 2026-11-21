@@ -114,7 +114,7 @@ fn exec_install_scripts_in(stack: &[CompactString]) -> Result<()> {
     Ok(())
 }
 
-fn exec_install_scripts(tree: &DependencyTree, initial_stack: &[CompactString]) -> Result<()> {
+pub fn exec_install_scripts(tree: &DependencyTree, initial_stack: &[CompactString]) -> Result<()> {
     let mut work_stack: Vec<(&DependencyTree, Vec<CompactString>)> =
         vec![(tree, initial_stack.to_vec())];
 

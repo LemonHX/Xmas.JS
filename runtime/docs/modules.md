@@ -77,9 +77,33 @@ cannot find package 'nowhere' from /srv/app.ts (no node_modules with it)
 All three are thrown while linking, so nothing of the app runs. `runtime/docs/server.md` says how a
 start that fails is reported.
 
-An unused import is dropped before anything resolves it, so an app whose only reference to a module
-is an import nobody reads starts fine. A side-effect import (`import './setup.ts'`) is not dropped:
-it runs.
+Every import is resolved, including one whose binding nothing reads: a side-effect import is a
+module that has to run, and an unread binding is still a package to find. (TypeScript's own default
+erases those, which in a runtime means a top level that silently never runs; only `import type` is
+removed here.)
+
+## A package nobody installed
+
+A bare specifier that resolves nowhere is not an error at first: `import` is asking for that
+package, so the loader asks the package manager for it, the package appears in `node_modules`, and
+the specifier is resolved a second time. The two halves are the same process — the package manager
+is a library crate the runtime depends on, not a CLI it shells out to.
+
+```
+$ xmas serve app.ts
+xmas: installing nanoid for 'nanoid'
+listening on http://0.0.0.0:3000 with 8 workers
+```
+
+What that does and does not do:
+
+- The package and its dependencies are installed into the nearest `package.json` above the file that
+  imported it, with install scripts run, exactly as `xmas install` would.
+- `package.json` is **not** changed. An import is not a decision about what the project depends on;
+  when it should be recorded, `xmas add` is the command for that.
+- One attempt per package per realm: a package that fails to install is not retried for every file
+  that mentions it, and the failure that surfaces is the install's own reason.
+- The second load costs a directory lookup, and nothing leaves the machine.
 
 ## What this does not do
 

@@ -7,6 +7,9 @@ publish = false
 description = "JavaScript engine embedding layer: realm driver, host services and compile"
 
 [dependencies]
+# The package manager is a library as well as a CLI: an import that names a package nobody
+# installed asks it for one (src/deps.rs).
+xmas-package-manager = { workspace = true }
 quickjs-oxide = { path = "../../quickjs-oxide" }
 quickjs-oxide-host = { path = "../../quickjs-oxide/adapters/native" }
 smol = "2"

@@ -87,6 +87,12 @@ impl Harness {
         harness
     }
 
+    /// Import a module from disk through the real loader: crate::resolve, node_modules, and the
+    /// package manager behind a specifier that is not installed.
+    pub fn import_file(&mut self, path: impl AsRef<std::path::Path>) -> Result<Value, String> {
+        crate::entry::evaluate_file(&mut self.driver, path.as_ref())
+    }
+
     pub fn driver(&mut self) -> &mut Driver {
         &mut self.driver
     }

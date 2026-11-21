@@ -22,14 +22,12 @@ use crate::modules::server::serve;
 /// Serve the module at path on addr, with one realm per worker.
 pub fn serve_app(addr: &str, workers: usize, entry: &Path) -> Result<Server, String> {
     let path = entry.to_path_buf();
-    let source = std::fs::read_to_string(&path)
-        .map_err(|error| format!("{}: {error}", path.display()))?;
     let addr = addr.to_owned();
 
     let listen = addr.clone();
     serve(&addr, workers, move |_index| {
         let mut driver = build(&listen)?;
-        let namespace = evaluate(&mut driver, &path, &source)?;
+        let namespace = evaluate_file(&mut driver, &path)?;
         entry_point(&mut driver, namespace)?;
         Ok(Rc::new(RefCell::new(driver)))
     })
@@ -54,21 +52,35 @@ fn build(addr: &str) -> Result<Driver, String> {
     Ok(driver)
 }
 
+/// Read, compile and run the module at a path, and hand back its namespace.
+///
+/// This is the real loader: imports inside it are resolved against the file that wrote them, and a
+/// bare specifier nobody installed asks the package manager for the package. Exported so that a test
+/// (and a future `xmas <file>`) runs a module the way the server runs its entry.
+pub fn evaluate_file(driver: &mut Driver, path: &Path) -> Result<Value, String> {
+    let source =
+        std::fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    evaluate(driver, path, &source)
+}
+
 /// Compile the entry, run it, and hand back its namespace.
 ///
 /// execute_module's return value cannot be read for exported names, so a bootstrap module imports
 /// the namespace onto the global object and the entry is evaluated as part of that import.
 fn evaluate(driver: &mut Driver, path: &Path, source: &str) -> Result<Value, String> {
     let name = specifier(path)?;
-    let module = driver
+    // Compiling the entry into this realm's table is the point: the bootstrap's import then reads it
+    // from there, so the file is read and compiled once.
+    driver
         .host
         .modules
         .load(&name, &name, source)
         .map_err(|error| format!("{name}: {error}"))?;
     let context = driver.context();
-    context
-        .compile_module_with_filename(&module.code, &name)
-        .map_err(|error| format!("{name}: {error}"))?;
+    // Compiling the entry here would put its record in the engine's module table without its
+    // requests resolved — the engine resolves a module's imports when it creates the record, and a
+    // record that already exists is handed back as it is. So the entry is compiled once, by the
+    // bootstrap's import below, which is the path that resolves what it imports.
     let bootstrap = format!("import * as ns from '{name}'; globalThis.__xmas_entry = ns;");
     let bytecode = context
         .compile_module_with_filename(&bootstrap, "xmas:entry")

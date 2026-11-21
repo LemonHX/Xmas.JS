@@ -3,6 +3,7 @@
 //! This library provides the core functionality for managing npm packages,
 //! resolving dependencies, and executing package scripts.
 
+pub mod autoload;
 pub mod cache;
 pub mod cli;
 pub mod commands;

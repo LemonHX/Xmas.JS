@@ -121,11 +121,17 @@ impl Modules {
 /// native module or a test install a source under a plain name and import it as that name.
 pub struct Loader {
     modules: Modules,
+    /// Packages an import already asked the package manager for. One realm asks once: a second
+    /// request for the same name would only fail the same way.
+    asked: std::collections::HashSet<String>,
 }
 
 impl Loader {
     pub fn new(modules: Modules) -> Self {
-        Loader { modules }
+        Loader {
+            modules,
+            asked: std::collections::HashSet::new(),
+        }
     }
 }
 
@@ -142,7 +148,30 @@ impl ModuleLoader for Loader {
         }
         match crate::resolve::resolve(referrer, specifier) {
             Ok(path) => Ok(path),
-            Err(reason) => Err(native(scope, &reason)),
+            // Nothing on disk. If the specifier names a package, the import is a request for it:
+            // install it and resolve again. Anything else keeps the first reason, which says where
+            // the file was looked for.
+            Err(reason) => {
+                let package = crate::deps::package_of(specifier);
+                let wanted = package
+                    .as_ref()
+                    .map(|package| self.asked.insert(package.clone()))
+                    .unwrap_or(false);
+                if !wanted {
+                    return Err(native(scope, &reason));
+                }
+                match crate::deps::fetch(specifier, referrer) {
+                    crate::deps::Outcome::Installed => match crate::resolve::resolve(referrer, specifier)
+                    {
+                        Ok(path) => Ok(path),
+                        Err(reason) => Err(native(scope, &reason)),
+                    },
+                    crate::deps::Outcome::NotAPackage => Err(native(scope, &reason)),
+                    crate::deps::Outcome::Failed(why) => {
+                        Err(native(scope, &format!("{why}\n(the import was '{specifier}' from {referrer}, and {reason})")))
+                    }
+                }
+            }
         }
     }
 

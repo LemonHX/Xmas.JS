@@ -1,4 +1,5 @@
 pub mod compile;
+pub mod deps;
 pub mod driver;
 pub mod entry;
 pub mod host;

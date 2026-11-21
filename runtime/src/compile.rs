@@ -12,7 +12,7 @@ use oxc::codegen::{Codegen, CodegenOptions, CommentOptions};
 use oxc::parser::{ParseOptions, Parser};
 use oxc::semantic::SemanticBuilder;
 use oxc::span::SourceType;
-use oxc::transformer::{JsxOptions, JsxRuntime, TransformOptions, Transformer};
+use oxc::transformer::{JsxOptions, JsxRuntime, TransformOptions, Transformer, TypeScriptOptions};
 
 /// There should not be even one compilation on the request path. This counter is used to prove that.
 pub static COMPILES: AtomicUsize = AtomicUsize::new(0);
@@ -58,6 +58,14 @@ fn transform_options() -> TransformOptions {
             pragma: Some("h".to_owned()),
             pragma_frag: Some("Fragment".to_owned()),
             ..JsxOptions::default()
+        },
+        typescript: TypeScriptOptions {
+            // Keep every import, including one whose binding nothing reads: a side-effect import
+            // is a module that has to run, and an unused binding is still a module to resolve and
+            // load. TypeScript erases those by default; in a runtime that means a package nobody
+            // looks for and a top level that never runs, so only "import type" is removed here.
+            only_remove_type_imports: true,
+            ..TypeScriptOptions::default()
         },
         ..TransformOptions::default()
     }
