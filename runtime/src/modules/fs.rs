@@ -7,6 +7,7 @@
 //! All byte input/output goes through ArrayBuffer (modules::bytes), no longer detouring through base64:
 //! An 8MB file encoded as base64 takes up three times as much on the heap.
 
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
@@ -21,6 +22,7 @@ use crate::host::Payload;
 use crate::host::pending::{Job, Pending, Reply};
 use crate::modules::bytes;
 use crate::modules::quote;
+use crate::modules::throw;
 
 const PRELUDE: &str = include_str!("../../js/fs.js");
 
@@ -290,6 +292,149 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             .map_err(|error| format!("__fs_stat: {error}"))?;
     }
 
+
+    // ---------- the synchronous half ----------
+    //
+    // Node's *Sync calls, and what zx's helpers are built on (glob.sync, tmpfile). They block the
+    // realm thread, which is the whole point of them: a script that wants a file now should not have
+    // to become a state machine to get one.
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_readdir_sync",
+                1,
+                move |scope: &mut Scope<'_>, path: String| -> Result<Value, RuntimeError> {
+                    let entries = match std::fs::read_dir(&path) {
+                        Ok(entries) => entries,
+                        Err(error) => return Err(throw(scope, &describe(&error))),
+                    };
+                    let mut out = String::from("[");
+                    let mut first = true;
+                    for entry in entries {
+                        let entry = match entry {
+                            Ok(entry) => entry,
+                            Err(error) => return Err(throw(scope, &describe(&error))),
+                        };
+                        let name = entry.file_name().to_string_lossy().into_owned();
+                        let kind = entry.file_type().ok();
+                        let is_dir = kind.map(|kind| kind.is_dir()).unwrap_or(false);
+                        let is_link = kind.map(|kind| kind.is_symlink()).unwrap_or(false);
+                        if !first {
+                            out.push(',');
+                        }
+                        first = false;
+                        out.push_str(&format!(
+                            "{{\"name\":{},\"dir\":{},\"link\":{}}}",
+                            quote(&name),
+                            is_dir,
+                            is_link
+                        ));
+                    }
+                    out.push(']');
+                    Ok(text_value(&out))
+                },
+            )
+            .map_err(|error| format!("__fs_readdir_sync: {error}"))?;
+    }
+
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_stat_sync",
+                1,
+                move |scope: &mut Scope<'_>, path: String| -> Result<Value, RuntimeError> {
+                    let meta = match std::fs::symlink_metadata(&path) {
+                        Ok(meta) => meta,
+                        Err(error) => return Err(throw(scope, &describe(&error))),
+                    };
+                    let mtime = meta
+                        .modified()
+                        .ok()
+                        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                        .map(|since| since.as_secs_f64() * 1000.0)
+                        .unwrap_or(0.0);
+                    Ok(text_value(&format!(
+                        "{{\"size\":{},\"dir\":{},\"link\":{},\"mtimeMs\":{}}}",
+                        meta.len(),
+                        meta.is_dir(),
+                        meta.file_type().is_symlink(),
+                        mtime
+                    )))
+                },
+            )
+            .map_err(|error| format!("__fs_stat_sync: {error}"))?;
+    }
+
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_read_file_sync",
+                1,
+                move |scope: &mut Scope<'_>, path: String| -> Result<Value, RuntimeError> {
+                    match std::fs::read_to_string(&path) {
+                        Ok(text) => Ok(text_value(&text)),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_read_file_sync: {error}"))?;
+    }
+
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_mkdir_sync",
+                2,
+                move |scope: &mut Scope<'_>, path: String, recursive: bool| -> Result<Value, RuntimeError> {
+                    let outcome = if recursive {
+                        std::fs::create_dir_all(&path)
+                    } else {
+                        std::fs::create_dir(&path)
+                    };
+                    match outcome {
+                        Ok(()) => Ok(Value::Undefined),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_mkdir_sync: {error}"))?;
+    }
+
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_write_file_sync",
+                3,
+                move |scope: &mut Scope<'_>, path: String, data: Value, append: bool| -> Result<Value, RuntimeError> {
+                    let bytes = bytes::take(scope, &data)?;
+                    let outcome = if append {
+                        std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(&path)
+                            .and_then(|mut file| file.write_all(&bytes))
+                    } else {
+                        std::fs::write(&path, &bytes)
+                    };
+                    match outcome {
+                        Ok(()) => Ok(Value::Undefined),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_write_file_sync: {error}"))?;
+    }
+
     driver
         .eval(PRELUDE)
         .map_err(|error| format!("fs prelude: {error}"))?;
@@ -390,6 +535,14 @@ fn split_code(message: &str) -> (&str, String) {
             (code, text.to_string())
         }
         _ => ("EIO", message.to_string()),
+    }
+}
+
+/// A host function's answer as a JS string: a report, or the JSON the prelude reads.
+fn text_value(value: &str) -> Value {
+    match JsString::try_from_utf8(value) {
+        Ok(value) => Value::String(value),
+        Err(_) => Value::Undefined,
     }
 }
 
