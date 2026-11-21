@@ -9,6 +9,7 @@ pub mod assert;
 pub mod async_hooks;
 pub mod buffer;
 pub mod bytes;
+pub mod child_process;
 pub mod console;
 pub mod crypto;
 pub mod event;
@@ -71,6 +72,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     websocket::install(driver)?;
     // $ runs a command through the platform shell, and needs nothing above it.
     exec::install(driver)?;
+    // child_process builds Readables and Writables out of the same host, so it comes after stream
+    child_process::install(driver)?;
     Ok(())
 }
 

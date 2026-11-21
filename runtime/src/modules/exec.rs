@@ -57,7 +57,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
                         Err(message) => return Err(throw(scope, &message)),
                     };
                     let cwd = if cwd.is_empty() { None } else { Some(cwd.as_str()) };
-                    match exec::spawn(&command, cwd, &env) {
+                    let recipe = exec::Recipe::Shell(&command);
+                    match exec::spawn(recipe, cwd, &env, exec::Stdin::Null) {
                         Ok(running) => {
                             state.children.borrow_mut().insert(id as u64, running);
                             Ok(Value::Undefined)
