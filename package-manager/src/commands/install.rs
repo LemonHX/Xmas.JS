@@ -36,7 +36,7 @@ pub fn prepare_plan(args: &Args, package: &PackageMetadata) -> Result<Plan> {
     let mut graph = load_graph_from_lockfile();
 
     if !args.immutable {
-        graph.append(package.iter_all(), true)?;
+        smol::block_on(graph.append(package.iter_all(), true))?;
         write_json("xmas.lock", Lockfile::new(graph.clone()))?;
     }
 
@@ -146,7 +146,7 @@ pub fn install(args: &Args) -> Result<()> {
     if matches!(verify_installation(&package, &plan), Ok(true)) {
         log_verbose("Packages already installed")
     } else {
-        execute_plan(plan.clone())?;
+        smol::block_on(execute_plan(plan.clone()))?;
 
         finish_progress();
         PROGRESS_BAR.suspend(|| {

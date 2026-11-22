@@ -35,6 +35,7 @@ pub fn package_manager(args: &Args) -> Result<()> {
     }
     progress::set_verbose(args.verbose);
     execute_command(&args)?;
+    net::trace_report();
     PROGRESS_BAR.finish_and_clear();
     Ok(())
 }

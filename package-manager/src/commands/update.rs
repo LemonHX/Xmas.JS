@@ -25,7 +25,7 @@ pub fn cmd_update(args: &Args) -> Result<()> {
     let start = Instant::now();
 
     let mut graph = Graph::default();
-    graph.append(package.iter_all(), false)?;
+    smol::block_on(graph.append(package.iter_all(), false))?;
     write_json("xmas.lock", Lockfile::new(graph.clone()))?;
 
     PROGRESS_BAR.suspend(|| {

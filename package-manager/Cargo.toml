@@ -15,6 +15,11 @@ rustls = { version = "0.23", default-features = false, features = ["std", "tls12
 rustls-rustcrypto = { version = "0.1.0-pre.0", default-features = false, features = ["std", "tls12"] }
 webpki-roots = "1"
 smol = "2"
+async-lock = "3"
+# The one platform call this crate makes: cloning a package directory. See `place_dir`.
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+
 # Tarballs: gzip and tar, read in memory.
 flate2 = { version = "1.1.11", default-features = false, features = ["rust_backend"] }
 tar = "0.4"

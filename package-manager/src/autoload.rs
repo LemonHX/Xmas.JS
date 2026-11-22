@@ -42,7 +42,7 @@ pub fn install_package(root: &Path, name: &str) -> Result<()> {
 
 fn install_here(name: &str) -> Result<()> {
     init_storage()?;
-    let response = fetch_package(name)?;
+    let response = smol::block_on(fetch_package(name))?;
     let latest = response
         .dist_tags
         .get("latest")
@@ -56,7 +56,7 @@ fn install_here(name: &str) -> Result<()> {
     };
 
     let mut graph = load_graph_from_lockfile();
-    graph.append(std::iter::once(spec.clone()), true)?;
+    smol::block_on(graph.append(std::iter::once(spec.clone()), true))?;
     let trees = graph.build_trees(std::slice::from_ref(&spec))?;
     let plan = Plan::new(
         trees
@@ -65,7 +65,7 @@ fn install_here(name: &str) -> Result<()> {
             .collect(),
     );
 
-    execute_plan(plan.clone())?;
+    smol::block_on(execute_plan(plan.clone()))?;
     setup_bins(&plan)?;
     for tree in plan.trees.values() {
         let stack = vec![tree.root.name.to_compact_string()];

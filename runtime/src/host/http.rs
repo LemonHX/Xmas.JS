@@ -174,9 +174,13 @@ pub async fn send(
         }
 
         let encoding = Encoding::of(&response_headers);
+        // Trillium caps a received body at ten megabytes by default, which is a host
+        // application's idea of a body and not a browser's: `fetch` is allowed to read a body of
+        // any size, and a caller that wants a limit can check `content-length` itself.
         let body = conn
             .take_response_body()
-            .ok_or_else(|| "the response has no body".to_string())?;
+            .ok_or_else(|| "the response has no body".to_string())?
+            .with_max_len(u64::MAX);
 
         return Ok(Response {
             status: code,

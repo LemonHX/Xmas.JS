@@ -14,6 +14,8 @@ use std::{
     path::MAIN_SEPARATOR,
     sync::{Arc, LazyLock},
 };
+use std::future::Future;
+use std::pin::Pin;
 use std::{fmt::Debug, io::Read};
 
 use flate2::read::GzDecoder;
@@ -25,7 +27,7 @@ use crate::{
     net,
     package::{Dist, PackageInfo, PackageMetadata, PackageSpecifier},
     progress::{log_progress, log_verbose},
-    util::{decode_json, retry, ArcResult, VersionSpecifier},
+    util::{decode_json, retry_async, ArcResult, VersionSpecifier},
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -82,35 +84,54 @@ fn select_registry(name: &str) -> Result<Registry> {
 }
 
 #[tracing::instrument]
-pub fn fetch_package(name: &str) -> Result<Arc<RegistryResponse>> {
-    #[tracing::instrument]
-    fn fetch_package(name: &str) -> Result<RegistryResponse> {
+pub async fn fetch_package(name: &str) -> Result<Arc<RegistryResponse>> {
+    async fn fetch_package(name: &str) -> Result<RegistryResponse> {
         let selected_registry = select_registry(name)?;
+        let url = format!("{}/{name}", selected_registry.url);
+        let auth = selected_registry.auth.map(Arc::new);
 
-        retry(|| {
-            let body = net::get(
-                &format!("{}/{name}", selected_registry.url),
-                selected_registry.auth.as_ref(),
-            )?;
-            decode_json(&body).map_err(|e| eyre!("[{name}] {e}"))
+        retry_async(|| {
+            let url = url.clone();
+            let auth = auth.clone();
+            async move {
+                let body = net::get(&url, auth.as_deref()).await?;
+                decode_json(&body).map_err(|e| eyre!("[{name}] {e}"))
+            }
         })
+        .await
     }
 
     static CACHE: LazyLock<Cache<CompactString, ArcResult<Arc<RegistryResponse>>>> =
         LazyLock::new(|| {
-            Cache::new(|key: &CompactString| fetch_package(key).map(Arc::new).map_err(Arc::new))
+            Cache::new(|key: CompactString| {
+                Box::pin(async move {
+                    fetch_package(&key).await.map(Arc::new).map_err(Arc::new)
+                })
+            })
         });
 
-    CACHE.get(name.to_compact_string()).map_err(Report::msg)
+    CACHE.get(name.to_compact_string()).await.map_err(Report::msg)
+}
+
+/// Resolve one requirement to the version and package a registry would install.
+///
+/// Boxed because an `npm:` aliased requirement resolves another requirement inside this one, and
+/// an async function that calls itself needs a heap between the two frames.
+pub fn fetch_versioned_package(
+    d: PackageSpecifier,
+) -> Pin<Box<dyn Future<Output = Result<(Version, Arc<PackageInfo>)>> + Send>> {
+    Box::pin(fetch_versioned_package_inner(d))
 }
 
 #[tracing::instrument]
-pub fn fetch_versioned_package(d: PackageSpecifier) -> Result<(Version, Arc<PackageInfo>)> {
+async fn fetch_versioned_package_inner(
+    d: PackageSpecifier,
+) -> Result<(Version, Arc<PackageInfo>)> {
     log_progress(&format!("Fetched {}", d.name.bright_blue()));
 
     match &d.version {
         VersionSpecifier::Other(tag) => {
-            let res = fetch_package(&d.name)?;
+            let res = fetch_package(&d.name).await?;
             let tag = res
                 .dist_tags
                 .get(tag)
@@ -128,7 +149,7 @@ pub fn fetch_versioned_package(d: PackageSpecifier) -> Result<(Version, Arc<Pack
             Ok((version, Arc::new(package.clone().info())))
         }
         VersionSpecifier::Range(_) => {
-            let res = fetch_package(&d.name)?;
+            let res = fetch_package(&d.name).await?;
             let (version, package) = res
                 .versions
                 .iter()
@@ -151,7 +172,7 @@ pub fn fetch_versioned_package(d: PackageSpecifier) -> Result<(Version, Arc<Pack
             ));
 
             // A tarball URL given as the version: the package's own package.json is inside it.
-            let tarball = net::get(url.as_str(), None)?;
+            let tarball = net::get(url.as_str(), None).await?;
             let mut archive = Archive::new(GzDecoder::new(&tarball[..]));
             let mut entries = archive.entries()?;
 
@@ -188,7 +209,7 @@ pub fn fetch_versioned_package(d: PackageSpecifier) -> Result<(Version, Arc<Pack
                     optional: d.optional,
                 };
 
-                let (inner_version, mut inner_pkg) = fetch_versioned_package(inner_req)?;
+                let (inner_version, mut inner_pkg) = fetch_versioned_package(inner_req).await?;
                 Arc::make_mut(&mut inner_pkg).name = d.name;
 
                 Ok((inner_version, inner_pkg))

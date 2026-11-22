@@ -31,7 +31,7 @@ impl Graph {
     /// map instead of fetched again, which is what makes a diamond in the graph cost one request.
     /// When download is set the tarball fetch starts as soon as the version is known, so the
     /// store fills while the rest of the graph is still being walked.
-    pub fn append(
+    pub async fn append(
         &mut self,
         remaining: impl Iterator<Item = PackageSpecifier>,
         download: bool,
@@ -55,8 +55,8 @@ impl Graph {
                 return Ok(());
             }
 
-            pool.spawn(move |pool| {
-                let (version, subpackage) = npm::fetch_versioned_package(req.clone())?;
+            pool.spawn(move |pool| async move {
+                let (version, subpackage) = npm::fetch_versioned_package(req.clone()).await?;
 
                 if download && subpackage.supported() {
                     let dep = Dependency {
@@ -66,7 +66,7 @@ impl Graph {
                         bins: subpackage.bins().into_iter().collect(),
                         scripts: subpackage.scripts.clone(),
                     };
-                    pool.spawn(move |_| download_package_shared(dep));
+                    pool.spawn(move |_| async move { download_package_shared(dep).await });
                 }
 
                 relations.insert(
@@ -78,7 +78,7 @@ impl Graph {
                 );
 
                 for child_req in subpackage.iter() {
-                    queue_resolve(pool, child_req, relations.clone(), seen.clone(), download)?;
+                    queue_resolve(&pool, child_req, relations.clone(), seen.clone(), download)?;
                 }
 
                 Ok(())
@@ -91,13 +91,13 @@ impl Graph {
             Arc::new(take(&mut self.relations).into_iter().collect());
 
         let seen = Arc::new(DashSet::new());
-        let pool = Pool::new(Pool::workers());
+        let pool = Pool::new();
 
         for req in remaining {
             queue_resolve(&pool, req, relations.clone(), seen.clone(), download)?;
         }
 
-        pool.run()?;
+        pool.run().await?;
 
         self.relations = relations
             .iter()

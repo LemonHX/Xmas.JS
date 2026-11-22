@@ -37,7 +37,7 @@ pub fn add_packages(names: &[CompactString], dev: bool, pin: bool) -> Result<()>
     PROGRESS_BAR.set_length(names.len() as u64);
 
     for name in names.iter() {
-        let res = fetch_package(name)?;
+        let res = smol::block_on(fetch_package(name))?;
         PROGRESS_BAR.inc(1);
         PROGRESS_BAR.set_message(format!("Resolved {name}"));
 

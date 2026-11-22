@@ -6,6 +6,7 @@ use serde::de::DeserializeOwned;
 use serde::{de::Error, Deserialize, Serialize};
 use serde_json::Value;
 use std::fs::{read_to_string, File};
+use std::future::Future;
 use std::io::ErrorKind;
 use std::io::Write;
 use std::path::Path;
@@ -120,10 +121,14 @@ pub fn get_node_cpu() -> &'static str {
 
 const RETRY_LIMIT: usize = 3;
 
-pub fn retry<T>(mut f: impl FnMut() -> Result<T>) -> Result<T> {
+pub async fn retry_async<T, F, Fut>(mut f: F) -> Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
     let mut last = None;
     for _ in 0..RETRY_LIMIT {
-        match f() {
+        match f().await {
             Ok(x) => return Ok(x),
             Err(e) => {
                 log_warning(&format!("Retrying {e}"));

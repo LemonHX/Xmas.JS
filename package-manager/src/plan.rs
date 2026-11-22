@@ -1,3 +1,4 @@
+use async_lock::Semaphore;
 use color_eyre::{
     eyre::{eyre, Result},
     Report,
@@ -25,7 +26,7 @@ use crate::{
     pool::Pool,
     progress::{log_progress, log_verbose, log_warning},
     scoped_path::scoped_join,
-    util::{retry, VersionSpecifier},
+    util::{retry_async, VersionSpecifier},
 };
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
@@ -64,9 +65,20 @@ pub fn tree_size(trees: &FxHashMap<CompactString, DependencyTree>) -> usize {
             .sum::<usize>()
 }
 
+/// Local work runs on blocking threads: unpacking and linking are CPU and disk, not sockets.
+///
+/// These permits are separate from the network ones (`net::IN_FLIGHT`) on purpose: a link that
+/// takes a core must never hold up a download, and a download must never wait behind a link.
+static LOCAL_PERMITS: LazyLock<Semaphore> = LazyLock::new(|| {
+    let cores = std::thread::available_parallelism()
+        .map(|count| count.get())
+        .unwrap_or(4);
+    Semaphore::new(cores.clamp(4, 32))
+});
+
 /// Fetch one package's tarball into the store, once.
 #[tracing::instrument]
-fn download_package(dep: &Dependency) -> Result<()> {
+async fn download_package(dep: Dependency) -> Result<()> {
     let target_path = scoped_join(".xmas/store", dep.id())?;
 
     create_dir_all(&target_path)?;
@@ -86,37 +98,131 @@ fn download_package(dep: &Dependency) -> Result<()> {
 
     // A tarball is small enough to hold whole: the archive is then unpacked straight from
     // memory, which is one read and no temporary file.
-    let tarball = retry(|| net::get(&dep.dist.tarball, registry_auth.as_ref()))?;
+    let url = dep.dist.tarball.clone();
+    let auth = registry_auth.map(Arc::new);
+    let tarball = retry_async(|| {
+        let url = url.clone();
+        let auth = auth.clone();
+        async move { net::get(&url, auth.as_deref()).await }
+    })
+    .await?;
 
-    let mut archive = Archive::new(GzDecoder::new(&tarball[..]));
-    archive.unpack(&target_path).map_err(|e| eyre!("{e:?}"))?;
-
-    File::create(target_path.join("_complete"))?;
+    // Decompressing and writing out a package is a core and a disk, so it goes to a blocking
+    // thread instead of standing on the one that drives the sockets.
+    let unpacked = target_path.clone();
+    let _permit = LOCAL_PERMITS.acquire().await;
+    smol::unblock(move || -> Result<()> {
+        let mut archive = Archive::new(GzDecoder::new(&tarball[..]));
+        archive
+            .unpack(&unpacked)
+            .map_err(|e| eyre!("unpacking into {}: {e:?}", unpacked.display()))?;
+        normalize_modes(&unpacked)?;
+        File::create(unpacked.join("_complete"))?;
+        Ok(())
+    })
+    .await?;
 
     log_progress(&format!("Downloaded {}", dep.id().bright_blue()));
 
     Ok(())
 }
 
+/// A tarball carries whatever modes its publisher last had, and a directory without a search bit
+/// cannot be walked at all: a published package with a `0666` directory in it makes its own files
+/// unreachable. The store is normalized to the two modes an install can use — `0755` for a
+/// directory, `0644` or `0755` for a file, depending on whether it was executable.
+#[cfg(unix)]
+fn normalize_modes(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let meta = std::fs::symlink_metadata(path)?;
+    if meta.is_symlink() {
+        return Ok(());
+    }
+
+    if meta.is_dir() {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))?;
+        for entry in std::fs::read_dir(path)? {
+            normalize_modes(&entry?.path())?;
+        }
+    } else {
+        let executable = meta.permissions().mode() & 0o111 != 0;
+        let mode = if executable { 0o755 } else { 0o644 };
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
+    }
+
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn normalize_modes(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
 /// The same download, shared: a package two branches of the tree need is fetched once.
-pub fn download_package_shared(dep: Dependency) -> Result<()> {
+pub async fn download_package_shared(dep: Dependency) -> Result<()> {
     static CACHE: LazyLock<Cache<Dependency, Result<(), Arc<Report>>>> = LazyLock::new(|| {
-        Cache::new(|key: &Dependency| retry(|| download_package(key)).map_err(Arc::new))
+        Cache::new(|key: Dependency| {
+            Box::pin(async move { download_package(key).await.map_err(Arc::new) })
+        })
     });
 
-    CACHE.get(dep).map_err(Report::msg)
+    CACHE.get(dep).await.map_err(Report::msg)
+}
+
+/// Put a package's files in `dst`.
+///
+/// On APFS the kernel clones a whole directory tree copy-on-write in one call: measured on this
+/// tree, 1257 packages and 38k files in one second, against eleven for a hard link per file. Every
+/// other filesystem gets the hard links, one syscall at a time. A clone shares blocks with the
+/// store rather than the inode, so a tool that rewrites a file in `node_modules` cannot reach back
+/// and change what the next install places.
+#[cfg(target_os = "macos")]
+fn place_dir(src: &Path, dst: &Path) -> Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    if let (Ok(from), Ok(to)) = (
+        CString::new(src.as_os_str().as_bytes()),
+        CString::new(dst.as_os_str().as_bytes()),
+    ) {
+        // SAFETY: both pointers are valid NUL-terminated strings that outlive the call and
+        // `clonefile` reads nothing else from this process.
+        if unsafe { libc::clonefile(from.as_ptr(), to.as_ptr(), 0) } == 0 {
+            return Ok(());
+        }
+
+        if let Some(parent) = dst.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| eyre!("creating {}: {e}", parent.display()))?;
+        }
+    }
+
+    log_verbose(&format!(
+        "cloning {} did not work, linking file by file",
+        src.display()
+    ));
+
+    hardlink_dir(src.to_path_buf(), dst.to_path_buf())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn place_dir(src: &Path, dst: &Path) -> Result<()> {
+    hardlink_dir(src.to_path_buf(), dst.to_path_buf())
 }
 
 fn hardlink_dir(src: PathBuf, dst: PathBuf) -> Result<()> {
-    std::fs::create_dir_all(&dst)?;
-    let dir = std::fs::read_dir(src)?;
+    std::fs::create_dir_all(&dst).map_err(|e| eyre!("creating {}: {e}", dst.display()))?;
+    let dir = std::fs::read_dir(&src).map_err(|e| eyre!("reading {}: {e}", src.display()))?;
     for entry in dir {
         let entry = entry?;
         let ty = entry.file_type()?;
+        let target = dst.join(entry.file_name());
         if ty.is_dir() {
-            hardlink_dir(entry.path(), dst.join(entry.file_name()))?;
+            hardlink_dir(entry.path(), target)?;
         } else {
-            std::fs::hard_link(entry.path(), dst.join(entry.file_name()))?;
+            std::fs::hard_link(entry.path(), &target)
+                .map_err(|e| eyre!("linking {} to {}: {e}", entry.path().display(), target.display()))?;
         }
     }
     Ok(())
@@ -134,8 +240,8 @@ fn get_package_src(src: &Path) -> Result<PathBuf> {
 }
 
 #[tracing::instrument]
-pub fn install_package(prefix: &[CompactString], dep: &Dependency) -> Result<()> {
-    download_package_shared(dep.clone())?;
+pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Result<()> {
+    download_package_shared(dep.clone()).await?;
 
     let mut target_path = PathBuf::new();
 
@@ -150,7 +256,8 @@ pub fn install_package(prefix: &[CompactString], dep: &Dependency) -> Result<()>
 
     target_path = scoped_join("node_modules", target_path)?;
 
-    let install_marker = target_path.join(format!(".installed!{}", dep.id()));
+    let marker = format!(".installed!{}", dep.id());
+    let install_marker = target_path.join(&marker);
     if exists(&install_marker)? {
         log_verbose(&format!(
             "Skipping installation for {}",
@@ -162,52 +269,64 @@ pub fn install_package(prefix: &[CompactString], dep: &Dependency) -> Result<()>
     let _ = remove_dir_all(&target_path);
 
     let src_path = scoped_join(".xmas/store", dep.id())?;
+    let src = get_package_src(&src_path)?;
 
-    hardlink_dir(get_package_src(&src_path)?, target_path)?;
-
-    File::create(&install_marker)?;
+    // Placing a package is a syscall per file at worst: thousands of them, on a blocking thread.
+    let dst = target_path.clone();
+    let _permit = LOCAL_PERMITS.acquire().await;
+    smol::unblock(move || -> Result<()> {
+        place_dir(&src, &dst)?;
+        File::create(dst.join(&marker))
+            .map_err(|e| eyre!("marking {}: {e}", dst.display()))?;
+        Ok(())
+    })
+    .await?;
 
     log_progress(&format!("Installed {}", dep.id().bright_blue()));
 
     Ok(())
 }
 
-/// Start every download in the tree now, so the store fills while the installs run.
-fn warmup_dep_tree(pool: &Pool, tree: &DependencyTree) {
-    let root = tree.root.clone();
-    pool.spawn(move |_| download_package_shared(root));
-    for child in tree.children.values() {
-        warmup_dep_tree(pool, child);
-    }
-}
-
 /// Download and install every package in the plan.
 ///
-/// One job per package: it installs its own package, then queues a job for each child. The pool
-/// decides how many of those run at once, so a wide tree is wide, not deep.
-pub fn execute_plan(plan: Plan) -> Result<()> {
+/// One task per package: it installs its own package, then queues a task for each child. The pool
+/// counts what is in flight, and the permits decide how much of that touches the network or a
+/// core at once, so a wide tree is wide instead of queueing behind sixteen threads.
+pub async fn execute_plan(plan: Plan) -> Result<()> {
     fn queue_install(pool: &Pool, tree: DependencyTree, prefix: Vec<CompactString>) {
-        pool.spawn(move |pool| {
-            install_package(&prefix, &tree.root)?;
+        pool.spawn(move |pool| async move {
+            install_package(&prefix, &tree.root).await?;
 
             for (_, dep) in tree.children {
                 let mut prefix = prefix.clone();
                 prefix.push(tree.root.name.clone());
-                queue_install(pool, dep, prefix);
+                queue_install(&pool, dep, prefix);
             }
 
             Result::Ok(())
         });
     }
 
-    let pool = Pool::new(Pool::workers());
+    /// Start every download in the tree now, so the store fills while the installs run.
+    fn warmup_dep_tree(pool: &Pool, tree: &DependencyTree) {
+        let root = tree.root.clone();
+        pool.spawn(move |_| async move { download_package_shared(root).await });
+        for child in tree.children.values() {
+            warmup_dep_tree(pool, child);
+        }
+    }
+
+    let pool = Pool::new();
+
+    for tree in plan.trees.values() {
+        warmup_dep_tree(&pool, tree);
+    }
 
     for (_, tree) in plan.trees.into_iter() {
-        warmup_dep_tree(&pool, &tree);
         queue_install(&pool, tree, vec![]);
     }
 
-    pool.run()
+    pool.run().await
 }
 
 pub(crate) fn symlink(target: &str, path: &str, type_value: Option<String>) -> io::Result<()> {
