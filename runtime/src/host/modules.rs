@@ -59,7 +59,17 @@ impl Modules {
     /// Install a module: compilation happens here, and only happens once.
     pub fn load(&self, specifier: &str, path: &str, source: &str) -> Result<Rc<Module>, String> {
         let kind = kind_of(path);
-        let code = compile(path, source)?;
+        // JSON is a module whose only export is the value.
+        let code = if path.ends_with(".json") {
+            format!("export default {};", source.trim_start_matches('\u{feff}'))
+        } else {
+            compile(path, source)?
+        };
+        // A CommonJS file gets its shell: require, module, exports, __filename and __dirname.
+        let code = crate::cjs::wrap(path, &code, &|name| {
+            self.is_native(name) || self.get(name).is_some()
+        })
+        .unwrap_or(code);
         let compiled = kind != Kind::Js;
         let module = Rc::new(Module {
             specifier: specifier.to_owned(),

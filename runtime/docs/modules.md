@@ -121,3 +121,25 @@ What that does and does not do:
   That is what a realm wants (one instance of each module) and it does not match node, where the
   two are separate.
 - No watching: the graph is read once per realm at startup. Editing a file needs a restart.
+
+## require
+
+CommonJS works by a static scan, in `runtime/src/cjs.rs`. The engine runs modules only and a host function
+cannot load a module while code is running, so `require()` cannot wait for its file. Instead oxc reads each
+file before it runs, finds every `require("literal")`, and rewrites the file into a module that imports those
+targets first.
+
+A file gets the full shell (`require`, `module`, `exports`, `__filename`, `__dirname`, `this === module.exports`,
+top-level `return`) when it has no `import`/`export` and uses one of those names without declaring it, or is a
+`.cjs`. A module that calls a free `require` gets only the function.
+
+Resolution for `require` differs from `import`: conditions are `node`, `require`, `default`; the entry field is `main`;
+`.cjs`, `.json` and `index.*` are probed. A bare name nobody installed still goes to the package manager.
+
+What it does not do:
+
+- A computed specifier (`require(name)`) throws `MODULE_NOT_FOUND` and says why.
+- Every static require runs before the file does, even one inside an `if`. A cycle sees `undefined` for the
+  other side's exports, because dependencies run before the file's own body.
+- The body is module code, so it is strict: `with`, octal literals and `arguments.callee` do not parse.
+- `require.resolve`, `require.cache` and `module.parent` do not exist.

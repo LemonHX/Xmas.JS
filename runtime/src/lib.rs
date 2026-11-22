@@ -1,3 +1,4 @@
+pub mod cjs;
 pub mod compile;
 pub mod deps;
 pub mod driver;

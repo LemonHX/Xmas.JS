@@ -114,6 +114,8 @@ pub fn compile(path: &str, source: &str) -> Result<String, String> {
         .with_options(ParseOptions {
             // Parse regex literals on demand; do not run through every /.../ during the parse phase.
             parse_regular_expression: false,
+            // A CommonJS file may return from its top level; cjs.rs wraps it in a function.
+            allow_return_outside_function: true,
             ..ParseOptions::default()
         })
         .parse();

@@ -12,13 +12,39 @@ use std::path::{Path, PathBuf};
 
 /// What a specifier without an extension is probed with, in order. TypeScript first, because this
 /// runtime compiles `.ts` and `.tsx` and a project written in types should not have to say so.
-const EXTENSIONS: [&str; 6] = ["ts", "tsx", "js", "jsx", "mts", "mjs"];
+const EXTENSIONS: [&str; 8] = ["ts", "tsx", "js", "jsx", "mts", "mjs", "cjs", "json"];
 
 /// What a directory import falls back to when its package.json says nothing useful.
-const INDICES: [&str; 6] = ["index.ts", "index.tsx", "index.js", "index.jsx", "index.mts", "index.mjs"];
+const INDICES: [&str; 8] = [
+    "index.ts",
+    "index.tsx",
+    "index.js",
+    "index.jsx",
+    "index.mts",
+    "index.mjs",
+    "index.cjs",
+    "index.json",
+];
+
+/// Which door a specifier came through. `import` prefers a package's ESM entry; `require` takes the
+/// conditions and the entry field node gives a CommonJS caller.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    Import,
+    Require,
+}
 
 /// Resolve `specifier`, imported by the module named `referrer`, to the canonical path of a file.
 pub fn resolve(referrer: &str, specifier: &str) -> Result<String, String> {
+    resolve_as(referrer, specifier, Mode::Import)
+}
+
+/// `resolve` for a `require()` call.
+pub fn resolve_require(referrer: &str, specifier: &str) -> Result<String, String> {
+    resolve_as(referrer, specifier, Mode::Require)
+}
+
+fn resolve_as(referrer: &str, specifier: &str, mode: Mode) -> Result<String, String> {
     if specifier.is_empty() {
         return Err(format!("an empty specifier, imported by {referrer}"));
     }
@@ -33,12 +59,12 @@ pub fn resolve(referrer: &str, specifier: &str) -> Result<String, String> {
     if is_relative(specifier) {
         let base = directory(referrer);
         let candidate = base.join(specifier);
-        return probe(&candidate)
+        return probe(&candidate, mode)
             .ok_or_else(|| format!("cannot find '{specifier}' from {referrer}"));
     }
 
     if is_absolute(specifier) {
-        return probe(Path::new(specifier)).ok_or_else(|| format!("cannot find '{specifier}'"));
+        return probe(Path::new(specifier), mode).ok_or_else(|| format!("cannot find '{specifier}'"));
     }
 
     // Bare: the package comes from the nearest node_modules, the way node walks up.
@@ -47,21 +73,21 @@ pub fn resolve(referrer: &str, specifier: &str) -> Result<String, String> {
     while let Some(dir) = current {
         let root = dir.join("node_modules").join(package);
         if root.is_dir() {
-            if let Some(target) = exports_target(&root, subpath) {
-                if let Some(found) = probe(&root.join(target)) {
+            if let Some(target) = exports_target(&root, subpath, mode) {
+                if let Some(found) = probe(&root.join(target), mode) {
                     return Ok(found);
                 }
             }
             if subpath.is_empty() {
-                if let Some(target) = package_entry(&root) {
-                    if let Some(found) = probe(&root.join(target)) {
+                if let Some(target) = package_entry(&root, mode) {
+                    if let Some(found) = probe(&root.join(target), mode) {
                         return Ok(found);
                     }
                 }
                 if let Some(found) = index(&root) {
                     return Ok(found);
                 }
-            } else if let Some(found) = probe(&root.join(subpath)) {
+            } else if let Some(found) = probe(&root.join(subpath), mode) {
                 return Ok(found);
             }
         }
@@ -117,13 +143,13 @@ fn split_bare(specifier: &str) -> (&str, &str) {
 /// A file is a file; a directory is its package entry or its index; anything else is probed with the
 /// extensions above, including the TypeScript source of a `.js` specifier, which is how a project
 /// written in types spells its own imports.
-fn probe(candidate: &Path) -> Option<String> {
+fn probe(candidate: &Path, mode: Mode) -> Option<String> {
     if candidate.is_file() {
         return canonical(candidate);
     }
     if candidate.is_dir() {
-        if let Some(target) = package_entry(candidate) {
-            if let Some(found) = probe(&candidate.join(target)) {
+        if let Some(target) = package_entry(candidate, mode) {
+            if let Some(found) = probe(&candidate.join(target), mode) {
                 return Some(found);
             }
         }
@@ -197,7 +223,7 @@ fn canonical(path: &Path) -> Option<String> {
 }
 
 /// The file a package's `exports` field names for `subpath`, relative to the package directory.
-fn exports_target(root: &Path, subpath: &str) -> Option<PathBuf> {
+fn exports_target(root: &Path, subpath: &str, mode: Mode) -> Option<PathBuf> {
     let manifest = manifest(root)?;
     let exports = manifest.get("exports")?;
     let key = if subpath.is_empty() {
@@ -218,7 +244,11 @@ fn exports_target(root: &Path, subpath: &str) -> Option<PathBuf> {
                 return Some(PathBuf::from(relative));
             }
             serde_json::Value::Object(map) => {
-                target = ["import", "node", "default", "require"]
+                let conditions: &[&str] = match mode {
+                    Mode::Import => &["import", "node", "default", "require"],
+                    Mode::Require => &["node", "require", "default"],
+                };
+                target = conditions
                     .iter()
                     .find_map(|name| map.get(*name))?;
             }
@@ -228,10 +258,14 @@ fn exports_target(root: &Path, subpath: &str) -> Option<PathBuf> {
 }
 
 /// The old-style entry: `module` then `main`.
-fn package_entry(root: &Path) -> Option<PathBuf> {
+fn package_entry(root: &Path, mode: Mode) -> Option<PathBuf> {
     let manifest = manifest(root)?;
-    for field in ["module", "main"] {
-        if let Some(serde_json::Value::String(target)) = manifest.get(field) {
+    let fields: &[&str] = match mode {
+        Mode::Import => &["module", "main"],
+        Mode::Require => &["main"],
+    };
+    for field in fields {
+        if let Some(serde_json::Value::String(target)) = manifest.get(*field) {
             return Some(PathBuf::from(target));
         }
     }
