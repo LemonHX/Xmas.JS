@@ -25,6 +25,9 @@ const EMPTY: &str = "[0x00,0x61,0x73,0x6d,0x01,0x00,0x00,0x00]";
 
 /// `(module (func (export "add") (param i32 i32) (result i32) local.get 0 local.get 1 i32.add))`,
 /// which the tests need as a module that exports something callable.
+/// One page of memory exported as \`mem\`, with \`store(addr, val)\` and \`load()\`.
+const MEMORY: &str = "[0x00,0x61,0x73,0x6d,0x01,0x00,0x00,0x00,0x01,0x0a,0x02,0x60,0x02,0x7f,0x7f,0x00,0x60,0x00,0x01,0x7f,0x03,0x03,0x02,0x00,0x01,0x05,0x04,0x01,0x01,0x01,0x04,0x07,0x16,0x03,0x03,0x6d,0x65,0x6d,0x02,0x00,0x05,0x73,0x74,0x6f,0x72,0x65,0x00,0x00,0x04,0x6c,0x6f,0x61,0x64,0x00,0x01,0x0a,0x13,0x02,0x09,0x00,0x20,0x00,0x20,0x01,0x36,0x02,0x00,0x0b,0x07,0x00,0x41,0x00,0x28,0x02,0x00,0x0b]";
+
 /// `(module (import "env" "f" (func (param i32) (result i32))) (func (export "call") ...))`;
 const IMPORTED: &str = "[0x00,0x61,0x73,0x6d,0x01,0x00,0x00,0x00,0x01,0x06,0x01,0x60,0x01,0x7f,0x01,0x7f,0x02,0x09,0x01,0x03,0x65,0x6e,0x76,0x01,0x66,0x00,0x00,0x03,0x02,0x01,0x00,0x07,0x08,0x01,0x04,0x63,0x61,0x6c,0x6c,0x00,0x01,0x0a,0x08,0x01,0x06,0x00,0x20,0x00,0x10,0x00,0x0b]";
 
@@ -264,4 +267,67 @@ fn a_module_that_imports_nothing_ignores_the_object() {
         }})()"
     ));
     assert_eq!(answer, "42");
+}
+
+#[test]
+fn a_memory_export_is_one_page_of_bytes() {
+    let answer = eval(&format!(
+        "(function () {{
+            var i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array({MEMORY})));
+            return JSON.stringify([
+                i.exports.mem instanceof WebAssembly.Memory,
+                i.exports.mem[Symbol.toStringTag],
+                i.exports.mem.buffer.byteLength,
+                i.exports.mem.length,
+            ]);
+        }})()"
+    ));
+    assert_eq!(
+        answer,
+        r#"[true,"WebAssembly.Memory",65536,1]"#
+    );
+}
+
+#[test]
+fn writing_through_the_buffer_is_visible_to_wasm_and_back() {
+    let answer = eval(&format!(
+        "(function () {{
+            var i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array({MEMORY})));
+            var bytes = new Uint8Array(i.exports.mem.buffer);
+            bytes[0] = 7;
+            var fromWasm = i.exports.load();
+            i.exports.store(0, 99);
+            return String(fromWasm) + ',' + String(bytes[0]);
+        }})()"
+    ));
+    assert_eq!(answer, "7,99");
+}
+
+#[test]
+fn growing_detaches_the_old_buffer_and_makes_a_longer_one() {
+    let answer = eval(&format!(
+        "(function () {{
+            var i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array({MEMORY})));
+            var before = i.exports.mem.buffer;
+            var previous = i.exports.mem.grow(2);
+            var detached;
+            try {{ new Uint8Array(before); detached = false; }}
+            catch (e) {{ detached = e instanceof TypeError; }}
+            return JSON.stringify([previous, i.exports.mem.length, detached, i.exports.mem.buffer.byteLength]);
+        }})()"
+    ));
+    assert_eq!(answer, r"[1,3,true,196608]");
+}
+
+#[test]
+fn a_grow_keeps_the_bytes_that_were_written() {
+    let answer = eval(&format!(
+        "(function () {{
+            var i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array({MEMORY})));
+            i.exports.store(0, 1234);
+            i.exports.mem.grow(1);
+            return String(i.exports.load());
+        }})()"
+    ));
+    assert_eq!(answer, "1234");
 }

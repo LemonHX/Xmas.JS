@@ -178,10 +178,74 @@
     configurable: true,
   });
 
+  class Memory {
+    constructor(descriptor) {
+      if (!new.target) {
+        throw new TypeError("Class constructor Memory cannot be invoked without 'new'");
+      }
+      if (descriptor === null || typeof descriptor !== 'object') {
+        throw new TypeError('expected a memory descriptor');
+      }
+      const initial = descriptor.initial;
+      if (typeof initial !== 'number') {
+        throw new TypeError('the memory descriptor needs an initial page count');
+      }
+      const handle = __wasm_new_memory(
+        initial,
+        descriptor.maximum === undefined ? -1 : descriptor.maximum,
+        descriptor.shared === true,
+      );
+      installMemory(this, handle);
+    }
+  }
+
+  // The one place a Memory object is made from a Rust slot: both the constructor and an
+  // instance's exports go through it.
+  function installMemory(target, handle) {
+    Object.defineProperty(target, HANDLE, { value: handle, configurable: true });
+  }
+
+  function memoryFromSlot(handle) {
+    const memory = Object.create(Memory.prototype);
+    installMemory(memory, handle);
+    return memory;
+  }
+
+  Object.defineProperty(Memory.prototype, 'buffer', {
+    get() {
+      return __wasm_memory_buffer(this[HANDLE]);
+    },
+    configurable: true,
+  });
+
+  Object.defineProperty(Memory.prototype, 'grow', {
+    value: function grow(delta) {
+      if (typeof delta !== 'number') {
+        throw new TypeError('grow takes a number of pages');
+      }
+      return __wasm_memory_grow(this[HANDLE], delta);
+    },
+    writable: true,
+    configurable: true,
+  });
+
+  // The current length in pages, which a grow changes.
+  Object.defineProperty(Memory.prototype, 'length', {
+    get() {
+      return __wasm_memory_length(this[HANDLE]);
+    },
+    configurable: true,
+  });
+
+  Object.defineProperty(Memory.prototype, Symbol.toStringTag, {
+    value: 'WebAssembly.Memory',
+    configurable: true,
+  });
+
   // Placeholders until Memory, Table and Global land: an export of those kinds is left out of
   // exports rather than given a wrapper that lies about what it does.
-  function memoryOf() {
-    return undefined;
+  function memoryOf(instance, name) {
+    return memoryFromSlot(__wasm_memory(instance[HANDLE], name));
   }
   function tableOf() {
     return undefined;
@@ -245,6 +309,7 @@
     CompileError,
     Instance,
     LinkError,
+    Memory,
     Module,
     RuntimeError,
     compile,

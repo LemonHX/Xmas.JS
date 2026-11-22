@@ -20,6 +20,7 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use quickjs_oxide::engine::api::core::{
@@ -91,13 +92,81 @@ pub(crate) struct InstanceSlot {
     memories: RefCell<Vec<Rc<MemorySlot>>>,
 }
 
+impl InstanceSlot {
+    /// The slot for one memory this instance exports, made once and shared.
+    fn memory(self: &Rc<Self>, name: &str) -> Option<Rc<MemorySlot>> {
+        let mut memories = self.memories.borrow_mut();
+        if let Some(slot) = memories.iter().find(|slot| slot.name == name) {
+            return Some(Rc::clone(slot));
+        }
+        let handle = self.instance.borrow().memory_handle(name).ok().flatten()?;
+        let slot = MemorySlot::new(name.to_string(), handle);
+        memories.push(Rc::clone(&slot));
+        Some(slot)
+    }
+}
+
 /// A linear memory and the ArrayBuffer currently naming it.
+///
+/// The base address does not move: WNJR reserves the maximum up front and
+/// commits pages in place, so growing changes the length and nothing else. The
+/// JS object that names those bytes does change -- `buffer` says which one is
+/// current, and `stale` says a grow happened since it was made.
 pub(crate) struct MemorySlot {
+    name: String,
     handle: wnjr_core::MemHandle,
     key: u64,
     shared: bool,
-    stale: AtomicBool,
+    stale: Arc<AtomicBool>,
     buffer: RefCell<Option<Value>>,
+}
+
+impl MemorySlot {
+    fn new(name: String, handle: wnjr_core::MemHandle) -> Rc<Self> {
+        let slot = Rc::new(MemorySlot {
+            name,
+            key: handle.id(),
+            shared: handle.limits().is_shared(),
+            handle,
+            stale: Arc::new(AtomicBool::new(true)),
+            buffer: RefCell::new(None),
+        });
+        // The listener only sets the flag. It runs inside the grow, while WNJR
+        // still holds the instance, so it must not touch the engine, and it is
+        // Send + Sync because a memory can be grown from any thread.
+        let flag = Arc::clone(&slot.stale);
+        slot.handle.set_grow_listener(Some(Box::new(move |_id, _len| {
+            flag.store(true, Ordering::Release);
+        })));
+        slot
+    }
+
+    /// The ArrayBuffer naming the current bytes, remade if a grow happened.
+    fn refresh_buffer(self: &Rc<Self>, scope: &mut Scope<'_>) -> Result<(), RuntimeError> {
+        if !self.stale.swap(false, Ordering::AcqRel) {
+            return Ok(());
+        }
+        // Detach the old one: its bytes are still there, but the spec says a
+        // grow detaches what came before, and code that kept it must find out.
+        if let Some(old) = self.buffer.borrow_mut().take() {
+            let _ = scope.detach_array_buffer(&old);
+        }
+        let owner = Box::new(self.handle.clone());
+        let base = self.handle.base();
+        let len = self.handle.len();
+        let capacity = self.handle.capacity();
+        // SAFETY: WNJR's handle owns the reservation, keeps the base address
+        // fixed, and is cloned into the owner so the bytes outlive the buffer.
+        let object = unsafe {
+            if self.shared {
+                scope.new_shared_array_buffer_over(base, len, capacity, self.key, owner)
+            } else {
+                scope.new_array_buffer_over(base, len, capacity, self.key, owner)
+            }
+        }?;
+        *self.buffer.borrow_mut() = Some(Value::Object(object));
+        Ok(())
+    }
 }
 
 pub(crate) struct TableSlot {
@@ -289,6 +358,115 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             }
         })
         .map_err(|error| format!("__wasm_call: {error}"))?;
+
+    driver
+        .context()
+        .define_function(&global, "__wasm_new_memory", 3, move |scope: &mut Scope<'_>| {
+            let initial = scope.arg(0);
+            let maximum = scope.arg(1);
+            let shared = scope.arg(2);
+            let Value::Int(initial) = initial else {
+                return Err(type_error(scope, "expected an initial page count"));
+            };
+            let maximum = match maximum {
+                Value::Int(pages) if pages >= 0 => Some(pages as usize),
+                _ => None,
+            };
+            let shared = matches!(shared, Value::Bool(true));
+            let handle = if shared {
+                let Some(maximum) = maximum else {
+                    return Err(type_error(scope, "a shared memory needs a maximum"));
+                };
+                wnjr_core::MemHandle::new_shared(initial as usize, maximum)
+            } else {
+                wnjr_core::MemHandle::new(initial as usize, maximum)
+            }
+            .map_err(|error| wasm_error(scope, "RuntimeError", &error.to_string()))?;
+            let slot = Slot::Memory(MemorySlot::new(String::new(), handle));
+            let prototype = prototype_of(scope, "Memory")?;
+            Ok(Value::Object(scope.new_host_object(slot, Some(&prototype))?))
+        })
+        .map_err(|error| format!("__wasm_new_memory: {error}"))?;
+
+    driver
+        .context()
+        .define_function(&global, "__wasm_memory", 2, move |scope: &mut Scope<'_>| {
+            let value = scope.arg(0);
+            let name = scope.arg(1);
+            let Slot::Instance(slot) = want(scope, &value, "Instance")? else {
+                return Err(type_error(scope, "expected a WebAssembly.Instance"));
+            };
+            let Value::String(name) = name else {
+                return Err(type_error(scope, "expected an export name"));
+            };
+            let name = name.to_utf8_lossy();
+            let Some(slot) = slot.memory(&name) else {
+                return Err(type_error(
+                    scope,
+                    &format!("the instance has no memory named {name:?}"),
+                ));
+            };
+            let prototype = prototype_of(scope, "Memory")?;
+            let slot = Slot::Memory(slot);
+            Ok(Value::Object(scope.new_host_object(slot, Some(&prototype))?))
+        })
+        .map_err(|error| format!("__wasm_memory: {error}"))?;
+
+    driver
+        .context()
+        .define_function(&global, "__wasm_memory_length", 1, move |scope: &mut Scope<'_>| {
+            let value = scope.arg(0);
+            let Slot::Memory(slot) = want(scope, &value, "Memory")? else {
+                return Err(type_error(scope, "expected a WebAssembly.Memory"));
+            };
+            if !slot.shared {
+                slot.refresh_buffer(scope)?;
+            }
+            Ok(Value::Int((slot.handle.len() / PAGE_SIZE) as i32))
+        })
+        .map_err(|error| format!("__wasm_memory_length: {error}"))?;
+
+    driver
+        .context()
+        .define_function(&global, "__wasm_memory_grow", 2, move |scope: &mut Scope<'_>| {
+            let value = scope.arg(0);
+            let delta = scope.arg(1);
+            let Slot::Memory(slot) = want(scope, &value, "Memory")? else {
+                return Err(type_error(scope, "expected a WebAssembly.Memory"));
+            };
+            let Value::Int(delta) = delta else {
+                return Err(type_error(scope, "expected a number of pages"));
+            };
+            if delta < 0 {
+                return Ok(Value::Int(-1));
+            }
+            match slot.handle.grow(delta as usize) {
+                Ok(previous) => {
+                    // The listener marked it stale; the flush detaches the old
+                    // buffer and makes one over the new length.
+                    slot.refresh_buffer(scope)?;
+                    Ok(Value::Int(previous as i32))
+                }
+                // A grow past the maximum is -1, not an error, as the spec says.
+                Err(_) => Ok(Value::Int(-1)),
+            }
+        })
+        .map_err(|error| format!("__wasm_memory_grow: {error}"))?;
+
+    driver
+        .context()
+        .define_function(&global, "__wasm_memory_buffer", 1, move |scope: &mut Scope<'_>| {
+            let value = scope.arg(0);
+            let Slot::Memory(slot) = want(scope, &value, "Memory")? else {
+                return Err(type_error(scope, "expected a WebAssembly.Memory"));
+            };
+            if !slot.shared {
+                slot.refresh_buffer(scope)?;
+            }
+            let buffer = slot.buffer.borrow().clone();
+            Ok(buffer.unwrap_or(Value::Undefined))
+        })
+        .map_err(|error| format!("__wasm_memory_buffer: {error}"))?;
 
     driver
         .context()
