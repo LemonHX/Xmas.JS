@@ -315,7 +315,7 @@ For type checking, use your IDE's TypeScript integration or run `tsc --noEmit` s
 | Aspect                       | Xmas.JS                                 | Node.js/Deno/Bun             |
 | ---------------------------- | --------------------------------------- | ---------------------------- |
 | **Primary Use Case**         | System scripting, CLI tools, serverless | Web servers, full-stack apps |
-| **JS Engine**                | QuickJS (interpreter)                   | V8/JSC (JIT compiler)        |
+| **JS Engine**                | QuickJS-Oxide (interpreter)             | V8/JSC (JIT compiler)        |
 | **Startup Time**             | ~5-15ms                                 | ~50-200ms                    |
 | **Memory Footprint**         | ~3-8MB                                  | ~25-60MB                     |
 | **Long-running Performance** | Slower (no JIT)                         | Faster (JIT optimized)       |
@@ -449,10 +449,9 @@ This dual-license ensures open collaboration while preventing service provider l
 Xmas.JS stands on the shoulders of giants:
 
 - **[QuickJS](https://bellard.org/quickjs/)** by Fabrice Bellard - The amazing JavaScript engine
-- **[quickjs-oxide](https://github.com/0xfe-project/quickjs-oxide)** - Rust bindings for QuickJS, embedded as a package (rquickjs descendant)
+- **[quickjs-oxide](https://github.com/0xfe-project/quickjs-oxide)** - Rust rewrite for QuickJS, cooperate with Pocket.JS team.
 - **[LLRT](https://github.com/awslabs/llrt)** - Inspiration and code for AWS Lambda optimization
 - **[smol](https://github.com/smol-rs/smol)** - The async runtime, everywhere in the workspace. Nothing depends on tokio.
-- **[Cotton](https://github.com/danielhuang/cotton)** - Package manager forked for our needs
 
 **Inspired by:**
 - [Deno](https://deno.land/) - Modern JavaScript runtime design
