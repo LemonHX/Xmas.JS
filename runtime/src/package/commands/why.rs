@@ -9,9 +9,9 @@ use node_semver::Version;
 use rustc_hash::FxHashSet;
 use std::collections::VecDeque;
 
-use crate::package::PackageSpecifier;
-use crate::resolve::Graph;
-use crate::util::{load_graph_from_lockfile, read_package};
+use crate::package::metadata::PackageSpecifier;
+use crate::package::resolve::Graph;
+use crate::package::util::{load_graph_from_lockfile, read_package};
 
 /// Execute the why command.
 pub fn cmd_why(name: &CompactString, version: Option<&Version>) -> Result<()> {

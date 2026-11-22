@@ -9,19 +9,16 @@ readme = "README.md"
 description = "WinterTC compatible ECMAScript/TypeScript runtime"
 
 [workspace]
-members = [
-  "runtime",
-  "package-manager",
-]
-# The runtime is what we are building, so it is what a bare cargo build builds.
-default-members = ["runtime"]
+# The package manager lives inside the runtime (runtime/src/package), so there is one library and
+# one binary: no second manifest, no second parser, no second `main`.
+members = ["runtime"]
+# The binary is what we are building, so it is what a bare cargo build builds.
+default-members = ["."]
 
 [workspace.dependencies]
-xmas-package-manager = { path = "package-manager" }
 xmas-runtime = { path = "runtime" }
 
 [dependencies]
-xmas-package-manager = { workspace = true }
 xmas-runtime = { workspace = true }
 anyhow = "1.0.100"
 clap = { version = "4.5", features = ["derive"] }

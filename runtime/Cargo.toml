@@ -7,15 +7,14 @@ publish = false
 description = "JavaScript engine embedding layer: realm driver, host services and compile"
 
 [dependencies]
-# The package manager is a library as well as a CLI: an import that names a package nobody
-# installed asks it for one (src/deps.rs).
-xmas-package-manager = { workspace = true }
+# The package manager is a module here (src/package), not a crate: an import that names a package
+# nobody installed asks it for one (src/deps.rs) with a plain function call.
 quickjs-oxide = { path = "../../quickjs-oxide" }
 quickjs-oxide-host = { path = "../../quickjs-oxide/adapters/native" }
 smol = "2"
 futures-lite = "2"
 socket2 = { version = "0.6", features = ["all"] }
-url = "2"
+url = { version = "2", features = ["serde"] }
 sha1 = "0.10"
 sha2 = "0.10"
 md-5 = "0.10"
@@ -42,3 +41,36 @@ oxc = { version = "^0.103.0", default-features = false, features = [
     "codegen",
     "semantic",
 ] }
+
+# --- the package manager (src/package) -------------------------------------------------------
+# It used to be a crate with its own manifest. What is left of its dependency list is below;
+# the HTTP stack, smol, flate2, serde_json and the TLS crates above are already the ones it uses.
+# Nothing here needs clap: the binary owns the only parser.
+tracing = "0.1.40"
+async-lock = "3"
+tar = "0.4"
+base64 = "0.22"
+itertools = "0.14.0"
+color-eyre = "0.6.3"
+compact_str = { version = "0.9.0", features = ["serde"] }
+dashmap = { version = "6.0.0", features = ["serde"] }
+indexmap = { version = "2.2.6", features = ["serde"] }
+indicatif = "0.18.0"
+multimap = "0.10.0"
+node-semver = { git = "https://github.com/danielhuang/node-semver-rs", rev = "bf4b103dc88b310c9dc049433aff1a14716e1e68" }
+notify = "=8.2.0"
+rustc-hash = "2.0.0"
+serde = { version = "1.0.200", features = ["derive", "rc"] }
+serde_path_to_error = "0.1.16"
+toml = "0.9.0"
+rand = "0.8.5"
+which = "8.0.0"
+owo-colors = "4.2.3"
+
+# Cloning a package directory into node_modules in one call. See `package::plan::place_dir`.
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+
+# Directory links on windows: there is no symlink without a privilege, so a junction stands in.
+[target.'cfg(windows)'.dependencies]
+junction = "1.3.0"

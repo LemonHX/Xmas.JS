@@ -1,8 +1,8 @@
-use crate::npm;
-use crate::npm::{Dependency, DependencyTree};
-use crate::package::{PackageInfo, PackageSpecifier, VersionedPackageInfo};
-use crate::plan::download_package_shared;
-use crate::progress::log_verbose;
+use crate::package::npm;
+use crate::package::npm::{Dependency, DependencyTree};
+use crate::package::metadata::{PackageInfo, PackageSpecifier, VersionedPackageInfo};
+use crate::package::plan::download_package_shared;
+use crate::package::progress::log_verbose;
 use color_eyre::eyre::ContextCompat;
 use color_eyre::{Report, Section};
 use compact_str::{CompactString, ToCompactString};
@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::mem::take;
 use std::sync::Arc;
 
-use crate::pool::Pool;
+use crate::package::pool::Pool;
 
 #[derive(Deserialize, Debug, Default, Clone)]
 pub struct Graph {

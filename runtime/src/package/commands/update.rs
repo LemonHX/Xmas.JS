@@ -6,14 +6,14 @@ use color_eyre::owo_colors::OwoColorize;
 use color_eyre::Help;
 use std::time::Instant;
 
-use crate::commands::init_storage;
-use crate::progress::PROGRESS_BAR;
-use crate::resolve::{Graph, Lockfile};
-use crate::util::{read_package, write_json};
-use crate::Args;
+use crate::package::commands::init_storage;
+use crate::package::progress::PROGRESS_BAR;
+use crate::package::resolve::{Graph, Lockfile};
+use crate::package::util::{read_package, write_json};
+use crate::package::Options;
 
 /// Execute the update command.
-pub fn cmd_update(args: &Args) -> Result<()> {
+pub fn cmd_update(args: &Options) -> Result<()> {
     if args.immutable {
         return Err(eyre!("Cannot update lockfile").suggestion("Remove the --immutable flag"));
     }

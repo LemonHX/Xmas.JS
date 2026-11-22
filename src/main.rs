@@ -1,8 +1,16 @@
+//! The one command line this project has.
+//!
+//! The package manager used to parse its own argv with its own copy of these subcommands, and the
+//! binary then translated one parser's types into the other's. It is a module of the runtime now,
+//! so what is below is the only parser: a subcommand either goes to `xmas_runtime::package` or to
+//! the runtime itself, and the command functions take plain values.
+
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use compact_str::CompactString;
+use xmas_runtime::package::{self, commands, Options};
 
 /// Xmas.JS - A Modern System Scripting Runtime for the JavaScript Era
 #[derive(Parser)]
@@ -12,6 +20,10 @@ struct Cli {
     /// Print verbose logs
     #[arg(short, long, global = true)]
     verbose: bool,
+
+    /// Refuse to modify the lockfile
+    #[arg(long, global = true)]
+    immutable: bool,
 
     /// Run in a custom working directory
     #[arg(long, global = true, alias = "cwd")]
@@ -133,54 +145,50 @@ fn main() -> anyhow::Result<()> {
         std::env::set_current_dir(cwd)?;
     }
 
-    match cli.command {
-        None => {
-            anyhow::bail!("the runtime is being rewritten; only the package manager works")
-        }
+    let options = Options::new().verbose(cli.verbose).immutable(cli.immutable);
 
-        Some(Commands::Install) => run_pm(xmas_package_manager::Subcommand::Install, cli.verbose),
-        Some(Commands::Add { names, dev, pin }) => run_pm(
-            xmas_package_manager::Subcommand::Add { names, dev, pin },
-            cli.verbose,
-        ),
-        Some(Commands::Remove { names, dev }) => run_pm(
-            xmas_package_manager::Subcommand::Remove { names, dev },
-            cli.verbose,
-        ),
-        Some(Commands::Run { name, watch }) => run_pm(
-            xmas_package_manager::Subcommand::Run { name, watch },
-            cli.verbose,
-        ),
-        Some(Commands::Update) => run_pm(xmas_package_manager::Subcommand::Update, cli.verbose),
-        Some(Commands::Upgrade { pin }) => run_pm(
-            xmas_package_manager::Subcommand::Upgrade { pin },
-            cli.verbose,
-        ),
-        Some(Commands::Clean) => run_pm(xmas_package_manager::Subcommand::Clean, cli.verbose),
-        Some(Commands::Exec { exe, args }) => run_pm(
-            xmas_package_manager::Subcommand::Exec { exe, args },
-            cli.verbose,
-        ),
-        Some(Commands::Why { name, version }) => run_pm(
-            xmas_package_manager::Subcommand::Why { name, version },
-            cli.verbose,
-        ),
-        Some(Commands::Create { name }) => run_pm(
-            xmas_package_manager::Subcommand::Create { name },
-            cli.verbose,
-        ),
-        Some(Commands::Serve {
+    let Some(command) = cli.command else {
+        Cli::command().print_help()?;
+        return Ok(());
+    };
+
+    match command {
+        Commands::Serve {
             entry,
             port,
             host,
             workers,
-        }) => serve(&entry, &host, port, workers),
+        } => serve(&entry, &host, port, workers),
 
-        Some(Commands::Dlx { name, args }) => run_pm(
-            xmas_package_manager::Subcommand::DownloadAndExec { name, args },
-            cli.verbose,
-        ),
+        // The package manager: one call per command, and the trace and the progress bars are put
+        // away afterwards whatever the command did.
+        command => package_command(command, options),
     }
+}
+
+/// Run one package manager command, and put away what it left behind.
+fn package_command(command: Commands, options: Options) -> anyhow::Result<()> {
+    package::install_error_reporter().map_err(anyhow::Error::msg)?;
+    xmas_runtime::package::progress::set_verbose(options.verbose);
+
+    let done = match command {
+        Commands::Install => commands::cmd_install(&options),
+        Commands::Update => commands::cmd_update(&options),
+        Commands::Add { names, dev, pin } => commands::cmd_add(&names, dev, pin),
+        Commands::Run { name, watch } => commands::cmd_run(&options, &name, &watch),
+        Commands::Clean => commands::cmd_clean(),
+        Commands::Upgrade { pin } => commands::cmd_upgrade(pin),
+        Commands::Exec { exe, args } => commands::cmd_exec(&options, &exe, &args),
+        Commands::Remove { names, dev } => commands::cmd_remove(&names, dev),
+        Commands::Why { name, version } => commands::cmd_why(&name, version.as_ref()),
+        Commands::Create { name } => commands::cmd_create(&options, &name),
+        Commands::Dlx { name, args } => commands::exec::cmd_download_and_exec(&options, &name, &args),
+        Commands::Serve { .. } => unreachable!("serve is handled before this"),
+    };
+
+    package::finish();
+
+    done.map_err(|error| anyhow::anyhow!("{error:#}"))
 }
 
 /// Serve an app until the process is stopped.
@@ -194,24 +202,13 @@ fn serve(entry: &PathBuf, host: &str, port: u16, workers: Option<usize>) -> anyh
             .unwrap_or(1)
     });
     let addr = format!("{host}:{port}");
-    let server = xmas_runtime::entry::serve_app(&addr, workers, entry)
-        .map_err(|error| anyhow::anyhow!("{error}"))?;
-    println!(
-        "listening on http://{} with {workers} worker{}",
-        server.addr(),
-        if workers == 1 { "" } else { "s" }
-    );
+    // Bound, not dropped: the handle owns the workers, and the loop below never ends to release it.
+    let _server =
+        xmas_runtime::entry::serve_app(&addr, workers, entry).map_err(|e| anyhow::anyhow!("{e}"))?;
+    eprintln!("xmas: listening on http://{addr} ({workers} workers)");
+
+    // The runtime runs its own threads; this one has nothing left to do but wait for a signal.
     loop {
         std::thread::park();
     }
-}
-
-fn run_pm(cmd: xmas_package_manager::Subcommand, verbose: bool) -> anyhow::Result<()> {
-    let args = xmas_package_manager::Args {
-        verbose,
-        immutable: false,
-        working_dir: None,
-        cmd,
-    };
-    xmas_package_manager::package_manager(&args).map_err(|e| anyhow::anyhow!("{}", e))
 }

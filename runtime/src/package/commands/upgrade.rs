@@ -3,8 +3,8 @@
 use color_eyre::eyre::Result;
 use itertools::Itertools;
 
-use crate::commands::add::add_packages;
-use crate::util::read_package;
+use crate::package::commands::add::add_packages;
+use crate::package::util::read_package;
 
 /// Execute the upgrade command.
 pub fn cmd_upgrade(pin: bool) -> Result<()> {

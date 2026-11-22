@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::{
+use crate::package::{
     npm::PlatformMap,
     util::{get_node_cpu, get_node_os, VersionSpecifier},
 };

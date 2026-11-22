@@ -21,11 +21,11 @@ use std::{fmt::Debug, io::Read};
 use flate2::read::GzDecoder;
 use tar::Archive;
 
-use crate::{
+use crate::package::{
     cache::Cache,
     config::{read_config, Registry},
     net,
-    package::{Dist, PackageInfo, PackageMetadata, PackageSpecifier},
+    metadata::{Dist, PackageInfo, PackageMetadata, PackageSpecifier},
     progress::{log_progress, log_verbose},
     util::{decode_json, retry_async, ArcResult, VersionSpecifier},
 };
@@ -134,7 +134,7 @@ async fn fetch_versioned_package_inner(
             let res = fetch_package(&d.name).await?;
             let tag = res
                 .dist_tags
-                .get(tag)
+                .get(tag.as_str())
                 .wrap_err_with(|| eyre!("Version cannot be satisfied: {} {}", d.name, d.version))?;
             let version = Version::parse(tag)?;
             let package = res.versions.get(&version).wrap_err_with(|| {

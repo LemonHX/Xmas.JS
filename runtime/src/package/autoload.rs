@@ -19,11 +19,11 @@ use std::sync::Mutex;
 use color_eyre::eyre::{eyre, Result};
 use compact_str::ToCompactString;
 
-use crate::commands::{exec_install_scripts, init_storage};
-use crate::npm::fetch_package;
-use crate::package::PackageSpecifier;
-use crate::plan::{execute_plan, setup_bins, Plan};
-use crate::util::{load_graph_from_lockfile, read_json, write_json, VersionSpecifier};
+use crate::package::commands::{exec_install_scripts, init_storage};
+use crate::package::npm::fetch_package;
+use crate::package::metadata::PackageSpecifier;
+use crate::package::plan::{execute_plan, setup_bins, Plan};
+use crate::package::util::{load_graph_from_lockfile, read_json, write_json, VersionSpecifier};
 
 /// One install at a time: everything below reads and writes paths relative to the working directory.
 static ONCE: Mutex<()> = Mutex::new(());

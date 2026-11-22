@@ -18,9 +18,9 @@ use std::{
 use tracing::instrument;
 use url::Url;
 
-use crate::package::PackageMetadata;
-use crate::progress::log_warning;
-use crate::resolve::{Graph, Lockfile};
+use crate::package::metadata::PackageMetadata;
+use crate::package::progress::log_warning;
+use crate::package::resolve::{Graph, Lockfile};
 
 pub fn decode_json<T: DeserializeOwned>(
     x: &[u8],

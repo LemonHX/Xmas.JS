@@ -8,19 +8,17 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::exit;
 
-use crate::commands::exec::shell;
-use crate::commands::{install, join_paths, new_path};
-use crate::progress::PROGRESS_BAR;
-use crate::util::read_package;
-use crate::watch::watch;
+use crate::package::commands::exec::shell;
+use crate::package::commands::{install, new_path};
+use crate::package::progress::PROGRESS_BAR;
+use crate::package::util::read_package;
+use crate::package::watch::watch;
 
 /// Run a script from package.json.
 ///
 /// Without --watch this is one run. With it, the script runs again each time something under the
 /// watched paths changes, and the exit code of a run only ends this process.
-pub fn cmd_run(arg: &crate::Args, name: &CompactString, watch_paths: &[PathBuf]) -> Result<()> {
-    join_paths()?;
-
+pub fn cmd_run(arg: &crate::package::Options, name: &CompactString, watch_paths: &[PathBuf]) -> Result<()> {
     loop {
         let package = read_package()?;
 

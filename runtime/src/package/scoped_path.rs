@@ -94,7 +94,7 @@ fn do_scoped_resolve<R: AsRef<Path>, U: AsRef<Path>>(
 ///
 /// Note that the guarantees provided by this function only apply if the path components in the
 /// returned string are not modified (in other words are not replaced with symlinks on the
-/// filesystem) after this function has returned. You may use [crate::PinnedPathBuf] to protect
+/// filesystem) after this function has returned. You may use [crate::package::PinnedPathBuf] to protect
 /// from such TOCTTOU attacks.
 pub fn scoped_join<R: AsRef<Path>, U: AsRef<Path>>(root: R, unsafe_path: U) -> Result<PathBuf> {
     do_scoped_resolve(root, unsafe_path).map(|(root, path)| root.join(path))

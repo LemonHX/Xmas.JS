@@ -10,27 +10,26 @@ use std::env;
 use std::ffi::OsString;
 use std::fs::{create_dir_all, read_to_string};
 use std::io::ErrorKind;
-use std::path::PathBuf;
 use std::time::Instant;
 
-use crate::commands::exec::shell;
-use crate::config::read_config;
-use crate::npm::DependencyTree;
-use crate::package::PackageMetadata;
-use crate::plan::{execute_plan, setup_bins, tree_size, Plan};
-use crate::progress::{finish_progress, log_progress, log_verbose, set_total, PROGRESS_BAR};
-use crate::resolve::Lockfile;
-use crate::scoped_path::scoped_join;
-use crate::util::{load_graph_from_lockfile, read_package, write_json};
-use crate::Args;
+use crate::package::commands::exec::shell;
+use crate::package::config::read_config;
+use crate::package::npm::DependencyTree;
+use crate::package::metadata::PackageMetadata;
+use crate::package::plan::{execute_plan, setup_bins, tree_size, Plan};
+use crate::package::progress::{finish_progress, log_progress, log_verbose, set_total, PROGRESS_BAR};
+use crate::package::resolve::Lockfile;
+use crate::package::scoped_path::scoped_join;
+use crate::package::util::{load_graph_from_lockfile, read_package, write_json};
+use crate::package::Options;
 
 /// Execute the install command.
-pub fn cmd_install(args: &Args) -> Result<()> {
+pub fn cmd_install(args: &Options) -> Result<()> {
     install(args)
 }
 
 /// Prepare a plan for installing packages.
-pub fn prepare_plan(args: &Args, package: &PackageMetadata) -> Result<Plan> {
+pub fn prepare_plan(args: &Options, package: &PackageMetadata) -> Result<Plan> {
     log_progress("Preparing");
 
     let mut graph = load_graph_from_lockfile();
@@ -131,7 +130,7 @@ pub fn exec_install_scripts(tree: &DependencyTree, initial_stack: &[CompactStrin
 }
 
 /// Install packages based on package.json.
-pub fn install(args: &Args) -> Result<()> {
+pub fn install(args: &Options) -> Result<()> {
     let package = read_package()?;
 
     init_storage()?;
@@ -189,14 +188,6 @@ pub fn new_path() -> Result<OsString> {
     Ok(new_path)
 }
 
-/// Join node_modules/.bin to the PATH environment variable.
-pub fn join_paths() -> Result<()> {
-    let path = new_path()?;
-    log_verbose(&format!("Setting PATH to {path:?}"));
-    env::set_var("PATH", path);
-
-    Ok(())
-}
 
 /// Initialize storage directories.
 pub fn init_storage() -> Result<()> {

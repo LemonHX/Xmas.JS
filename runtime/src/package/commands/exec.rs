@@ -6,28 +6,27 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
-use std::env::{current_dir, current_exe, set_current_dir, set_var, temp_dir};
+use std::env::{current_dir, current_exe, set_current_dir, temp_dir};
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 use std::process::Command;
 use which::which;
 
-use crate::commands::add::add_packages;
-use crate::commands::{install, join_paths};
-use crate::progress::log_verbose;
-use crate::util::save_package;
+use crate::package::commands::add::add_packages;
+use crate::package::commands::{install, new_path};
+use crate::package::progress::log_verbose;
+use crate::package::util::save_package;
 
 /// Execute the exec command.
-pub fn cmd_exec(args: &crate::Args, exe: &OsString, cmd_args: &[OsString]) -> Result<()> {
+pub fn cmd_exec(args: &crate::package::Options, exe: &OsString, cmd_args: &[OsString]) -> Result<()> {
     install(args)?;
-    join_paths()?;
 
-    exec_with_args(exe.as_ref(), cmd_args)
+    exec_with_args(exe.as_ref(), cmd_args, vec![(OsString::from("PATH"), new_path()?)])
 }
 
 /// Execute the download-and-exec (x) command.
 pub fn cmd_download_and_exec(
-    args: &crate::Args,
+    args: &crate::package::Options,
     name: &OsString,
     cmd_args: &[OsString],
 ) -> Result<()> {
@@ -35,7 +34,19 @@ pub fn cmd_download_and_exec(
         log_verbose(&e.to_string());
         install_bin_temp(args, name.to_str().wrap_err("package name invalid")?)?;
     }
-    exec_with_args(name.as_ref(), cmd_args)
+    // The user agent a scaffold reads to decide whether to prompt. It used to be set for the whole
+    // process, which is unsafe once there is more than one thread; it travels with the child now.
+    exec_with_args(
+        name.as_ref(),
+        cmd_args,
+        vec![
+            (OsString::from("PATH"), new_path()?),
+            (
+                OsString::from("npm_config_user_agent"),
+                OsString::from("yarn/1.22.19 npm/none xmas/0.0.0"),
+            ),
+        ],
+    )
 }
 
 /// Execute a command with arguments
@@ -45,7 +56,11 @@ pub fn cmd_download_and_exec(
 /// way to become another process, so there we spawn it and exit with its code, which looks the
 /// same from the outside and costs one more process.
 #[tracing::instrument]
-pub fn exec_with_args(exe: &OsStr, args: &[OsString]) -> Result<()> {
+pub fn exec_with_args(
+    exe: &OsStr,
+    args: &[OsString],
+    env: Vec<(OsString, OsString)>,
+) -> Result<()> {
     let mut args = args.to_vec();
     args.insert(0, exe.to_os_string());
 
@@ -54,7 +69,7 @@ pub fn exec_with_args(exe: &OsStr, args: &[OsString]) -> Result<()> {
         // std's own exec(), which is execvp underneath and needs no crate of its own. It returns
         // only when the command could not be run at all.
         use std::os::unix::process::CommandExt;
-        let error = Command::new(exe).args(&args[1..]).exec();
+        let error = Command::new(exe).args(&args[1..]).envs(env).exec();
         Err(eyre!(
             "Failed to execute {}: {}",
             exe.to_string_lossy(),
@@ -64,13 +79,13 @@ pub fn exec_with_args(exe: &OsStr, args: &[OsString]) -> Result<()> {
 
     #[cfg(not(unix))]
     {
-        let status = Command::new(exe).args(&args[1..]).status()?;
+        let status = Command::new(exe).args(&args[1..]).envs(env).status()?;
         std::process::exit(status.code().unwrap_or(1));
     }
 }
 
 /// Install a binary package to a temporary directory.
-pub fn install_bin_temp(args: &crate::Args, package_name: &str) -> Result<()> {
+pub fn install_bin_temp(args: &crate::package::Options, package_name: &str) -> Result<()> {
     let orig_dir = current_dir()?;
 
     let dir_name: String = rand::thread_rng()
@@ -88,7 +103,6 @@ pub fn install_bin_temp(args: &crate::Args, package_name: &str) -> Result<()> {
     save_package(&Value::Object(Map::new()))?;
     add_packages(&[package_name.to_compact_string()], false, false)?;
     install(args)?;
-    set_var("npm_config_user_agent", "yarn/1.22.19 npm/none xmas/0.0.0");
     let current_exe = current_exe().map(|p| p.to_string_lossy().to_string())?;
 
     std::fs::create_dir_all("node_modules/.bin")?;
@@ -103,10 +117,8 @@ pub fn install_bin_temp(args: &crate::Args, package_name: &str) -> Result<()> {
     }
     #[cfg(unix)]
     {
-        crate::plan::symlink(&current_exe, "node_modules/.bin/yarn", None)?;
+        crate::package::plan::symlink(&current_exe, "node_modules/.bin/yarn", None)?;
     }
-
-    join_paths()?;
 
     set_current_dir(&orig_dir)?;
     log_verbose(&format!("Now in {orig_dir:?}"));

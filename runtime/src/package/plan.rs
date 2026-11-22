@@ -17,12 +17,13 @@ use std::{
 };
 use tar::Archive;
 
-use crate::{
+use crate::package::{
     cache::Cache,
+    clone,
     config::read_config,
     net,
     npm::{Dependency, DependencyTree},
-    package::PackageMetadata,
+    metadata::PackageMetadata,
     pool::Pool,
     progress::{log_progress, log_verbose, log_warning},
     scoped_path::scoped_join,
@@ -172,42 +173,17 @@ pub async fn download_package_shared(dep: Dependency) -> Result<()> {
 
 /// Put a package's files in `dst`.
 ///
-/// On APFS the kernel clones a whole directory tree copy-on-write in one call: measured on this
-/// tree, 1257 packages and 38k files in one second, against eleven for a hard link per file. Every
-/// other filesystem gets the hard links, one syscall at a time. A clone shares blocks with the
-/// store rather than the inode, so a tool that rewrites a file in `node_modules` cannot reach back
-/// and change what the next install places.
-#[cfg(target_os = "macos")]
+/// One call to the kernel when the filesystem can clone (see `package::clone`), and otherwise a
+/// hard link per file: thousands of syscalls, on a blocking thread.
 fn place_dir(src: &Path, dst: &Path) -> Result<()> {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
-
-    if let (Ok(from), Ok(to)) = (
-        CString::new(src.as_os_str().as_bytes()),
-        CString::new(dst.as_os_str().as_bytes()),
-    ) {
-        // SAFETY: both pointers are valid NUL-terminated strings that outlive the call and
-        // `clonefile` reads nothing else from this process.
-        if unsafe { libc::clonefile(from.as_ptr(), to.as_ptr(), 0) } == 0 {
-            return Ok(());
-        }
-
-        if let Some(parent) = dst.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| eyre!("creating {}: {e}", parent.display()))?;
-        }
+    if clone::clone_tree(src, dst) {
+        return Ok(());
     }
 
-    log_verbose(&format!(
-        "cloning {} did not work, linking file by file",
-        src.display()
-    ));
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| eyre!("creating {}: {e}", parent.display()))?;
+    }
 
-    hardlink_dir(src.to_path_buf(), dst.to_path_buf())
-}
-
-#[cfg(not(target_os = "macos"))]
-fn place_dir(src: &Path, dst: &Path) -> Result<()> {
     hardlink_dir(src.to_path_buf(), dst.to_path_buf())
 }
 

@@ -17,7 +17,7 @@ use trillium_client::{Client, Method};
 use trillium_rustls::RustlsConfig;
 use trillium_smol::ClientConfig as TcpClient;
 
-use crate::config::RegistryAuth;
+use crate::package::config::RegistryAuth;
 
 /// Requests on the wire at once. A dependency tree is wide and every request is a socket wait,
 /// so this is the number that decides how long a cold install takes.

@@ -37,7 +37,7 @@ pub fn fetch(specifier: &str, referrer: &str) -> Outcome {
     // An import that downloads something is worth one line: it explains a pause and a network call
     // the program did not mention anywhere.
     eprintln!("xmas: installing {package} for '{specifier}'");
-    match xmas_package_manager::autoload::install_package(&root, &package) {
+    match crate::package::autoload::install_package(&root, &package) {
         Ok(()) => Outcome::Installed,
         Err(error) => Outcome::Failed(format!("{error:#}")),
     }

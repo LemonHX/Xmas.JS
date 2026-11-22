@@ -5,9 +5,9 @@ use color_eyre::owo_colors::OwoColorize;
 use compact_str::CompactString;
 use serde_json::Value;
 
-use crate::npm::fetch_package;
-use crate::progress::PROGRESS_BAR;
-use crate::util::{read_package_or_default, save_package};
+use crate::package::npm::fetch_package;
+use crate::package::progress::PROGRESS_BAR;
+use crate::package::util::{read_package_or_default, save_package};
 
 /// Execute the add command.
 pub fn cmd_add(names: &[CompactString], dev: bool, pin: bool) -> Result<()> {
