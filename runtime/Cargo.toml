@@ -10,7 +10,6 @@ description = "JavaScript engine embedding layer: realm driver, host services an
 # The package manager is a module here (src/package), not a crate: an import that names a package
 # nobody installed asks it for one (src/deps.rs) with a plain function call.
 quickjs-oxide = { path = "../../quickjs-oxide" }
-quickjs-oxide-host = { path = "../../quickjs-oxide/adapters/native" }
 smol = "2"
 futures-lite = "2"
 socket2 = { version = "0.6", features = ["all"] }

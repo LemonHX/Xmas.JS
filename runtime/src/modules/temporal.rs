@@ -162,17 +162,6 @@ fn field_number(
     Ok(field(scope, object, name)?.and_then(|value| as_f64(&value)))
 }
 
-fn field_bool(
-    scope: &mut Scope<'_>,
-    object: &ObjectRef,
-    name: &str,
-) -> Result<Option<bool>, RuntimeError> {
-    Ok(field(scope, object, name)?.and_then(|value| match value {
-        Value::Bool(flag) => Some(flag),
-        _ => None,
-    }))
-}
-
 fn object_of(value: &Value) -> Option<ObjectRef> {
     match value {
         Value::Object(object) => Some(object.clone()),
