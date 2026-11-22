@@ -9,7 +9,11 @@ description = "JavaScript engine embedding layer: realm driver, host services an
 [dependencies]
 # The package manager is a module here (src/package), not a crate: an import that names a package
 # nobody installed asks it for one (src/deps.rs) with a plain function call.
-quickjs-oxide = { path = "../../quickjs-oxide" }
+# The engine is a git dependency, pinned to a rev: the embedder-owned ArrayBuffer entry this
+# runtime needs (new_array_buffer_over) is on that branch, not on a published tag.
+quickjs-oxide = { git = "https://github.com/0xfe-project/quickjs-oxide", rev = "2939cf20d85152edbea57873fe1743629f40871f" }
+# The wasm engine: a WebAssembly 1.0 interpreter/JIT, and what WebAssembly.* runs on.
+wnjr-core = { workspace = true }
 smol = "2"
 futures-lite = "2"
 socket2 = { version = "0.6", features = ["all"] }

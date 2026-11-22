@@ -31,6 +31,7 @@ pub mod timers;
 pub mod tty;
 pub mod url;
 pub mod util;
+pub mod wasm;
 pub mod websocket;
 pub mod zlib;
 
@@ -63,6 +64,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     zlib::install(driver)?;
     stream::install(driver)?;
     stream_web::install(driver)?;
+    // wasm needs nothing: it is the WebAssembly namespace and the engine behind it.
+    wasm::install(driver)?;
     // fetch needs Blob, ReadableStream and DOMException, so it comes last
     fetch::install(driver)?;
     // sockets needs ReadableStream and WritableStream, and nothing else
