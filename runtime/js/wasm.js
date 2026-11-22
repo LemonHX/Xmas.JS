@@ -47,7 +47,6 @@
     configurable: true,
   });
 
-  // The bytes of a BufferSource, as a plain array of numbers: the Rust side copies them once.
   // The bytes of a BufferSource as a Uint8Array over them. The Rust side copies them out of the
   // view, not out of the engine's buffer: a shared or detached buffer has no bytes to hand over.
   function bytesOf(source) {
@@ -97,6 +96,121 @@
     configurable: true,
   });
 
+  // One JS function per exported function, closing over the instance and the export name. The
+  // spec has no callable object of its own for these, so a closure is the honest shape.
+  function exportedFunction(instance, name) {
+    const fn = function (...args) {
+      return __wasm_call(instance[HANDLE], name, args);
+    };
+    Object.defineProperty(fn, 'name', { value: name });
+    return fn;
+  }
+
+  // The exports of an instance, as the object the spec says instance.exports is. An export whose
+  // kind has no wrapper yet is left out rather than faked.
+  function exportsOf(instance) {
+    const exports = {};
+    for (const [name, kind] of __wasm_exports(instance[HANDLE])) {
+      let value;
+      switch (kind) {
+        case 'function':
+          value = exportedFunction(instance, name);
+          break;
+        case 'memory':
+          value = memoryOf(instance, name);
+          break;
+        case 'table':
+          value = tableOf(instance, name);
+          break;
+        case 'global':
+          value = globalOf(instance, name);
+          break;
+        default:
+          continue;
+      }
+      if (value === undefined) {
+        continue;
+      }
+      Object.defineProperty(exports, name, {
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
+    }
+    return exports;
+  }
+
+  const PENDING = Symbol('wasm.exportsPending');
+
+  class Instance {
+    constructor(module, importObject) {
+      if (!new.target) {
+        throw new TypeError("Class constructor Instance cannot be invoked without 'new'");
+      }
+      if (!(module instanceof Module)) {
+        throw new TypeError('expected a WebAssembly.Module');
+      }
+      const handle = __wasm_instantiate(
+        module[HANDLE],
+        importObject === undefined ? {} : importObject,
+      );
+      Object.defineProperty(this, HANDLE, { value: handle });
+      Object.defineProperty(this, PENDING, { value: true, writable: true });
+    }
+  }
+
+  Object.defineProperty(Instance.prototype, 'exports', {
+    get() {
+      if (this[PENDING]) {
+        // Built on the first read: building it asks the engine for the export list.
+        const exports = exportsOf(this);
+        Object.defineProperty(this, 'exports', {
+          value: exports,
+          writable: false,
+          enumerable: true,
+          configurable: true,
+        });
+        this[PENDING] = false;
+      }
+      return this.exports;
+    },
+    configurable: true,
+  });
+
+  // Placeholders until Memory, Table and Global land: an export of those kinds is left out of
+  // exports rather than given a wrapper that lies about what it does.
+  function memoryOf() {
+    return undefined;
+  }
+  function tableOf() {
+    return undefined;
+  }
+  function globalOf() {
+    return undefined;
+  }
+
+  Object.defineProperty(Instance.prototype, Symbol.toStringTag, {
+    value: 'WebAssembly.Instance',
+    configurable: true,
+  });
+
+  // The spec has both a constructor and this: instantiate() is the promise-shaped one, and it also
+  // takes bytes, which it compiles first. It resolves with { module, instance } either way.
+  function instantiate(source, importObject) {
+    let module;
+    try {
+      module = source instanceof Module ? source : new Module(source);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    try {
+      return Promise.resolve({ module, instance: new Instance(module, importObject) });
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
+
   function validate(bytes) {
     return __wasm_validate(bytesOf(bytes));
   }
@@ -129,11 +243,13 @@
 
   const WebAssembly = {
     CompileError,
+    Instance,
     LinkError,
     Module,
     RuntimeError,
     compile,
     compileStreaming,
+    instantiate,
     validate,
   };
 

@@ -23,6 +23,10 @@ fn throws(script: &str) -> (String, String) {
 /// The eight bytes of an empty module: the magic, the version, no section.
 const EMPTY: &str = "[0x00,0x61,0x73,0x6d,0x01,0x00,0x00,0x00]";
 
+/// `(module (func (export "add") (param i32 i32) (result i32) local.get 0 local.get 1 i32.add))`,
+/// which the tests need as a module that exports something callable.
+const ADD: &str = "[0x00,0x61,0x73,0x6d,0x01,0x00,0x00,0x00,0x01,0x07,0x01,0x60,0x02,0x7f,0x7f,0x01,0x7f,0x03,0x02,0x01,0x00,0x07,0x07,0x01,0x03,0x61,0x64,0x64,0x00,0x00,0x0a,0x09,0x01,0x07,0x00,0x20,0x00,0x20,0x01,0x6a,0x0b]";
+
 #[test]
 fn webassembly_is_a_global_with_the_standard_shape() {
     let answer = eval(
@@ -156,3 +160,57 @@ fn compile_streaming_checks_the_content_type() {
         "a wrong MIME type is a TypeError, per spec"
     );
 }
+
+#[test]
+fn an_instance_has_the_class_and_an_exports_object() {
+    let answer = eval(&format!(
+        "(function () {{
+            var i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array({ADD})));
+            return JSON.stringify([
+                i instanceof WebAssembly.Instance,
+                i[Symbol.toStringTag],
+                Object.keys(i.exports),
+                typeof i.exports.add,
+                i.exports.add.name,
+            ]);
+        }})()"
+    ));
+    assert_eq!(
+        answer,
+        r#"[true,"WebAssembly.Instance",["add"],"function","add"]"#
+    );
+}
+
+#[test]
+fn an_exported_function_takes_and_returns_numbers() {
+    let answer = eval(&format!(
+        "(function () {{
+            var i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array({ADD})));
+            return String(i.exports.add(2, 40));
+        }})()"
+    ));
+    assert_eq!(answer, "42");
+}
+
+#[test]
+fn instantiate_resolves_with_an_instance() {
+    let resolved = settled(&format!(
+        "WebAssembly.instantiate(new Uint8Array({ADD})).then((r) => r.instance instanceof WebAssembly.Instance && r.module instanceof WebAssembly.Module)"
+    ));
+    assert_eq!(resolved, "resolved:true");
+}
+
+#[test]
+fn instantiating_bad_bytes_rejects_with_a_compile_error() {
+    assert_eq!(
+        settled("WebAssembly.instantiate(new Uint8Array([1,2,3,4,5,6,7,8]))"),
+        "rejected:CompileError"
+    );
+}
+
+#[test]
+fn new_instance_wants_a_module() {
+    let (name, _) = throws("new WebAssembly.Instance({})");
+    assert_eq!(name, "TypeError");
+}
+

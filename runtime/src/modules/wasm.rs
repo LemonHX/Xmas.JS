@@ -23,7 +23,8 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use quickjs_oxide::engine::api::core::{
-    CallableRef, JsString, NativeErrorKind, ObjectRef, PropertyKey, RuntimeError, Scope, Value,
+    CallableRef, JsBigInt, JsString, NativeErrorKind, ObjectRef, PropertyKey, RuntimeError, Scope,
+    Value,
 };
 use wnjr_core::{Config, Engine, Extern, ExternKind, Instance, Module as WasmModule, Tier};
 
@@ -186,6 +187,94 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         .map_err(|error| format!("__wasm_compile: {error}"))?;
 
     driver
+        .context()
+        .define_function(&global, "__wasm_instantiate", 1, move |scope: &mut Scope<'_>| {
+            let value = scope.arg(0);
+            let slot = match want(scope, &value, "Module") {
+                Ok(slot) => slot,
+                Err(error) => return Err(error),
+            };
+            let slot = match slot {
+                Slot::Module(slot) => slot,
+                _ => {
+                    return Err(type_error(
+                        scope,
+                        "expected a WebAssembly.Module (the slot is not one)",
+                    ))
+                }
+            };
+            let engine = Engine::with_defaults();
+            let instance = Instance::from_module(&engine, slot.module.clone(), &[])
+                .map_err(|error| link_error(scope, &error.to_string()))?;
+            let slot = Slot::Instance(Rc::new(InstanceSlot {
+                instance: RefCell::new(instance),
+                engine,
+                module: slot.module.clone(),
+                memories: RefCell::new(Vec::new()),
+            }));
+            let prototype = prototype_of(scope, "Instance")?;
+            Ok(Value::Object(scope.new_host_object(slot, Some(&prototype))?))
+        })
+        .map_err(|error| format!("__wasm_instantiate: {error}"))?;
+
+    driver
+        .context()
+        .define_function(&global, "__wasm_call", 3, move |scope: &mut Scope<'_>| {
+            let instance = scope.arg(0);
+            let name = scope.arg(1);
+            let Slot::Instance(slot) = want(scope, &instance, "Instance")? else {
+                return Err(type_error(scope, "expected a WebAssembly.Instance"));
+            };
+            let Value::String(name) = name else {
+                return Err(type_error(scope, "expected an export name"));
+            };
+            let name = name.to_utf8_lossy();
+            let args = scope.arg(2);
+            let args = to_wasm_args(scope, &args)?;
+            let results = slot
+                .instance
+                .borrow_mut()
+                .invoke(&name, &args)
+                .map_err(|error| wasm_error(scope, "RuntimeError", &error.to_string()))?;
+            match results.len() {
+                0 => Ok(Value::Undefined),
+                1 => from_wasm_value(scope, &results[0]),
+                _ => Err(type_error(
+                    scope,
+                    "multi-value results are not supported yet",
+                )),
+            }
+        })
+        .map_err(|error| format!("__wasm_call: {error}"))?;
+
+    driver
+        .context()
+        .define_function(&global, "__wasm_exports", 1, move |scope: &mut Scope<'_>| {
+            let value = scope.arg(0);
+            let Slot::Instance(slot) = want(scope, &value, "Instance")? else {
+                return Err(type_error(scope, "expected a WebAssembly.Instance"));
+            };
+            let names = slot
+                .instance
+                .borrow()
+                .exports()
+                .map_err(|error| wasm_error(scope, "RuntimeError", &error.to_string()))?;
+            let mut pairs = Vec::with_capacity(names.len());
+            for (name, export) in names {
+                let kind = match export.kind() {
+                    ExternKind::Func => "function",
+                    ExternKind::Memory => "memory",
+                    ExternKind::Table => "table",
+                    ExternKind::Global => "global",
+                    ExternKind::Tag => "tag",
+                };
+                pairs.push((name, kind));
+            }
+            pairs_to_array(scope, &pairs)
+        })
+        .map_err(|error| format!("__wasm_exports: {error}"))?;
+
+    driver
         .eval(PRELUDE)
         .map_err(|error| format!("wasm prelude: {error}"))?;
     let module = driver
@@ -221,6 +310,82 @@ fn bytes_of(scope: &mut Scope<'_>, value: &Value) -> Result<Option<Vec<u8>>, Run
         })?;
     }
     Ok(Some(bytes))
+}
+
+/// An array of `[name, kind]` pairs, which is what the prelude walks.
+fn pairs_to_array(scope: &mut Scope<'_>, pairs: &[(String, &str)]) -> Result<Value, RuntimeError> {
+    let array = scope.new_array()?;
+    for (index, (name, kind)) in pairs.iter().enumerate() {
+        let pair = scope.new_array()?;
+        let text = Value::String(JsString::try_from_utf8(name)?);
+        scope.set_property(&pair, &PropertyKey::index(0), text.clone())?;
+        let kind = Value::String(JsString::try_from_utf8(kind)?);
+        scope.set_property(&pair, &PropertyKey::index(1), kind)?;
+        scope.set_property(&array, &PropertyKey::index(index as u32), Value::Object(pair))?;
+    }
+    Ok(Value::Object(array))
+}
+
+/// The JS arguments of an exported call, as wasm values.
+///
+/// An i32 is a JS number, an i64 is a BigInt, and the floats are numbers. The
+/// engine sees no other kind from JS: a reference needs a table and a function
+/// reference needs a closure, and neither is in this version.
+fn to_wasm_args(scope: &mut Scope<'_>, args: &Value) -> Result<Vec<wnjr_core::Value>, RuntimeError> {
+    let Value::Object(array) = args else {
+        return Err(type_error(scope, "expected an array of arguments"));
+    };
+    let mut values = Vec::new();
+    for index in 0..64u32 {
+        let key = PropertyKey::index(index);
+        let value = scope.get_property(array, &key)?;
+        if matches!(value, Value::Undefined) {
+            let next = PropertyKey::index(index + 1);
+            if matches!(scope.get_property(array, &next)?, Value::Undefined) {
+                break;
+            }
+            values.push(wnjr_core::Value::I32(0));
+            continue;
+        }
+        values.push(to_wasm_value(scope, value, index)?);
+    }
+    Ok(values)
+}
+
+fn to_wasm_value(
+    scope: &mut Scope<'_>,
+    value: Value,
+    index: u32,
+) -> Result<wnjr_core::Value, RuntimeError> {
+    match value {
+        Value::Int(number) => Ok(wnjr_core::Value::I32(number as i32)),
+        Value::Float(number) => Ok(wnjr_core::Value::F64(number)),
+        Value::Bool(flag) => Ok(wnjr_core::Value::I32(i32::from(flag))),
+        _ => Err(type_error(
+            scope,
+            &format!(
+                "argument {index} is not a number; i64 arguments need BigInt, which this engine \
+                 cannot convert yet"
+            ),
+        )),
+    }
+}
+
+fn from_wasm_value(scope: &mut Scope<'_>, value: &wnjr_core::Value) -> Result<Value, RuntimeError> {
+    match *value {
+        wnjr_core::Value::I32(number) => Ok(Value::Int(number)),
+        // An i64 crosses as a BigInt, as the JS API says. There is no i64
+        // constructor on JsBigInt, so the decimal text is what it parses.
+        wnjr_core::Value::I64(number) => {
+            let text = number.to_string();
+            let big = JsBigInt::parse_js_string(&text)
+                .map_err(|_| RuntimeError::Invariant("an i64's decimal text is a BigInt"))?;
+            Ok(Value::BigInt(big))
+        }
+        wnjr_core::Value::F32(number) => Ok(Value::Float(f64::from(number))),
+        wnjr_core::Value::F64(number) => Ok(Value::Float(number)),
+        _ => Err(type_error(scope, "this result type is not supported yet")),
+    }
 }
 
 /// `WebAssembly.<name>.prototype`, for the host objects this module makes.
