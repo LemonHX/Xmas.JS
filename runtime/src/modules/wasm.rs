@@ -26,11 +26,53 @@ use quickjs_oxide::engine::api::core::{
     CallableRef, JsBigInt, JsString, NativeErrorKind, ObjectRef, PropertyKey, RuntimeError, Scope,
     Value,
 };
-use wnjr_core::{Config, Engine, Extern, ExternKind, Instance, Module as WasmModule, Tier};
+use wnjr_core::{
+    Config, Engine, Extern, ExternKind, Import, ImportKind, Instance, Module as WasmModule, Tier,
+    WasmError,
+};
 
 use crate::driver::Driver;
 
 const PRELUDE: &str = include_str!("../../js/wasm.js");
+
+thread_local! {
+    /// The `Scope` of the host function wasm is running under, for the length of that run.
+    ///
+    /// An imported wasm function has to call back into JS, and the only handle that
+    /// can call JS is a `Scope`; it lives exactly as long as a host function does.
+    /// The engine cannot lend a second one: inside a host function the runtime's
+    /// inner state is borrowed, so `Context::*` answers `Reentered`. So the host
+    /// function that drives wasm parks its scope here and the import closures read
+    /// it, which is sound because wasm runs synchronously inside that call: the
+    /// scope outlives every import the run makes, on this thread, and is cleared
+    /// before the host function returns.
+    static RUNNING: RefCell<Option<*mut Scope<'static>>> = const { RefCell::new(None) };
+}
+
+/// Run `body` with `scope` as the one imports call back through.
+///
+/// The lifetime is erased for the length of the call and restored by this
+/// function, which is the only place the pointer is made.
+fn with_scope<T>(scope: &mut Scope<'_>, body: impl FnOnce() -> T) -> T {
+    let previous = RUNNING.with(|cell| {
+        let pointer: *mut Scope<'static> = unsafe { std::mem::transmute(&mut *scope) };
+        cell.replace(Some(pointer))
+    });
+    let result = body();
+    RUNNING.with(|cell| {
+        cell.replace(previous);
+    });
+    result
+}
+
+/// The scope wasm is running under, while it runs.
+fn running_scope<T>(body: impl FnOnce(&mut Scope<'_>) -> T) -> Option<T> {
+    let pointer = RUNNING.with(|cell| *cell.borrow())?;
+    // The pointer was made by `with_scope` from a live `&mut Scope`, and wasm
+    // cannot outlive that borrow.
+    let scope: &mut Scope<'_> = unsafe { &mut *pointer };
+    Some(body(scope))
+}
 
 /// The page size of a wasm linear memory, fixed by the spec.
 const PAGE_SIZE: usize = 65_536;
@@ -188,8 +230,9 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
 
     driver
         .context()
-        .define_function(&global, "__wasm_instantiate", 1, move |scope: &mut Scope<'_>| {
+        .define_function(&global, "__wasm_instantiate", 2, move |scope: &mut Scope<'_>| {
             let value = scope.arg(0);
+            let import_object = scope.arg(1);
             let slot = match want(scope, &value, "Module") {
                 Ok(slot) => slot,
                 Err(error) => return Err(error),
@@ -203,8 +246,9 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
                     ))
                 }
             };
+            let imports = imports_from(scope, &import_object, &slot.module)?;
             let engine = Engine::with_defaults();
-            let instance = Instance::from_module(&engine, slot.module.clone(), &[])
+            let instance = Instance::from_module(&engine, slot.module.clone(), &imports)
                 .map_err(|error| link_error(scope, &error.to_string()))?;
             let slot = Slot::Instance(Rc::new(InstanceSlot {
                 instance: RefCell::new(instance),
@@ -231,11 +275,10 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             let name = name.to_utf8_lossy();
             let args = scope.arg(2);
             let args = to_wasm_args(scope, &args)?;
-            let results = slot
-                .instance
-                .borrow_mut()
-                .invoke(&name, &args)
-                .map_err(|error| wasm_error(scope, "RuntimeError", &error.to_string()))?;
+            let results = with_scope(scope, || {
+                slot.instance.borrow_mut().invoke(&name, &args)
+            })
+            .map_err(|error| wasm_error(scope, "RuntimeError", &error.to_string()))?;
             match results.len() {
                 0 => Ok(Value::Undefined),
                 1 => from_wasm_value(scope, &results[0]),
@@ -310,6 +353,125 @@ fn bytes_of(scope: &mut Scope<'_>, value: &Value) -> Result<Option<Vec<u8>>, Run
         })?;
     }
     Ok(Some(bytes))
+}
+
+/// The JS import object, resolved against what the module actually asks for.
+///
+/// The module's own import list drives this, not the object's keys: a module that
+/// asks for nothing is instantiated whatever the object holds, and a module that
+/// asks for something the object does not have is a link error naming both.
+///
+/// Only a function can be imported in this version. A memory, a table and a
+/// global have no JS wrapper class yet, so an object that offers one is refused
+/// with the reason rather than linked against something invented.
+fn imports_from(
+    scope: &mut Scope<'_>,
+    import_object: &Value,
+    module: &WasmModule,
+) -> Result<Vec<Import>, RuntimeError> {
+    let Value::Object(object) = import_object else {
+        return Err(type_error(scope, "expected an import object"));
+    };
+    let mut imports = Vec::new();
+    for decl in module.imports() {
+        let key = key_of(decl.module)?;
+        let namespace = scope.get_property(object, &key)?;
+        let Value::Object(namespace) = namespace else {
+            return Err(link_error(
+                scope,
+                &format!("the import object has no module named {:?}", decl.module),
+            ));
+        };
+        let key = key_of(decl.name)?;
+        let value = scope.get_property(&namespace, &key)?;
+        match decl.kind {
+            ImportKind::Func => {
+                let Value::Object(function) = value else {
+                    return Err(link_error(
+                        scope,
+                        &format!(
+                            "{}.{} is not a function; importing anything else is not supported yet",
+                            decl.module, decl.name
+                        ),
+                    ));
+                };
+                let Some(callable) = scope.as_callable(&function)? else {
+                    return Err(link_error(
+                        scope,
+                        &format!("{}.{} is not a function", decl.module, decl.name),
+                    ));
+                };
+                let module_name = decl.module.to_string();
+                let field = decl.name.to_string();
+                // The wasm side can only carry a static message, so the real
+                // reason is parked here and read back after the call returns.
+                let failure: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+                let report = Rc::clone(&failure);
+                imports.push(Import::func(&module_name, &field, move |_caller, args, results| {
+                    let Some(outcome) =
+                        running_scope(|scope| call_imported(scope, &callable, args))
+                    else {
+                        return Err(WasmError::trap("an import was called outside a wasm run"));
+                    };
+                    match outcome {
+                        Ok(values) => {
+                            for (slot, value) in results.iter_mut().zip(values) {
+                                *slot = value;
+                            }
+                            Ok(())
+                        }
+                        Err(error) => {
+                            *report.borrow_mut() = Some(error);
+                            Err(WasmError::trap("an imported function threw"))
+                        }
+                    }
+                }));
+            }
+            kind => {
+                return Err(link_error(
+                    scope,
+                    &format!(
+                        "{}.{} is a {}; importing one needs a JS wrapper that does not exist yet",
+                        decl.module,
+                        decl.name,
+                        match kind {
+                            ImportKind::Memory => "memory",
+                            ImportKind::Table => "table",
+                            ImportKind::Global => "global",
+                            _ => "tag",
+                        }
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(imports)
+}
+
+/// Call one JS function from inside a wasm run and turn its result into wasm values.
+fn call_imported(
+    scope: &mut Scope<'_>,
+    callable: &CallableRef,
+    args: &[wnjr_core::Value],
+) -> Result<Vec<wnjr_core::Value>, String> {
+    let mut js_args = Vec::with_capacity(args.len());
+    for (index, value) in args.iter().enumerate() {
+        match from_wasm_value(scope, value) {
+            Ok(value) => js_args.push(value),
+            Err(error) => return Err(format!("argument {index}: {error:?}")),
+        }
+    }
+    let result = scope
+        .call(callable, Value::Undefined, &js_args)
+        .map_err(|error| format!("an imported function threw: {error:?}"))?;
+    if matches!(result, Value::Undefined) {
+        return Ok(Vec::new());
+    }
+    Ok(vec![to_wasm_value(scope, result, 0).map_err(|error| format!("{error:?}"))?])
+}
+
+fn key_of(text: &str) -> Result<PropertyKey, RuntimeError> {
+    Ok(PropertyKey::from_js_string(JsString::try_from_utf8(text)?))
 }
 
 /// An array of `[name, kind]` pairs, which is what the prelude walks.

@@ -25,6 +25,9 @@ const EMPTY: &str = "[0x00,0x61,0x73,0x6d,0x01,0x00,0x00,0x00]";
 
 /// `(module (func (export "add") (param i32 i32) (result i32) local.get 0 local.get 1 i32.add))`,
 /// which the tests need as a module that exports something callable.
+/// `(module (import "env" "f" (func (param i32) (result i32))) (func (export "call") ...))`;
+const IMPORTED: &str = "[0x00,0x61,0x73,0x6d,0x01,0x00,0x00,0x00,0x01,0x06,0x01,0x60,0x01,0x7f,0x01,0x7f,0x02,0x09,0x01,0x03,0x65,0x6e,0x76,0x01,0x66,0x00,0x00,0x03,0x02,0x01,0x00,0x07,0x08,0x01,0x04,0x63,0x61,0x6c,0x6c,0x00,0x01,0x0a,0x08,0x01,0x06,0x00,0x20,0x00,0x10,0x00,0x0b]";
+
 const ADD: &str = "[0x00,0x61,0x73,0x6d,0x01,0x00,0x00,0x00,0x01,0x07,0x01,0x60,0x02,0x7f,0x7f,0x01,0x7f,0x03,0x02,0x01,0x00,0x07,0x07,0x01,0x03,0x61,0x64,0x64,0x00,0x00,0x0a,0x09,0x01,0x07,0x00,0x20,0x00,0x20,0x01,0x6a,0x0b]";
 
 #[test]
@@ -214,3 +217,51 @@ fn new_instance_wants_a_module() {
     assert_eq!(name, "TypeError");
 }
 
+
+#[test]
+fn an_imported_function_is_called_from_wasm() {
+    let answer = eval(&format!(
+        "(function () {{
+            var i = new WebAssembly.Instance(
+                new WebAssembly.Module(new Uint8Array({IMPORTED})),
+                {{ env: {{ f: (x) => x + 1 }} }},
+            );
+            return String(i.exports.call(41));
+        }})()"
+    ));
+    assert_eq!(answer, "42");
+}
+
+#[test]
+fn a_missing_import_is_a_link_error() {
+    let (name, message) = throws(&format!(
+        "new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array({IMPORTED})), {{}})"
+    ));
+    assert_eq!(name, "LinkError");
+    assert!(
+        message.contains("env"),
+        "the message names what is missing: {message}"
+    );
+}
+
+#[test]
+fn an_import_that_is_not_a_function_is_a_link_error() {
+    let (name, _) = throws(&format!(
+        "new WebAssembly.Instance(
+            new WebAssembly.Module(new Uint8Array({IMPORTED})),
+            {{ env: {{ f: 7 }} }},
+        )"
+    ));
+    assert_eq!(name, "LinkError");
+}
+
+#[test]
+fn a_module_that_imports_nothing_ignores_the_object() {
+    let answer = eval(&format!(
+        "(function () {{
+            var i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array({ADD})), {{ nothing: true }});
+            return String(i.exports.add(20, 22));
+        }})()"
+    ));
+    assert_eq!(answer, "42");
+}
