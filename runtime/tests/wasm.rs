@@ -331,3 +331,56 @@ fn a_grow_keeps_the_bytes_that_were_written() {
     ));
     assert_eq!(answer, "1234");
 }
+
+/// A table with \`double\` and \`increment\` in it, a mutable i32 global, and a
+/// funcref global that names \`double\`.
+const REFS: &str = "[0x00,0x61,0x73,0x6d,0x01,0x00,0x00,0x00,0x01,0x06,0x01,0x60,0x01,0x7f,0x01,0x7f,0x03,0x03,0x02,0x00,0x00,0x04,0x04,0x01,0x70,0x00,0x04,0x06,0x0b,0x02,0x7f,0x01,0x41,0x07,0x0b,0x70,0x00,0xd2,0x00,0x0b,0x07,0x0e,0x03,0x01,0x74,0x01,0x00,0x01,0x67,0x03,0x00,0x02,0x67,0x66,0x03,0x01,0x09,0x08,0x01,0x00,0x41,0x00,0x0b,0x02,0x00,0x01,0x0a,0x11,0x02,0x07,0x00,0x20,0x00,0x41,0x02,0x6c,0x0b,0x07,0x00,0x20,0x00,0x41,0x01,0x6a,0x0b]";
+
+#[test]
+fn a_table_export_has_a_length_and_callable_elements() {
+    let answer = eval(&format!(
+        "(function () {{
+            var i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array({REFS})));
+            var t = i.exports.t;
+            return JSON.stringify([
+                t instanceof WebAssembly.Table,
+                t[Symbol.toStringTag],
+                t.length,
+                typeof t.get(0),
+                t.get(0)(21),
+                t.get(1)(41),
+                t.get(3),
+            ]);
+        }})()"
+    ));
+    assert_eq!(
+        answer,
+        r#"[true,"WebAssembly.Table",4,"function",42,42,null]"#
+    );
+}
+
+#[test]
+fn a_mutable_global_reads_and_writes() {
+    let answer = eval(&format!(
+        "(function () {{
+            var i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array({REFS})));
+            var g = i.exports.g;
+            var before = g.value;
+            g.value = 21;
+            return JSON.stringify([g instanceof WebAssembly.Global, before, g.value, g.valueOf()]);
+        }})()"
+    ));
+    assert_eq!(answer, r#"[true,7,21,21]"#);
+}
+
+#[test]
+fn a_funcref_global_reads_back_as_a_function() {
+    let answer = eval(&format!(
+        "(function () {{
+            var i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array({REFS})));
+            var f = i.exports.gf.value;
+            return String(typeof f + ',' + f(4));
+        }})()"
+    ));
+    assert_eq!(answer, "function,8");
+}

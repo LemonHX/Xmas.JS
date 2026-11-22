@@ -242,16 +242,111 @@
     configurable: true,
   });
 
-  // Placeholders until Memory, Table and Global land: an export of those kinds is left out of
-  // exports rather than given a wrapper that lies about what it does.
   function memoryOf(instance, name) {
     return memoryFromSlot(__wasm_memory(instance[HANDLE], name));
   }
-  function tableOf() {
-    return undefined;
+
+  // A funcref read out of a table or a global comes back as a Rust slot; the callable the
+  // spec promises is a JS function over it, since a reference is not a JS value.
+  function callableFromSlot(slot) {
+    const fn = function (...args) {
+      return __wasm_ref_call(slot, args);
+    };
+    Object.defineProperty(fn, 'name', { value: '' });
+    return fn;
   }
-  function globalOf() {
-    return undefined;
+
+  function fromReference(value) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    if (typeof value === 'object' && value !== null) {
+      return callableFromSlot(value);
+    }
+    return value;
+  }
+
+  function tableFromSlot(handle) {
+    const table = Object.create(Table.prototype);
+    Object.defineProperty(table, HANDLE, { value: handle, configurable: true });
+    return table;
+  }
+
+  function globalFromSlot(handle) {
+    const global = Object.create(Global.prototype);
+    Object.defineProperty(global, HANDLE, { value: handle, configurable: true });
+    return global;
+  }
+
+  class Table {
+    constructor(descriptor) {
+      if (!new.target) {
+        throw new TypeError("Class constructor Table cannot be invoked without 'new'");
+      }
+      throw new TypeError('constructing a WebAssembly.Table is not supported yet');
+    }
+  }
+
+  Object.defineProperty(Table.prototype, 'length', {
+    get() {
+      return __wasm_table_length(this[HANDLE]);
+    },
+    configurable: true,
+  });
+
+  Object.defineProperty(Table.prototype, 'get', {
+    value: function get(index) {
+      if (typeof index !== 'number') {
+        throw new TypeError('get takes an element index');
+      }
+      return fromReference(__wasm_table_get(this[HANDLE], index));
+    },
+    writable: true,
+    configurable: true,
+  });
+
+  Object.defineProperty(Table.prototype, Symbol.toStringTag, {
+    value: 'WebAssembly.Table',
+    configurable: true,
+  });
+
+  class Global {
+    constructor(descriptor) {
+      if (!new.target) {
+        throw new TypeError("Class constructor Global cannot be invoked without 'new'");
+      }
+      throw new TypeError('constructing a WebAssembly.Global is not supported yet');
+    }
+  }
+
+  Object.defineProperty(Global.prototype, 'value', {
+    get() {
+      return fromReference(__wasm_global_value(this[HANDLE]));
+    },
+    set(value) {
+      __wasm_global_set(this[HANDLE], value);
+    },
+    configurable: true,
+  });
+
+  Object.defineProperty(Global.prototype, 'valueOf', {
+    value: function valueOf() {
+      return this.value;
+    },
+    writable: true,
+    configurable: true,
+  });
+
+  Object.defineProperty(Global.prototype, Symbol.toStringTag, {
+    value: 'WebAssembly.Global',
+    configurable: true,
+  });
+
+  function tableOf(instance, name) {
+    return tableFromSlot(__wasm_table(instance[HANDLE], name));
+  }
+  function globalOf(instance, name) {
+    return globalFromSlot(__wasm_global(instance[HANDLE], name));
   }
 
   Object.defineProperty(Instance.prototype, Symbol.toStringTag, {
@@ -307,11 +402,13 @@
 
   const WebAssembly = {
     CompileError,
+    Global,
     Instance,
     LinkError,
     Memory,
     Module,
     RuntimeError,
+    Table,
     compile,
     compileStreaming,
     instantiate,

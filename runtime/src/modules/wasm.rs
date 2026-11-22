@@ -28,8 +28,7 @@ use quickjs_oxide::engine::api::core::{
     Value,
 };
 use wnjr_core::{
-    Config, Engine, Extern, ExternKind, Import, ImportKind, Instance, Module as WasmModule, Tier,
-    WasmError,
+    Engine, Extern, ExternKind, Import, ImportKind, Instance, Module as WasmModule, WasmError,
 };
 
 use crate::driver::Driver;
@@ -169,12 +168,19 @@ impl MemorySlot {
     }
 }
 
+/// A table this instance exports, and the instance itself.
+///
+/// The instance is here because a funcref is only callable through the instance
+/// that owns it: `table.get(i)` hands out a function that closes over both.
 pub(crate) struct TableSlot {
     export: Extern,
+    instance: Rc<InstanceSlot>,
 }
 
+/// A global this instance exports.
 pub(crate) struct GlobalSlot {
     export: Extern,
+    instance: Rc<InstanceSlot>,
 }
 
 /// What a host object in this module holds.
@@ -185,6 +191,31 @@ pub(crate) enum Slot {
     Memory(Rc<MemorySlot>),
     Table(Rc<TableSlot>),
     Global(Rc<GlobalSlot>),
+    Ref(Rc<RefSlot>),
+}
+
+/// A function reference read out of a table or a global.
+///
+/// The reference is a wasm value, not a JS one: it names a function of one
+/// instance, and calling it means going back through that instance. A slot
+/// carries both halves so `table.get(i)` can hand out something callable.
+#[derive(Clone)]
+pub(crate) struct RefSlot {
+    instance: Rc<InstanceSlot>,
+    value: wnjr_core::Value,
+}
+
+/// One export of an instance, by name.
+fn export_of(
+    scope: &mut Scope<'_>,
+    instance: &Rc<InstanceSlot>,
+    name: &str,
+) -> Result<Option<Extern>, RuntimeError> {
+    instance
+        .instance
+        .borrow()
+        .get_export(name)
+        .map_err(|error| wasm_error(scope, "RuntimeError", &error.to_string()))
 }
 
 fn host(scope: &mut Scope<'_>, value: &Value) -> Result<Option<Slot>, RuntimeError> {
@@ -467,6 +498,184 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             Ok(buffer.unwrap_or(Value::Undefined))
         })
         .map_err(|error| format!("__wasm_memory_buffer: {error}"))?;
+
+    // A table and a global are an Extern and nothing else: every operation
+    // either reads or writes through one, so they share the two slots.
+    driver
+        .context()
+        .define_function(&global, "__wasm_table", 2, move |scope: &mut Scope<'_>| {
+            let value = scope.arg(0);
+            let name = scope.arg(1);
+            let Slot::Instance(slot) = want(scope, &value, "Instance")? else {
+                return Err(type_error(scope, "expected a WebAssembly.Instance"));
+            };
+            let Value::String(name) = name else {
+                return Err(type_error(scope, "expected an export name"));
+            };
+            let name = name.to_utf8_lossy();
+            let Some(export) = export_of(scope, &slot, &name)? else {
+                return Err(type_error(
+                    scope,
+                    &format!("the instance has no export named {name:?}"),
+                ));
+            };
+            let prototype = prototype_of(scope, "Table")?;
+            let slot = Slot::Table(Rc::new(TableSlot {
+                export,
+                instance: Rc::clone(&slot),
+            }));
+            Ok(Value::Object(scope.new_host_object(slot, Some(&prototype))?))
+        })
+        .map_err(|error| format!("__wasm_table: {error}"))?;
+
+    driver
+        .context()
+        .define_function(&global, "__wasm_global", 2, move |scope: &mut Scope<'_>| {
+            let value = scope.arg(0);
+            let name = scope.arg(1);
+            let Slot::Instance(slot) = want(scope, &value, "Instance")? else {
+                return Err(type_error(scope, "expected a WebAssembly.Instance"));
+            };
+            let Value::String(name) = name else {
+                return Err(type_error(scope, "expected an export name"));
+            };
+            let name = name.to_utf8_lossy();
+            let Some(export) = export_of(scope, &slot, &name)? else {
+                return Err(type_error(
+                    scope,
+                    &format!("the instance has no export named {name:?}"),
+                ));
+            };
+            let prototype = prototype_of(scope, "Global")?;
+            let slot = Slot::Global(Rc::new(GlobalSlot {
+                export,
+                instance: Rc::clone(&slot),
+            }));
+            Ok(Value::Object(scope.new_host_object(slot, Some(&prototype))?))
+        })
+        .map_err(|error| format!("__wasm_global: {error}"))?;
+
+    driver
+        .context()
+        .define_function(&global, "__wasm_table_length", 1, move |scope: &mut Scope<'_>| {
+            let value = scope.arg(0);
+            let Slot::Table(slot) = want(scope, &value, "Table")? else {
+                return Err(type_error(scope, "expected a WebAssembly.Table"));
+            };
+            Ok(Value::Int(slot.export.table_size().unwrap_or(0) as i32))
+        })
+        .map_err(|error| format!("__wasm_table_length: {error}"))?;
+
+    driver
+        .context()
+        .define_function(&global, "__wasm_table_get", 2, move |scope: &mut Scope<'_>| {
+            let value = scope.arg(0);
+            let index = scope.arg(1);
+            let Slot::Table(slot) = want(scope, &value, "Table")? else {
+                return Err(type_error(scope, "expected a WebAssembly.Table"));
+            };
+            let Value::Int(index) = index else {
+                return Err(type_error(scope, "expected an element index"));
+            };
+            let Some(element) = slot.export.table_get(index.max(0) as usize) else {
+                return Err(type_error(scope, "expected a WebAssembly.Table"));
+            };
+            let element =
+                element.map_err(|error| wasm_error(scope, "RuntimeError", &error.to_string()))?;
+            if matches!(element, wnjr_core::Value::Ref(reference, _) if reference.is_null()) {
+                return Ok(Value::Null);
+            }
+            // A funcref is only callable through the instance that owns it, and
+            // the only thing that can call is a JS function closing over it.
+            let reference = Rc::new(RefSlot {
+                instance: Rc::clone(&slot.instance),
+                value: element,
+            });
+            Ok(Value::Object(scope.new_host_object(reference, None)?))
+        })
+        .map_err(|error| format!("__wasm_table_get: {error}"))?;
+
+    driver
+        .context()
+        .define_function(&global, "__wasm_global_value", 1, move |scope: &mut Scope<'_>| {
+            let value = scope.arg(0);
+            let Slot::Global(slot) = want(scope, &value, "Global")? else {
+                return Err(type_error(scope, "expected a WebAssembly.Global"));
+            };
+            let Some(value) = slot.export.global_value() else {
+                return Err(type_error(scope, "expected a WebAssembly.Global"));
+            };
+            // A global holding a funcref reads back as something callable, the
+            // same way a table element does.
+            if let wnjr_core::Value::Ref(reference, _) = value {
+                if reference.is_null() {
+                    return Ok(Value::Null);
+                }
+                let reference = Rc::new(RefSlot {
+                    instance: Rc::clone(&slot.instance),
+                    value,
+                });
+                return Ok(Value::Object(scope.new_host_object(reference, None)?));
+            }
+            from_wasm_value(scope, &value)
+        })
+        .map_err(|error| format!("__wasm_global_value: {error}"))?;
+
+    driver
+        .context()
+        .define_function(&global, "__wasm_global_set", 2, move |scope: &mut Scope<'_>| {
+            let value = scope.arg(0);
+            let incoming = scope.arg(1);
+            let Slot::Global(slot) = want(scope, &value, "Global")? else {
+                return Err(type_error(scope, "expected a WebAssembly.Global"));
+            };
+            if slot.export.is_mutable() != Some(true) {
+                return Err(type_error(scope, "this global is not mutable"));
+            }
+            let incoming = to_wasm_value(scope, incoming, 0)?;
+            slot.export
+                .set_global_value(incoming)
+                .map_err(|error| wasm_error(scope, "RuntimeError", &error.to_string()))?;
+            Ok(Value::Undefined)
+        })
+        .map_err(|error| format!("__wasm_global_set: {error}"))?;
+
+    driver
+        .context()
+        .define_function(&global, "__wasm_ref_call", 2, move |scope: &mut Scope<'_>| {
+            let value = scope.arg(0);
+            let Value::Object(object) = value else {
+                return Err(type_error(scope, "expected a function reference"));
+            };
+            let Some(reference) = scope.host_data::<Rc<RefSlot>>(&object)? else {
+                return Err(type_error(scope, "expected a function reference"));
+            };
+            let args = scope.arg(1);
+            let args = to_wasm_args(scope, &args)?;
+            let mut results = Vec::new();
+            with_scope(scope, || {
+                let mut instance = reference.instance.instance.borrow_mut();
+                let func = instance
+                    .func_from_value(&reference.value)
+                    .ok_or_else(|| WasmError::invalid("the reference is not callable"))?;
+                let (_, arity) = func.arity();
+                let mut out = vec![wnjr_core::Value::Unknown; arity];
+                instance.call(&func, &args, &mut out)?;
+                Ok::<_, WasmError>(out)
+            })
+            .map_err(|error| wasm_error(scope, "RuntimeError", &error.to_string()))?
+            .into_iter()
+            .for_each(|value| results.push(value));
+            match results.len() {
+                0 => Ok(Value::Undefined),
+                1 => from_wasm_value(scope, &results[0]),
+                _ => Err(type_error(
+                    scope,
+                    "multi-value results are not supported yet",
+                )),
+            }
+        })
+        .map_err(|error| format!("__wasm_ref_call: {error}"))?;
 
     driver
         .context()
