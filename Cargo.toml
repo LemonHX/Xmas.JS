@@ -33,3 +33,95 @@ tracing-subscriber = "0.3"
 
 [features]
 default = []
+
+# Two speeds in one binary.
+#
+# The engine -- quickjs-oxide and wnjr-core -- is judged by how fast a request is answered, so it
+# gets the fullest optimisation there is. Everything around it is judged by how much of it there is:
+# smol, trillium, the TLS stack, the ICU data, the package manager. Those are IO that spends its
+# life waiting, and `-Oz` makes them visibly smaller for a cost no request notices.
+#
+# Fat LTO over the whole thing is what lets the two cooperate: no `-Oz` crate boundary stops the
+# engine's inlining, and dead weight in the IO layer goes away entirely once the engine's calls into
+# it are known.
+#
+# `package."*"` is the fallback, so a new dependency is small by default and a crate that has to be
+# fast gets named here on purpose.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+# Nothing in a binary this size is worth a symbol table, and a panic that unwinds through a realm
+# has nowhere to unwind to.
+strip = "symbols"
+panic = "abort"
+
+[profile.release.package."*"]
+opt-level = "z"
+
+# The two engines. Everything they touch on a hot path is inlined into them by the LTO above, so
+# what is set here is what the measuring loop actually runs.
+[profile.release.package.wnjr-core]
+opt-level = 3
+[profile.release.package.quickjs-oxide]
+opt-level = 3
+[profile.release.package.quickjs-oxide-core]
+opt-level = 3
+[profile.release.package.quickjs-oxide-regexp]
+opt-level = 3
+
+# TypeScript is compiled on every start, so this is startup latency, not size.
+[profile.release.package.oxc]
+opt-level = 3
+[profile.release.package.oxc_parser]
+opt-level = 3
+[profile.release.package.oxc_allocator]
+opt-level = 3
+[profile.release.package.oxc_transformer]
+opt-level = 3
+[profile.release.package.oxc_codegen]
+opt-level = 3
+[profile.release.package.oxc_semantic]
+opt-level = 3
+[profile.release.package.oxc_span]
+opt-level = 3
+[profile.release.package.oxc_ast]
+opt-level = 3
+[profile.release.package.oxc_syntax]
+opt-level = 3
+[profile.release.package.oxc_data_structures]
+opt-level = 3
+[profile.release.package.oxc_ecmascript]
+opt-level = 3
+[profile.release.package.oxc_ast_visit]
+opt-level = 3
+[profile.release.package.oxc_traverse]
+opt-level = 3
+[profile.release.package.oxc_index]
+opt-level = 3
+[profile.release.package.oxc_regular_expression]
+opt-level = 3
+[profile.release.package.oxc_compat]
+opt-level = 3
+[profile.release.package.oxc_browserslist]
+opt-level = 3
+
+# Hashing and JSON are on the module loader's path; `-Oz` there is money spent on every import.
+[profile.release.package.rustc-hash]
+opt-level = 3
+[profile.release.package.memchr]
+opt-level = 3
+[profile.release.package.serde_json]
+opt-level = 3
+
+# TLS and the signature maths behind it: only `fetch` pays, but it pays per handshake.
+[profile.release.package.rustls]
+opt-level = 3
+[profile.release.package.rustls-rustcrypto]
+opt-level = 3
+[profile.release.package.sha2]
+opt-level = 3
+[profile.release.package.aes]
+opt-level = 3
+[profile.release.package.gcm]
+opt-level = 3

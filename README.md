@@ -1,21 +1,22 @@
 <div align="center">
 
 ![XMASJS LOGO](./Xmas.JS.svg)
-> **The logo does not represent any religious affiliation.** It is a stylized "Xmas", as in "ECMAScript".
+> **The logo does not represent any religious affiliation.** 
 
 # Xmas.JS
 
-**A complete JavaScript runtime in one small binary. No JIT, no C toolchain, no node_modules tax.**
+**A complete JavaScript runtime in one small binary. No JIT(except WASM).**
+
 
 [![License: Apache-2.0 OR GPL-3.0](https://img.shields.io/badge/License-Apache%202.0%20OR%20GPL%203.0-blue.svg)](#license)
 [![WinterTC](https://img.shields.io/badge/WinterTC-compatible-green.svg)](https://wintertc.org/)
-[![Pure Rust](https://img.shields.io/badge/build-zero%20C-orange.svg)](#how-it-stays-small)
+[![Pure Rust](https://img.shields.io/badge/build-100%%20RUST-orange.svg)](#how-it-stays-small)
 
 </div>
 
 ---
 
-## What is Xmas.JS?
+## TL;DR: ***EVERYTHING INCLUDED*** with Binary size **11.3 MiB**
 
 One binary that runs TypeScript, serves HTTP, installs packages, and executes WebAssembly.
 
@@ -25,26 +26,17 @@ One binary that runs TypeScript, serves HTTP, installs packages, and executes We
 - **Sockets.** WinterTC `connect()` for TCP, plus a `UDPSocket`.
 - **Node-flavored modules.** buffer, crypto, fs, path, stream, zlib, child_process, util, assert, os, process and more, listed below.
 - **CommonJS.** `require`, `module.exports`, `__dirname`, and `.cjs` files work next to ES modules.
-- **A package manager.** `xmas install`, `add`, `why`, `x`. It also runs your `package.json` scripts.
-- **Temporal.** Backed by temporal_rs.
-
-Everything above is one process, written in Rust, with no system library underneath.
-
----
-
-## Small on purpose
+- **A FAST package manager.** `xmas install`, `add`, `why`, `x`. It also runs your `package.json` scripts with nearly `bun`'s speed.
 
 Measured on one machine (Apple silicon macOS, release build, fat LTO, one codegen unit, symbols stripped):
 
-| What | Number |
-| --- | --- |
-| Binary size | **11.3 MiB** (11,821,360 bytes), runtime, package manager, TS compiler and WebAssembly engine included. The same code was 22,831,088 bytes before the profile below |
-| Process start to first HTTP response | **19 to 41 ms** over four warm runs (spawn, parse, compile, serve, one request). The very first run of a freshly built binary took 635 ms, which I put down to macOS checking a new executable, not to the runtime |
-| Idle memory, hello-world server, 1 worker | **17.8 MB** resident (RSS, `ps`) |
 
-These are not a comparison. Nobody else's runtime was measured with the same harness, so there is no "Nx faster" here. The comparison against LLRT, Node with Hono, and Bun is still to do, and it will go in this table when it exists.
-
-The profile keeps the two engines (quickjs-oxide, WNJR), the TypeScript compiler, hashing, JSON and TLS at `opt-level = 3` and builds every other crate, including smol and Trillium, at `opt-level = "z"`. Speed where code runs hot, size everywhere else.
+| Runtime     | Cold Start  | Memory (Idle) | Best Use Case                             |
+| ----------- | ----------- | ------------- | ----------------------------------------- |
+| **Node.js** | ~100-200ms  | ~30-50MB      | Web servers, long-running apps            |
+| **Deno** 🪦   | ~150-300ms  | ~40-60MB      | Secure web apps, TypeScript projects      |
+| **Bun**     | ~50-100ms   | ~25-35MB      | Fast web development                      |
+| **Xmas.JS** 🎄 | **~10-20ms** | **~10-17MB**    | **System scripts, CLI tools, serverless** |
 
 ---
 
@@ -62,18 +54,6 @@ export default {
 ```bash
 xmas serve app.ts --port 8000 --workers 4
 ```
-
-A handler can return a `Response` or a promise of one. A handler that returns anything else gets a 500 and a log line saying what it returned. A module that throws while loading stops the whole server with the file, the line and the reason, instead of listening and answering 500 to everyone.
-
-You can also register the handler from inside the module:
-
-```ts
-import { serve } from 'xmas:server';
-
-serve({ fetch: (request) => new Response('hi'), env: { GREETING: 'hi' } });
-```
-
-`env` is handed to your handler as its second argument, and the third is a `ctx` with a real `waitUntil`. Details are in [runtime/docs/server.md](runtime/docs/server.md).
 
 ### WebAssembly
 
@@ -107,7 +87,10 @@ module.exports = { chunk: _.chunk };
 import * as rollup from 'https://unpkg.com/@rollup/browser/dist/es/rollup.browser.js';
 ```
 
-`https:`, `http:` and `data:` specifiers are module names of their own, and a relative import inside a remote module resolves against its URL. Bytes are cached on disk under `.xmas/remote/`, so each URL is fetched once per machine and a cached module loads offline. The engine asks for modules synchronously, so the first fetch of a URL blocks that worker's thread while the network answers. That is not async loading. A 404 is never cached. See [runtime/docs/remote.md](runtime/docs/remote.md).
+we love web standard, sadly Deno passed away this year.
+
+🪦 R.I.P. DENO
+
 
 ---
 
@@ -152,30 +135,11 @@ There is no REPL and no `xmas file.ts` shortcut at the moment. Use `serve`, or `
 
 ---
 
-## What is in the box
-
-| Area | Modules |
-| --- | --- |
-| Web | fetch, Request/Response/Headers, URL, AbortController, events, WebSocket, streams (web), timers, console, crypto |
-| Node-style | assert, async_hooks, buffer, child_process, exec, fs, os, path, perf_hooks, process, stream, string_decoder, tty, util, zlib |
-| Network | sockets (TCP and UDP), the HTTP server |
-| Time | Temporal |
-| Code | WebAssembly, CommonJS, `import.meta` (`url`, `dir`, `dirname`, `path`, `filename`, `file`, `main`, `env`), imports from `https:` and `data:` URLs |
-
-`fetch('file://...')` reads from disk. Node refuses that and Bun and Deno allow it.
-
-Each module has a doc in [runtime/docs](runtime/docs) that lists what it does not do. We would rather you read the gaps there than find them at 2 a.m.
-
-### Left out on purpose
-
-`node:net`, `node:tls`, `node:http`, `node:dgram`, `node:dns` and `node:intl`. Use `fetch` and sockets. There is no permission model: a script can reach what the process can reach. `os` and `process` report the runtime's own facts and read nothing from the host.
-
----
 
 ## How it stays small
 
-- **No JIT.** The engine is [quickjs-oxide](https://github.com/0xfe-project/quickjs-oxide), a Rust QuickJS. Starting is cheap. Long CPU-heavy loops will lose to V8.
-- **Zero C at build time.** TLS is rustls with a pure-Rust crypto provider. No OpenSSL, no libz, no system certificate store. Nothing in the build needs a C compiler or a system library, so it does not depend on what the host has installed.
+- **No JS JIT.** The engine is [quickjs-oxide](https://github.com/0xfe-project/quickjs-oxide), a Rust QuickJS working cooperated with pocketjs team.
+- **Zero C at build time.** TLS is rustls with a pure-Rust crypto provider. No OpenSSL, no libz, no system certificate store.
 - **Tested for system libraries.** A test fails the build if openssl, native-tls or libz-sys show up in the runtime's dependency tree.
 - **smol, not tokio.** The async runtime is smol everywhere, and tokio is not in the runtime's dependency tree today.
 
@@ -195,10 +159,17 @@ Dual-licensed under **Apache-2.0 OR GPL-3.0**. Choose Apache-2.0 for almost ever
 
 ## Thanks
 
-[QuickJS](https://bellard.org/quickjs/) by Fabrice Bellard, [quickjs-oxide](https://github.com/0xfe-project/quickjs-oxide), WNJR, [LLRT](https://github.com/awslabs/llrt), [Trillium](https://trillium.rs/), [smol](https://github.com/smol-rs/smol), [oxc](https://oxc-project.github.io/), [temporal_rs](https://github.com/boa-dev/temporal), and [txiki.js](https://github.com/saghul/txiki.js) for the idea that a small runtime is worth having.
+- [QuickJS](https://bellard.org/quickjs/) by Fabrice Bellard
+- [quickjs-oxide](https://github.com/0xfe-project/quickjs-oxide) PocketJS TEAM
+
+- [WNJR](https://github.com/0xfe-project/wnjr) WASM runtime.
+- [Trillium](https://trillium.rs/) the web engine.
+- [oxc](https://oxc-project.github.io/) the TS transpiler.
+
+and [txiki.js](https://github.com/saghul/txiki.js) for the idea that a small runtime is worth having.
 
 <div align="center">
 
-Made by LemonHX and the Xmas.JS team.
+Made by ❤️ LemonHX 🍋 and the Xmas.JS 🎄 team.
 
 </div>

@@ -24,7 +24,7 @@ use oxc::allocator::Allocator;
 use oxc::ast::ast::Expression;
 use oxc::ast_visit::{Visit, walk};
 use oxc::parser::{Parser, ParseOptions};
-use oxc::span::SourceType;
+use oxc::span::{GetSpan, SourceType};
 
 /// What a module's `import.meta` is answered from, besides its own path.
 ///
@@ -52,6 +52,8 @@ struct Scan<'a> {
     /// The name the loader knows this module by, for `main` to compare against.
     name: &'a str,
     context: &'a Context,
+    /// The source being rewritten, so a call's own arguments can be copied through as written.
+    source: &'a str,
     found: Vec<Splice>,
     /// A use this layer cannot answer, kept so the caller can say which one.
     unknown: Option<String>,
@@ -59,6 +61,29 @@ struct Scan<'a> {
 
 impl<'a> Visit<'a> for Scan<'a> {
     fn visit_expression(&mut self, expression: &Expression<'a>) {
+        // `import.meta.resolve(specifier, parent?)` is a call, not a value: the specifier may be a
+        // variable, so it cannot become a literal. What can be known at compile time is which
+        // module is asking, so that is what gets baked in -- the specifier is passed through.
+        if let Expression::CallExpression(call) = expression
+            && let Expression::StaticMemberExpression(member) = &call.callee
+            && let Expression::MetaProperty(meta) = &member.object
+            && meta.meta.name == "import"
+            && meta.property.name == "meta"
+            && member.property.name == "resolve"
+        {
+            let mut text = format!("globalThis.__xmas_resolve({}", quote(self.url));
+            for argument in &call.arguments {
+                text.push(',');
+                text.push_str(&self.source[argument.span().start as usize..argument.span().end as usize]);
+            }
+            text.push(')');
+            self.found.push(Splice {
+                start: meta.span.start as usize,
+                end: call.span.end as usize,
+                text,
+            });
+            return;
+        }
         if let Expression::StaticMemberExpression(member) = expression
             && let Expression::MetaProperty(meta) = &member.object
             && meta.meta.name == "import"
@@ -248,6 +273,7 @@ pub fn rewrite(source: &str, path: &str, context: &Context) -> Result<Option<Str
         url: &url,
         name: path,
         context,
+        source,
         found: Vec::new(),
         unknown: None,
     };

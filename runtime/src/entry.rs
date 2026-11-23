@@ -60,7 +60,54 @@ pub fn realm(host: Host, addr: &str) -> Result<Driver, String> {
         addr.replace('\\', "\\\\").replace('\'', "\\'")
     );
     driver.eval(&quoted)?;
+    install_resolve(&mut driver)?;
     Ok(driver)
+}
+
+/// `import.meta.resolve`, as a host function.
+///
+/// The compiler turns `import.meta.resolve(x)` into `__xmas_resolve(<this module>, x)`: the
+/// specifier is arbitrary JavaScript and cannot become a literal, but which module asked can be
+/// known before the program runs. It is not a promise and never throws for a module that exists --
+/// a caller asking where something is wants the answer or an error it can catch.
+///
+/// The answer is the same kind of name the loader uses: a `file://` URL for a file, the URL
+/// itself for a remote module. That is what `import.meta.url` says too, so resolving 'x' against
+/// a module and reading its url agree.
+fn install_resolve(driver: &mut Driver) -> Result<(), String> {
+    let global = driver
+        .context()
+        .global_object()
+        .map_err(|error| format!("global: {error}"))?;
+    driver
+        .context()
+        .define_function(
+            &global,
+            "__xmas_resolve",
+            2,
+            |_scope: &mut quickjs_oxide::engine::api::core::Scope<'_>,
+             referrer: String,
+             specifier: String|
+             -> Result<String, quickjs_oxide::engine::api::core::RuntimeError> {
+                // The compiler bakes in a module's own URL, which is what import.meta.url says;
+                // resolution works in paths, so a file: URL comes back to a path first. A remote
+                // referrer is left alone -- resolve already joins URLs.
+                let referrer = match referrer.strip_prefix("file://") {
+                    Some(path) if !crate::resolve::is_remote(&referrer) => path.to_owned(),
+                    _ => referrer,
+                };
+                match crate::resolve::resolve(&referrer, &specifier) {
+                    Ok(found) => Ok(crate::meta::url_of(&found)),
+                    Err(reason) => Err(
+                        quickjs_oxide::engine::api::core::RuntimeError::Internal(format!(
+                            "import.meta.resolve: {reason}"
+                        )),
+                    ),
+                }
+            },
+        )
+        .map_err(|error| format!("install import.meta.resolve: {error}"))?;
+    Ok(())
 }
 
 /// Read, compile and run the module at a path, and hand back its namespace.
