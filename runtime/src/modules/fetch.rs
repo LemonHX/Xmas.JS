@@ -24,7 +24,7 @@ use quickjs_oxide::engine::api::core::{
 
 use crate::driver::Driver;
 use crate::host::Payload;
-use crate::host::http::{self, ABORTED, Encoding, ResponseBody};
+use crate::host::http::{self, ABORTED, Encoding};
 use crate::host::pending::{Job, Reply};
 use crate::modules::bytes;
 
@@ -327,7 +327,7 @@ async fn serve(requests: smol::channel::Receiver<Job>, chunks: smol::channel::Re
 /// Read the socket and put decoded bytes into the channel. Stops at EOF, on an error, or when
 /// the abort flag is set.
 async fn pump(
-    mut body: ResponseBody<'static>,
+    mut body: http::Body,
     encoding: Encoding,
     chunks: smol::channel::Sender<Chunk>,
     cancel: Arc<AtomicBool>,

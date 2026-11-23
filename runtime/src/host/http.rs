@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use rustls::ClientConfig as TlsClient;
 use rustls::RootCertStore;
-pub use trillium_client::ResponseBody;
+use trillium_client::ResponseBody;
 use trillium_client::{Client, Method};
 use trillium_rustls::RustlsConfig;
 use trillium_smol::ClientConfig as TcpClient;
@@ -46,7 +46,46 @@ pub struct Response {
     pub url: String,
     pub redirected: bool,
     pub encoding: Encoding,
-    pub body: ResponseBody<'static>,
+    pub body: Body,
+}
+
+/// A response body, from the socket or from a file.
+///
+/// Two shapes only, because there are two places a body can come from: a connection this
+/// runtime opened, and a file `fetch` was asked for by `file:` URL. Both are read the same way,
+/// so nothing above this type has to know which one it got.
+pub enum Body {
+    Received(ResponseBody<'static>),
+    /// Read whole when the response is made: a file has a length, and `fetch` answers with one.
+    Bytes {
+        bytes: Vec<u8>,
+        at: usize,
+    },
+}
+
+impl Body {
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        Body::Bytes { bytes, at: 0 }
+    }
+}
+
+impl futures_lite::AsyncRead for Body {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buffer: &mut [u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            Body::Received(body) => std::pin::Pin::new(body).poll_read(cx, buffer),
+            Body::Bytes { bytes, at } => {
+                let left = &bytes[*at..];
+                let take = left.len().min(buffer.len());
+                buffer[..take].copy_from_slice(&left[..take]);
+                *at += take;
+                std::task::Poll::Ready(Ok(take))
+            }
+        }
+    }
 }
 
 /// The content codings we know. Anything else is handed over untouched, as it arrived.
@@ -108,6 +147,15 @@ pub async fn send(
     follow: bool,
     cancel: Arc<AtomicBool>,
 ) -> Result<Response, String> {
+    // A `file:` URL is not a request: there is no server to send it to. Bun and Deno answer it
+    // by reading the file, and a package built for the browser reaches for one when it keeps its
+    // wasm beside itself (`new URL('x.wasm', import.meta.url)` then `fetch`). Node refuses it,
+    // which is the one place this deviates: a runtime that can host those packages is worth more
+    // than matching Node's refusal.
+    if let Some(path) = file_path(&request.url) {
+        return read_file(&path, &request.url, cancel).await;
+    }
+
     let original = request.url.clone();
     let mut method = request.method.clone();
     let mut url = request.url.clone();
@@ -189,9 +237,100 @@ pub async fn send(
             url: if redirected { url } else { original },
             redirected,
             encoding,
-            body,
+            body: Body::Received(body),
         });
     }
+}
+
+/// The path a `file:` URL names, when the URL is one. Percent escapes are undone, because a URL
+/// holds them and a path does not.
+fn file_path(url: &str) -> Option<String> {
+    let rest = url
+        .strip_prefix("file://")
+        .or_else(|| url.strip_prefix("file:"))?;
+    // `file:///a/b` says the same thing as `file:/a/b`: the authority is empty.
+    let rest = rest.strip_prefix("localhost").unwrap_or(rest);
+    let rest = rest.strip_prefix("//").unwrap_or(rest);
+    if rest.is_empty() {
+        return None;
+    }
+    Some(percent_decode(rest))
+}
+
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        if bytes[at] == b'%'
+            && at + 2 < bytes.len()
+            && let (Some(high), Some(low)) = (hex(bytes[at + 1]), hex(bytes[at + 2]))
+        {
+            out.push(high * 16 + low);
+            at += 3;
+            continue;
+        }
+        out.push(bytes[at]);
+        at += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn hex(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// Answer a `file:` URL with the file's bytes.
+///
+/// The method is not looked at: there is nothing to write to and nothing to send. A missing file
+/// is a rejected promise, the same as a request that never connected -- not a 404 response, which
+/// would claim a server said something.
+async fn read_file(path: &str, url: &str, cancel: Arc<AtomicBool>) -> Result<Response, String> {
+    if cancel.load(Ordering::Relaxed) {
+        return Err(ABORTED.to_string());
+    }
+    let bytes = std::fs::read(path).map_err(|error| format!("{path}: {error}"))?;
+    if cancel.load(Ordering::Relaxed) {
+        return Err(ABORTED.to_string());
+    }
+    let mut headers = vec![("content-length".to_string(), bytes.len().to_string())];
+    if let Some(mime) = mime_of(path) {
+        headers.push(("content-type".to_string(), mime.to_string()));
+    }
+    Ok(Response {
+        status: 200,
+        status_text: "OK".to_string(),
+        headers,
+        url: url.to_string(),
+        redirected: false,
+        encoding: Encoding::Identity,
+        body: Body::from_bytes(bytes),
+    })
+}
+
+/// The type a file is served as. The wasm entries are the ones that matter: a module answered
+/// without `application/wasm` makes `instantiateStreaming` refuse it.
+fn mime_of(path: &str) -> Option<&'static str> {
+    let extension = path.rsplit('.').next()?.to_ascii_lowercase();
+    Some(match extension.as_str() {
+        "wasm" => "application/wasm",
+        "js" | "mjs" => "text/javascript",
+        "json" => "application/json",
+        "html" => "text/html",
+        "css" => "text/css",
+        "txt" | "md" => "text/plain",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        _ => return None,
+    })
 }
 
 fn collect(headers: &trillium_client::Headers) -> Vec<(String, String)> {

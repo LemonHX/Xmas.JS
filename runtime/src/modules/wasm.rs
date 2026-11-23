@@ -47,6 +47,14 @@ thread_local! {
     /// scope outlives every import the run makes, on this thread, and is cleared
     /// before the host function returns.
     static RUNNING: RefCell<Option<*mut Scope<'static>>> = const { RefCell::new(None) };
+
+    /// What an imported JS function threw, while wasm is unwinding from it.
+    ///
+    /// A wasm trap carries a fixed message, and it has to: WNJR's error is a value that cannot
+    /// hold a JS exception. The thrown thing is a JS value, which only a `Scope` may touch, so it
+    /// is parked here and read back after the run returns. This is the difference between
+    /// `RuntimeError: an imported function threw` and the message the import actually threw.
+    static THROWN: RefCell<Option<RuntimeError>> = const { RefCell::new(None) };
 }
 
 /// Run `body` with `scope` as the one imports call back through.
@@ -63,6 +71,17 @@ fn with_scope<T>(scope: &mut Scope<'_>, body: impl FnOnce() -> T) -> T {
         cell.replace(previous);
     });
     result
+}
+
+/// The exception the last import threw, if the run ended because of one.
+///
+/// Taken, not borrowed: one throw answers one trap, and the next run must not see it.
+fn take_thrown() -> Option<RuntimeError> {
+    THROWN.with(|cell| cell.borrow_mut().take())
+}
+
+fn park_thrown(error: RuntimeError) {
+    THROWN.with(|cell| *cell.borrow_mut() = Some(error));
 }
 
 /// The scope wasm is running under, while it runs.
@@ -191,6 +210,30 @@ pub(crate) enum Slot {
     Memory(Rc<MemorySlot>),
     Table(Rc<TableSlot>),
     Global(Rc<GlobalSlot>),
+}
+
+/// The JS values that externref slots name.
+///
+/// An externref is an index, not a pointer: WNJR's `RefValue::externref` carries a host label,
+/// and the label is a slot in this table. Per realm, because the values in it belong to one
+/// realm's heap. A slot is never reused and never freed, which is the price of not having a
+/// cycle collector over wasm references; an externref-heavy program growing this table without
+/// bound is a leak this version accepts.
+thread_local! {
+    static EXTERNREFS: RefCell<Vec<Option<Value>>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The label for a JS value, stored so `table.get` can hand it back.
+fn intern_externref(value: Value) -> usize {
+    EXTERNREFS.with(|slots| {
+        let mut slots = slots.borrow_mut();
+        slots.push(Some(value));
+        slots.len() - 1
+    })
+}
+
+fn externref_at(index: usize) -> Option<Value> {
+    EXTERNREFS.with(|slots| slots.borrow().get(index).cloned().flatten())
 }
 
 /// A function reference read out of a table or a global.
@@ -374,10 +417,18 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             let name = name.to_utf8_lossy();
             let args = scope.arg(2);
             let args = to_wasm_args(scope, &args)?;
-            let results = with_scope(scope, || {
+            let outcome = with_scope(scope, || {
                 slot.instance.borrow_mut().invoke(&name, &args)
-            })
-            .map_err(|error| wasm_error(scope, "RuntimeError", &error.to_string()))?;
+            });
+            let results = match outcome {
+                Ok(results) => results,
+                // An import threw: the exception is the answer, not the trap that carried it
+                // out. This is what the spec asks for and what the caller can act on.
+                Err(error) => match take_thrown() {
+                    Some(thrown) => return Err(thrown),
+                    None => return Err(wasm_error(scope, "RuntimeError", &error.to_string())),
+                },
+            };
             match results.len() {
                 0 => Ok(Value::Undefined),
                 1 => from_wasm_value(scope, &results[0]),
@@ -610,6 +661,52 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
 
     driver
         .context()
+        .define_function(&global, "__wasm_table_set", 3, move |scope: &mut Scope<'_>| {
+            let value = scope.arg(0);
+            let index = scope.arg(1);
+            let element = scope.arg(2);
+            let Slot::Table(slot) = want(scope, &value, "Table")? else {
+                return Err(type_error(scope, "expected a WebAssembly.Table"));
+            };
+            let Value::Int(index) = index else {
+                return Err(type_error(scope, "expected an element index"));
+            };
+            let Some(size) = slot.export.table_size() else {
+                return Err(type_error(scope, "expected a WebAssembly.Table"));
+            };
+            if index < 0 || index as usize >= size {
+                return Err(match scope.new_native_error(
+                    NativeErrorKind::Range,
+                    &format!("{index} is outside a table of {size} elements"),
+                ) {
+                    Ok(value) => RuntimeError::Exception(value),
+                    Err(error) => error,
+                });
+            }
+            // The only element this version can put in a table is "nothing there": a funcref
+            // needs a closure over this instance's function index, and there is no way to make
+            // one from JS yet. Saying so beats writing a slot that is wrong.
+            // A funcref cannot be made from JS yet: it names a function of one instance, and
+            // storing one means going back through that instance to get its index.
+            let element = match element {
+                Value::Null | Value::Undefined => wnjr_core::Value::Ref(
+                    wnjr_core::RefValue::null(),
+                    wnjr_core::value_type::RefType::nullfuncref(),
+                ),
+                other => wnjr_core::Value::Ref(
+                    wnjr_core::RefValue::externref(intern_externref(other)),
+                    wnjr_core::value_type::RefType::externref(),
+                ),
+            };
+            slot.export
+                .table_set(index as usize, element)
+                .map_err(|error| wasm_error(scope, "RuntimeError", &error.to_string()))?;
+            Ok(Value::Undefined)
+        })
+        .map_err(|error| format!("__wasm_table_set: {error}"))?;
+
+    driver
+        .context()
         .define_function(&global, "__wasm_global_value", 1, move |scope: &mut Scope<'_>| {
             let value = scope.arg(0);
             let Slot::Global(slot) = want(scope, &value, "Global")? else {
@@ -803,11 +900,9 @@ fn imports_from(
                 };
                 let module_name = decl.module.to_string();
                 let field = decl.name.to_string();
-                // The wasm side can only carry a static message, so the real
-                // reason is parked here and read back after the call returns.
-                let failure: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
-                let report = Rc::clone(&failure);
                 imports.push(Import::func(&module_name, &field, move |_caller, args, results| {
+                    // A trap carries only a fixed message, so the JS exception itself is parked
+                    // for the host function that started this run to pick up afterwards.
                     let Some(outcome) =
                         running_scope(|scope| call_imported(scope, &callable, args))
                     else {
@@ -821,7 +916,7 @@ fn imports_from(
                             Ok(())
                         }
                         Err(error) => {
-                            *report.borrow_mut() = Some(error);
+                            park_thrown(error);
                             Err(WasmError::trap("an imported function threw"))
                         }
                     }
@@ -853,21 +948,16 @@ fn call_imported(
     scope: &mut Scope<'_>,
     callable: &CallableRef,
     args: &[wnjr_core::Value],
-) -> Result<Vec<wnjr_core::Value>, String> {
+) -> Result<Vec<wnjr_core::Value>, RuntimeError> {
     let mut js_args = Vec::with_capacity(args.len());
-    for (index, value) in args.iter().enumerate() {
-        match from_wasm_value(scope, value) {
-            Ok(value) => js_args.push(value),
-            Err(error) => return Err(format!("argument {index}: {error:?}")),
-        }
+    for value in args {
+        js_args.push(from_wasm_value(scope, value)?);
     }
-    let result = scope
-        .call(callable, Value::Undefined, &js_args)
-        .map_err(|error| format!("an imported function threw: {error:?}"))?;
+    let result = scope.call(callable, Value::Undefined, &js_args)?;
     if matches!(result, Value::Undefined) {
         return Ok(Vec::new());
     }
-    Ok(vec![to_wasm_value(scope, result, 0).map_err(|error| format!("{error:?}"))?])
+    Ok(vec![to_wasm_value(scope, result, 0)?])
 }
 
 fn key_of(text: &str) -> Result<PropertyKey, RuntimeError> {

@@ -305,6 +305,17 @@
     configurable: true,
   });
 
+  Object.defineProperty(Table.prototype, 'set', {
+    value: function set(index, value) {
+      if (typeof index !== 'number') {
+        throw new TypeError('set takes an element index');
+      }
+      __wasm_table_set(this[HANDLE], index, value === undefined ? null : value);
+    },
+    writable: true,
+    configurable: true,
+  });
+
   Object.defineProperty(Table.prototype, Symbol.toStringTag, {
     value: 'WebAssembly.Table',
     configurable: true,
