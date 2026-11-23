@@ -56,6 +56,19 @@ fn resolve_as(referrer: &str, specifier: &str, mode: Mode) -> Result<String, Str
         ));
     }
 
+    if let Some(url) = remote(specifier) {
+        return Ok(url);
+    }
+
+    // A URL referrer joins URLs, not paths: './y.js' inside https://a/x.js is https://a/y.js. The
+    // joining is url's, not string work -- '..' climbs, '?' replaces, and a root-relative path
+    // keeps the origin.
+    if let Some(base) = remote(referrer) {
+        return join_url(&base, specifier).ok_or_else(|| {
+            format!("cannot resolve '{specifier}' against {referrer}: not a URL path")
+        });
+    }
+
     if is_relative(specifier) {
         let base = directory(referrer);
         let candidate = base.join(specifier);
@@ -96,6 +109,36 @@ fn resolve_as(referrer: &str, specifier: &str, mode: Mode) -> Result<String, Str
     Err(format!(
         "cannot find package '{specifier}' from {referrer} (no node_modules with it)"
     ))
+}
+
+/// Whether `name` is a URL this runtime fetches, rather than a path.
+pub fn is_remote(name: &str) -> bool {
+    remote(name).is_some()
+}
+
+/// The specifier, if it is a URL rather than a path: a scheme this runtime fetches from.
+///
+/// Only three schemes. 'file:' is not one of them -- that is an absolute path with extra steps and
+/// the filesystem branch already answers it.
+fn remote(specifier: &str) -> Option<String> {
+    let scheme = specifier.split(':').next()?;
+    if !matches!(scheme, "http" | "https" | "data") {
+        return None;
+    }
+    // 'https:' alone is a scheme, not a URL; a colon must be followed by something.
+    if specifier.len() <= scheme.len() + 1 {
+        return None;
+    }
+    Some(specifier.to_owned())
+}
+
+/// Resolve `specifier` against a URL referrer, per RFC 3986.
+fn join_url(base: &str, specifier: &str) -> Option<String> {
+    if let Some(url) = remote(specifier) {
+        return Some(url);
+    }
+    let base = url::Url::parse(base).ok()?;
+    Some(base.join(specifier).ok()?.to_string())
 }
 
 fn is_relative(specifier: &str) -> bool {
@@ -280,6 +323,51 @@ fn manifest(root: &Path) -> Option<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_url_is_its_own_module_name() {
+        assert_eq!(
+            resolve("/x/app.ts", "https://a/b.js").unwrap(),
+            "https://a/b.js"
+        );
+        assert_eq!(
+            resolve("/x/app.ts", "http://a/b.js").unwrap(),
+            "http://a/b.js"
+        );
+        assert_eq!(
+            resolve("/x/app.ts", "data:text/javascript,export const x = 1").unwrap(),
+            "data:text/javascript,export const x = 1"
+        );
+    }
+
+    #[test]
+    fn a_url_referrer_joins_urls_not_paths() {
+        let base = "https://a/lib/x.js";
+        assert_eq!(resolve(base, "./y.js").unwrap(), "https://a/lib/y.js");
+        assert_eq!(resolve(base, "../y.js").unwrap(), "https://a/y.js");
+        assert_eq!(resolve(base, "/y.js").unwrap(), "https://a/y.js");
+        // A query replaces rather than appends, which is what string work would get wrong.
+        assert_eq!(resolve(base, "y.js?v=2").unwrap(), "https://a/lib/y.js?v=2");
+        assert_eq!(
+            resolve("https://a/x.js?v=1", "y.js").unwrap(),
+            "https://a/y.js"
+        );
+        // A scheme of its own wins over the base.
+        assert_eq!(
+            resolve(base, "https://b/z.js").unwrap(),
+            "https://b/z.js"
+        );
+    }
+
+    #[test]
+    fn file_scheme_is_a_path_not_a_url() {
+        // The filesystem branch answers it; it must not be taken for a fetched module.
+        assert!(!is_remote("file:///etc/passwd"));
+        assert!(is_remote("https://a/b.js"));
+        assert!(!is_remote("C:/x/app.ts"));
+        // A scheme with nothing after it is not a URL.
+        assert!(!is_remote("https:"));
+    }
 
     #[test]
     fn a_bare_specifier_splits_into_package_and_subpath() {

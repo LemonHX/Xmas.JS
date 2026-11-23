@@ -92,6 +92,23 @@ impl Modules {
         if let Some(module) = self.get(path) {
             return Ok(module);
         }
+        // A URL is fetched rather than read, and what came back decides how it is compiled: a wasm
+        // body is a module of a different kind, and the media type is the only honest signal. The
+        // URL's own last dot says nothing -- unpkg serves .ts as text/plain.
+        if crate::resolve::is_remote(path) {
+            let fetched = crate::remote::body(path)?;
+            // A wasm body is not a module of this kind: `WebAssembly.instantiateStreaming` is what
+            // takes one, and it reads a fetch response rather than an import. Saying so beats
+            // handing the bytes to the JS compiler and reporting its confusion.
+            if fetched.media_type == "application/wasm" {
+                return Err(format!(
+                    "{path}: this is a wasm module; load it with WebAssembly.instantiateStreaming"
+                ));
+            }
+            let source = String::from_utf8(fetched.bytes)
+                .map_err(|_| format!("{path}: the body is not UTF-8"))?;
+            return self.load(path, path, &source);
+        }
         let source = std::fs::read_to_string(path).map_err(|error| format!("{path}: {error}"))?;
         self.load(path, path, &source)
     }

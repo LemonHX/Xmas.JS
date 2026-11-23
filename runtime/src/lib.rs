@@ -7,5 +7,6 @@ pub mod host;
 pub mod meta;
 pub mod modules;
 pub mod package;
+pub mod remote;
 pub mod resolve;
 pub mod testkit;
