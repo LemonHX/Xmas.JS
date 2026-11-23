@@ -33,7 +33,7 @@ jobs:
           repository: 0xfe-project/quickjs-oxide
           path: quickjs-oxide
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           toolchain: stable
       - name: Test
@@ -54,7 +54,7 @@ jobs:
           repository: 0xfe-project/quickjs-oxide
           path: quickjs-oxide
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           toolchain: stable
       - name: Add the targets we ship
