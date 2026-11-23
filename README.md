@@ -1,475 +1,196 @@
 <div align="center">
 
 ![XMASJS LOGO](./Xmas.JS.svg)
-> **above logo does not represent any religious affiliation** , it is simply a stylized representation of "Xmas" as in "ECMAScript".
+> **The logo does not represent any religious affiliation.** It is a stylized "Xmas", as in "ECMAScript".
 
 # Xmas.JS
 
-**A Modern System Scripting Runtime for the JavaScript Era**
+**A complete JavaScript runtime in one small binary. No JIT, no C toolchain, no node_modules tax.**
 
-[![License: Apache-2.0 OR GPL-3.0](https://img.shields.io/badge/License-Apache%202.0%20OR%20GPL%203.0-blue.svg)](LICENSE)
-[![WinterTC Compatible](https://img.shields.io/badge/WinterTC-Compatible-green.svg)](https://wintertc.org/)
-[![Built with QuickJS](https://img.shields.io/badge/Built%20with-QuickJS-orange.svg)](https://bellard.org/quickjs/)
-
-[Features](#-features) • [Installation](#-installation) • [Quick Start](#-quick-start) • [Benchmarks](#-benchmarks) • [Documentation](#-documentation) • [Contributing](#-contributing)
+[![License: Apache-2.0 OR GPL-3.0](https://img.shields.io/badge/License-Apache%202.0%20OR%20GPL%203.0-blue.svg)](#license)
+[![WinterTC](https://img.shields.io/badge/WinterTC-compatible-green.svg)](https://wintertc.org/)
+[![Pure Rust](https://img.shields.io/badge/build-zero%20C-orange.svg)](#how-it-stays-small)
 
 </div>
 
 ---
 
-## 🎯 What is Xmas.JS?
+## What is Xmas.JS?
 
-Xmas.JS is a **lightweight, high-performance JavaScript/TypeScript runtime** designed to replace traditional system scripting languages like **Lua, Perl, and Python** for system administration, automation, and glue code tasks.
+One binary that runs TypeScript, serves HTTP, installs packages, and executes WebAssembly.
 
-Unlike Node.js, Deno, or Bun which target web applications and server-side development, **Xmas.JS is purpose-built for:**
+- **TypeScript and TSX run as they are.** oxc strips the types in-process. There is no build step.
+- **A real server.** `export default { fetch }` and `xmas serve`. Trillium speaks HTTP/1.1, one realm per worker thread, with SSE and WebSocket upgrade.
+- **WebAssembly.** The standard JS API (Module, Instance, Memory, Table, Global, streaming compile), backed by WNJR. `memory.buffer` is the wasm memory itself, not a copy.
+- **Sockets.** WinterTC `connect()` for TCP, plus a `UDPSocket`.
+- **Node-flavored modules.** buffer, crypto, fs, path, stream, zlib, child_process, util, assert, os, process and more, listed below.
+- **CommonJS.** `require`, `module.exports`, `__dirname`, and `.cjs` files work next to ES modules.
+- **A package manager.** `xmas install`, `add`, `why`, `x`. It also runs your `package.json` scripts.
+- **Temporal.** Backed by temporal_rs.
 
-- 🔧 **System scripting and automation** - Replace Bash, PowerShell, Python scripts
-- ⚡ **Serverless and edge computing** - Cold start in milliseconds, not seconds
-- 🪶 **Embedded scripting** - Minimal memory footprint (<5MB)
-- 🔌 **CLI tools and utilities** - Fast startup for command-line applications
-- 🧩 **System integration** - Native Rust modules for deep system access
-
-> **Note:** The word "Xmas" is pronounced like "ECMAS" (ECMAScript), not a religious reference. "JavaScript" in this context refers to ECMAScript/TypeScript, not Oracle's JavaScript™ trademark.
-
----
-
-## 🚀 Why Xmas.JS?
-
-### The Problem with Existing Runtimes
-
-**QuickJS does not use any sort of JIT compilation**, making it ideal for fast startup and low memory usage, but less suited for long-running web servers.
-
-Modern JavaScript runtimes like Node.js, Deno, and Bun are excellent for **web servers and applications**, but they're **overkill for scripting**:
-
-| Runtime     | Cold Start  | Memory (Idle) | Best Use Case                             |
-| ----------- | ----------- | ------------- | ----------------------------------------- |
-| **Node.js** | ~100-200ms  | ~30-50MB      | Web servers, long-running apps            |
-| **Deno**    | ~150-300ms  | ~40-60MB      | Secure web apps, TypeScript projects      |
-| **Bun**     | ~50-100ms   | ~25-35MB      | Fast web development                      |
-| **Xmas.JS** | **~5-15ms** | **~3-8MB**    | **System scripts, CLI tools, serverless** |
-
-### The Xmas.JS Difference
-
-```
-Traditional System Scripts          Modern System Scripts with Xmas.JS
-┌─────────────────────────┐        ┌─────────────────────────┐
-│  Python + libraries     │        │  Xmas.JS + TypeScript   │
-│  Slow startup           │   →    │  Instant startup        │
-│  Heavy dependencies     │        │  Zero dependencies      │
-│  Version hell           │        │  Single binary          │
-│  Limited async          │        │  Native async/await     │
-└─────────────────────────┘        └─────────────────────────┘
-```
-
-**Performance Targets:**
-- ⚡ **10x faster startup** than Node.js/Deno
-- 💰 **2x lower cost** on serverless platforms
-- 🪶 **5x smaller memory footprint** than traditional runtimes
-- 🔥 **Native performance** via Rust integration
+Everything above is one process, written in Rust, with no system library underneath.
 
 ---
 
-## ✨ Features
+## Small on purpose
 
-### Core Capabilities
-- ✅ **[WinterTC](https://wintertc.org/) Compatible APIs** - Standard Web APIs (fetch, crypto, streams, etc.)
-- ✅ **Modern JavaScript/TypeScript** - Full ES2023+ support including async/await, modules, decorators
-- ✅ **Ultra-Fast Startup** - Cold start in ~5-15ms, perfect for CLI and serverless
-- ✅ **Minimal Memory Footprint** - Runs comfortably in <5MB RAM
-- ✅ **Async I/O** - smol drives the event loop; promises, timers and I/O run on it
-- ✅ **Rust Extensions** - Native module system for system-level access
-- ✅ **Interactive REPL** - Built-in read-eval-print loop for rapid prototyping
+Measured on one machine (Apple silicon macOS, release build with the default profile, nothing tuned):
 
-### In Development
-- 🚧 **Package Manager** - Built-in dependency management (no need for npm/pnpm)
-- 🚧 **Cross-Platform Shell** - Execute package.json scripts anywhere
-- 🚧 **Built-in Toolchain** - TypeScript and TSX compilation, powered by [OXC](https://oxc-project.github.io/)
-- 🚧 **Full WinterTC Coverage** - Complete Web API compatibility
+| What | Number |
+| --- | --- |
+| Binary size | **21.8 MiB** (22,831,088 bytes), runtime, package manager, TS compiler and WebAssembly engine included |
+| Process start to first HTTP response | **20 to 62 ms**, five runs, median 28 ms (spawn, parse, compile, serve, one request) |
+| Idle memory, hello-world server, 1 worker | **19 MB** resident (RSS, `ps`) |
+
+These are not a comparison. Nobody else's runtime was measured with the same harness, so there is no "Nx faster" here. The comparison against LLRT, Node with Hono, and Bun is still to do, and it will go in this table when it exists.
+
+The binary has no `[profile.release]` tuning yet (no LTO, no strip, no `opt-level = "z"`), so that size is the starting point, not the floor.
 
 ---
 
-## 📦 Installation
+## Hello
 
-### 🚧 From Binary (Coming soon ❄️)
+```ts
+// app.ts
+export default {
+  fetch(request: Request) {
+    return new Response('hello from ' + new URL(request.url).pathname + '\n');
+  },
+};
+```
 
 ```bash
-# Coming soon - pre-built binaries for major platforms
-# Windows
-curl -fsSL https://xmas.js.org/install.ps1 | powershell
-
-# macOS / Linux
-curl -fsSL https://xmas.js.org/install.sh | sh
+xmas serve app.ts --port 8000 --workers 4
 ```
+
+A handler can return a `Response` or a promise of one. A handler that returns anything else gets a 500 and a log line saying what it returned. A module that throws while loading stops the whole server with the file, the line and the reason, instead of listening and answering 500 to everyone.
+
+You can also register the handler from inside the module:
+
+```ts
+import { serve } from 'xmas:server';
+
+serve({ fetch: (request) => new Response('hi'), env: { GREETING: 'hi' } });
+```
+
+`env` is handed to your handler as its second argument, and the third is a `ctx` with a real `waitUntil`. Details are in [runtime/docs/server.md](runtime/docs/server.md).
+
+### WebAssembly
+
+```ts
+const { instance } = await WebAssembly.instantiate(bytes, { env: { log: (n: number) => console.log(n) } });
+instance.exports.run();
+```
+
+Memory is zero-copy and `memory.grow()` detaches the old `ArrayBuffer`, as the spec says. What is missing is listed in [runtime/docs/wasm.md](runtime/docs/wasm.md).
+
+### Sockets
+
+```ts
+import { connect } from 'cloudflare:sockets';
+```
+
+TCP follows the WinterTC proposal. `startTls()` and `secureTransport: 'on'` throw a `TypeError`. They do not pretend. See [runtime/docs/sockets.md](runtime/docs/sockets.md).
+
+### CommonJS
+
+```js
+const _ = require('lodash');
+module.exports = { chunk: _.chunk };
+```
+
+`require` works by static scan: oxc finds every `require("literal")` before the file runs. `require(variable)` throws `MODULE_NOT_FOUND` and says why. See [runtime/docs/modules.md](runtime/docs/modules.md).
 
 ---
 
-## 🚀 Quick Start
+## Install
 
-### Running Scripts
-
-```bash
-# Run a TypeScript/JavaScript file directly
-xmas script.ts
-xmas app.js
-
-# Run with verbose output
-xmas -v script.ts
-
-# Run in a specific directory
-xmas --cwd ./my-project script.ts
-```
-
-### Interactive REPL
+There is no installer yet. Build it:
 
 ```bash
-# Start the REPL (default when no arguments)
-xmas
-
-# Or explicitly
-xmas repl
+git clone https://github.com/LemonHX/Xmas.JS
+cd Xmas.JS
+cargo build --release      # needs a recent nightly Rust, no C compiler
+./target/release/xmas --help
 ```
 
-The REPL supports TypeScript, TSX, and JSX syntax with syntax highlighting:
+## Commands
 
 ```
-🎄 >> const x: number = 42
-🎄 >> console.log(`Hello, ${x}!`)
-Hello, 42!
-🎄 >> const element = <div>Hello World</div>
-```
+xmas [OPTIONS] [COMMAND]
 
-### Package Management
-
-Xmas.JS includes a built-in package manager (no need for npm/pnpm/yarn):
-
-```bash
-# Install dependencies from package.json
-xmas install
-xmas i              # shorthand
-
-# Add a package
-xmas add lodash
-xmas add -D vitest  # add as devDependency
-xmas add --pin zod  # pin to exact version
-
-# Remove a package
-xmas remove lodash
-xmas rm lodash      # shorthand
-
-# Run a script from package.json
-xmas run dev
-xmas run build --watch src/
-
-# Update lockfile
-xmas update
-
-# Upgrade packages to latest versions
-xmas upgrade
-xmas upgrade --pin  # pin upgraded versions
-
-# Clean node_modules and cache
-xmas clean
-
-# Execute a command
-xmas exec tsc --version
-
-# Find why a package is installed
-xmas why lodash
-xmas why lodash 4.17.21
-
-# Create new project from starter kit
-xmas create vite
-
-# Download and execute a package (like npx)
-xmas x create-react-app my-app
-```
-
-### CLI Reference
-
-```
-xmas [OPTIONS] [SCRIPT]... [COMMAND]
-
-Commands:
-  install (i)     Install packages defined in package.json
-  add (a)         Add package to package.json
-  remove (rm)     Remove package from package.json
-  run             Run a script defined in package.json
-  update          Prepare and save a newly planned lockfile
-  upgrade         Update packages to the latest available version
-  clean           Clean node_modules and cache
-  exec            Execute a command (not a script)
-  why             Find all uses of a given package
-  create          Create new project from a starter kit
-  x               Download and execute a package (like npx)
+  install  Install packages defined in package.json
+  add      Add package to package.json
+  remove   Remove package from package.json
+  run      Run a script defined in package.json
+  update   Prepare and save a newly planned lockfile
+  upgrade  Update packages to the latest available version
+  clean    Clean node_modules and cache
+  exec     Execute a command (not a script)
+  why      Find all uses of a given package
+  create   Create new project from a starter kit
+  x        Download and execute a package (like npx)
+  serve    Serve a module as an HTTP app
 
 Options:
-  -v, --verbose       Print verbose logs
-      --cwd <PATH>    Run in a custom working directory
-  -h, --help          Print help
-  -V, --version       Print version
-```
----
-
-## 📊 Benchmarks
-
-### Startup Time Comparison
-
-```
-Python 3.11:     █████████████████████ 45ms
-Node.js 20:      ███████████████ 120ms
-Deno 1.38:       ██████████████████ 180ms
-Bun 1.0:         █████████ 75ms
-Xmas.JS:         ██ 12ms ⚡
+  -v, --verbose
+      --immutable                  Refuse to modify the lockfile
+      --working-dir <WORKING_DIR>  Run in a custom working directory
 ```
 
-### Memory Usage (Idle)
+`xmas serve <ENTRY>` takes `--port` (default 8000), `--host` (default 0.0.0.0) and `--workers` (default one per core).
 
-```
-Python 3.11:     ████████████████ 15MB
-Node.js 20:      ████████████████████████████ 45MB
-Deno 1.38:       ██████████████████████████████ 55MB
-Bun 1.0:         ████████████████████ 28MB
-Xmas.JS:         ███ 5MB 🪶
-```
-
-*Benchmarks performed on Windows 11, AMD Ryzen 9 5900X, 64GB RAM*
+There is no REPL and no `xmas file.ts` shortcut at the moment. Use `serve`, or `xmas run` for package scripts.
 
 ---
 
-## 🎯 Use Cases
+## What is in the box
 
-### Perfect For:
-- ✅ **System Administration Scripts** - Replace Python/Perl scripts with modern JavaScript
-- ✅ **Build Tools & Automation** - Fast CLI tools that start instantly
-- ✅ **Serverless Functions** - Minimal cold start on AWS Lambda, Cloudflare Workers, etc.
-- ✅ **IoT & Embedded Devices** - Small memory footprint for resource-constrained environments
-- ✅ **Game Scripting** - Embed as a game scripting engine (like Lua)
-- ✅ **Configuration Scripts** - Replace complex Bash/PowerShell scripts
+| Area | Modules |
+| --- | --- |
+| Web | fetch, Request/Response/Headers, URL, AbortController, events, WebSocket, streams (web), timers, console, crypto |
+| Node-style | assert, async_hooks, buffer, child_process, exec, fs, os, path, perf_hooks, process, stream, string_decoder, tty, util, zlib |
+| Network | sockets (TCP and UDP), the HTTP server |
+| Time | Temporal |
+| Code | WebAssembly, CommonJS, `import.meta` (`url`, `dir`, `dirname`, `path`, `filename`, `file`) |
 
-### Not Ideal For:
-- ❌ **Large Web Applications** - Use Node.js/Deno/Bun instead
-- ❌ **Production-Ready Today** - Still in active development
+`fetch('file://...')` reads from disk. Node refuses that and Bun and Deno allow it.
 
----
+Each module has a doc in [runtime/docs](runtime/docs) that lists what it does not do. We would rather you read the gaps there than find them at 2 a.m.
 
-## 🗺️ Roadmap
+### Left out on purpose
 
-See [TODO.md](TODO.md) for detailed progress.
-
-**2025 Q4**
-- [x] Core runtime foundation
-- [x] Basic WinterTC APIs
-- [x] Async I/O on smol
-- [x] REPL implementation
-- [x] TypeScript support **(repl also supports tsx/jsx)**
-- [ ] Bytecode compilation
-
-**2026 Q1**
-- [ ] supporting WASM modules
-- [ ] Package manager
-- [ ] Built-in toolchain (OXC integration)
-- [ ] Documentation site
-- [ ] 1.0 release candidate
+`node:net`, `node:tls`, `node:http`, `node:dgram`, `node:dns` and `node:intl`. Use `fetch` and sockets. There is no permission model: a script can reach what the process can reach. `os` and `process` report the runtime's own facts and read nothing from the host.
 
 ---
 
-## 🤝 Contributing
+## How it stays small
 
-We welcome contributions! Xmas.JS is in active development and needs help with:
-
-- 🐛 Bug reports and testing
-- 📝 Documentation improvements
-- ✨ New features and APIs
-- 🔧 Performance optimizations
-- 🌍 Translations
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
+- **No JIT.** The engine is [quickjs-oxide](https://github.com/0xfe-project/quickjs-oxide), a Rust QuickJS. Starting is cheap. Long CPU-heavy loops will lose to V8.
+- **Zero C at build time.** TLS is rustls with a pure-Rust crypto provider. No OpenSSL, no libz, no system certificate store. Nothing in the build needs a C compiler or a system library, so it does not depend on what the host has installed.
+- **Tested for system libraries.** A test fails the build if openssl, native-tls or libz-sys show up in the runtime's dependency tree.
+- **smol, not tokio.** The async runtime is smol everywhere, and tokio is not in the runtime's dependency tree today.
 
 ---
 
-## ❓ FAQ
+## Status
 
-### Is TypeScript support first-class or is there transpilation?
+Pre-1.0. The WASM engine, the HTTP server and the package manager are young. Pin your versions.
 
-**TypeScript/TSX/JSX is transpiled to JavaScript before execution.** Xmas.JS uses [OXC](https://oxc-project.github.io/) (a high-performance Rust-based toolchain) to transform TypeScript to JavaScript on-the-fly. This means:
-
-- ✅ **No separate build step required** - Just run `.ts`, `.tsx`, or `.jsx` files directly
-- ✅ **Instant transpilation** - OXC is extremely fast (~100x faster than tsc)
-- ✅ **Full TypeScript syntax support** - Including decorators, JSX, and modern features
-- ⚠️ **No type checking at runtime** - Types are stripped during transpilation (same as `tsc --transpileOnly`)
-
-```bash
-# Run TypeScript directly - transpilation happens automatically
-xmas script.ts
-
-# REPL also supports TypeScript/TSX
-🎄 >> const x: number = 42
-🎄 >> const element = <div>Hello</div>
-```
-
-For type checking, use your IDE's TypeScript integration or run `tsc --noEmit` separately.
-
-### How is Xmas.JS different from Node.js/Deno/Bun?
-
-| Aspect                       | Xmas.JS                                 | Node.js/Deno/Bun             |
-| ---------------------------- | --------------------------------------- | ---------------------------- |
-| **Primary Use Case**         | System scripting, CLI tools, serverless | Web servers, full-stack apps |
-| **JS Engine**                | QuickJS-Oxide (interpreter)             | V8/JSC (JIT compiler)        |
-| **Startup Time**             | ~5-15ms                                 | ~50-200ms                    |
-| **Memory Footprint**         | ~3-8MB                                  | ~25-60MB                     |
-| **Long-running Performance** | Slower (no JIT)                         | Faster (JIT optimized)       |
-| **Binary Size**              | ~5MB                                    | ~50-100MB                    |
-
-**Choose Xmas.JS when:** You need fast startup, low memory, or are replacing Python/Bash scripts.
-
-**Choose Node.js/Deno/Bun when:** You're building web servers or compute-intensive applications.
-
-### Can I use npm packages with Xmas.JS?
-
-**Yes, with some caveats:**
-
-- ✅ **Pure JavaScript/TypeScript packages** - Work out of the box
-- ✅ **Most polyfilled packages** - If they don't rely on Node.js internals
-- ⚠️ **Native addons (.node files)** - Not supported (C++ extensions compiled for Node.js)
-- ⚠️ **Node.js-specific APIs** - Some may not be implemented yet (check our compatibility table)
-
-```bash
-# Use the built-in package manager
-xmas install lodash
-xmas install zod
-```
-
-We're continuously improving Node.js API compatibility. Check [TODO.md](TODO.md) for current status.
-
-### Is Xmas.JS production-ready?
-
-**Not yet.** Xmas.JS is in active development (pre-1.0). We recommend:
-
-- ✅ **Use for:** Personal scripts, internal tools, prototyping, learning
-- ⚠️ **Evaluate for:** Non-critical production workloads with thorough testing
-- ❌ **Avoid for:** Mission-critical production systems (for now)
-
-We're targeting a stable 1.0 release in Q1 2026.
-
-### Why QuickJS instead of V8?
-
-**QuickJS was chosen deliberately for our use case:**
-
-| Feature           | QuickJS   | V8      |
-| ----------------- | --------- | ------- |
-| Startup time      | ~5ms      | ~100ms  |
-| Memory overhead   | ~3MB      | ~30MB   |
-| Binary size       | ~1MB      | ~30MB   |
-| JIT compilation   | ❌ No      | ✅ Yes   |
-| Long-running perf | Slower    | Faster  |
-| Embedding ease    | Very easy | Complex |
-
-For **short-lived scripts** (CLI tools, serverless, automation), the fast startup and low memory of QuickJS outweighs V8's JIT benefits. V8's JIT only helps after the code has run long enough to be optimized.
-
-### Does Xmas.JS support WebAssembly?
-
-**Planned for Q1 2026.** QuickJS has experimental WASM support, and we're working on integrating it with proper WinterTC-compatible APIs.
-
-### Can I embed Xmas.JS in my Rust application?
-
-**Yes!** Xmas.JS is designed to be embeddable:
-
-```rust
-use xmas_js_modules::prelude::*;
-
-// Create a runtime
-let runtime = AsyncRuntime::new()?;
-let context = AsyncContext::full(&runtime).await?;
-
-// Run JavaScript
-context.with(|ctx| {
-    ctx.eval("console.log('Hello from embedded JS!')")?;
-    Ok(())
-}).await?;
-```
-
-See our [embedding guide](docs/embedding.md) for detailed instructions.
-
-### How does Xmas.JS handle async/await?
-
-Xmas.JS runs its event loop on **smol**, providing:
-
-- ✅ Full `async/await` support in JavaScript
-- ✅ `Promise` API compatible with web standards
-- ✅ Concurrent I/O operations (file system, network, timers)
-- ✅ Top-level await in ES modules
-
-```javascript
-// Async operations work just like in Node.js/Deno
-const response = await fetch('https://api.example.com/data');
-const data = await response.json();
-
-// Parallel operations
-const [file1, file2] = await Promise.all([
-  fs.promises.readFile('a.txt'),
-  fs.promises.readFile('b.txt')
-]);
-```
-
-### What's the relationship with WinterTC?
-
-[WinterTC](https://wintertc.org/) (Web-interoperable Runtimes Community Group) defines standard APIs for non-browser JavaScript runtimes. Xmas.JS aims to be **WinterTC-compatible**, meaning:
-
-- ✅ Standard `fetch()`, `Request`, `Response` APIs
-- ✅ Web Crypto API (`crypto.subtle`)
-- ✅ Web Streams API
-- ✅ `URL`, `URLSearchParams`, `TextEncoder`, `TextDecoder`
-- ✅ `console`, `setTimeout`, `setInterval`
-
-This ensures code portability between Xmas.JS, Deno, Cloudflare Workers, and other WinterTC-compatible runtimes.
+Not done yet: `https://` imports, `import.meta.main`/`env`/`resolve`, `new WebAssembly.Table()`/`Global()` constructors from JS, streaming zlib classes (`createGzip` and friends), and the benchmark comparison against other runtimes.
 
 ---
 
-## 📄 License
+## License
 
-Xmas.JS is dual-licensed under **Apache-2.0 OR GPL-3.0**.
+Dual-licensed under **Apache-2.0 OR GPL-3.0**. Choose Apache-2.0 for almost everything. GPL-3.0 applies if you want to offer Xmas.JS as a managed service.
 
-### Use Apache-2.0 if you want to:
-- ✅ Use Xmas.JS in proprietary software
-- ✅ Contribute to open source projects
-- ✅ Build commercial applications
-- ✅ Modify the source code
+## Thanks
 
-### Use GPL-3.0 if you:
-- 🏢 Provide Xmas.JS as a managed service (cloud providers)
-- 🔒 Integrate into closed-source infrastructure
-
-This dual-license ensures open collaboration while preventing service provider lock-in.
-
----
-
-## 🙏 Acknowledgments
-
-Xmas.JS stands on the shoulders of giants:
-
-- **[QuickJS](https://bellard.org/quickjs/)** by Fabrice Bellard - The amazing JavaScript engine
-- **[quickjs-oxide](https://github.com/0xfe-project/quickjs-oxide)** - Rust rewrite for QuickJS, cooperate with Pocket.JS team.
-- **[LLRT](https://github.com/awslabs/llrt)** - Inspiration and code for AWS Lambda optimization
-- **[smol](https://github.com/smol-rs/smol)** - The async runtime, everywhere in the workspace. Nothing depends on tokio.
-
-**Inspired by:**
-- [Deno](https://deno.land/) - Modern JavaScript runtime design
-- [Node.js](https://nodejs.org/) - The JavaScript runtime that started it all
-- [txiki.js](https://github.com/saghul/txiki.js) - Lightweight runtime approach
-
----
-
-## 🌟 Star History
-
-If you find Xmas.JS useful, please consider giving it a star! ✨
-
-[![Star History Chart](https://api.star-history.com/svg?repos=lemonhx/xmas.js&type=date&legend=top-left)](https://www.star-history.com/#lemonhx/xmas.js&type=date&legend=top-left)
-
----
+[QuickJS](https://bellard.org/quickjs/) by Fabrice Bellard, [quickjs-oxide](https://github.com/0xfe-project/quickjs-oxide), WNJR, [LLRT](https://github.com/awslabs/llrt), [Trillium](https://trillium.rs/), [smol](https://github.com/smol-rs/smol), [oxc](https://oxc-project.github.io/), [temporal_rs](https://github.com/boa-dev/temporal), and [txiki.js](https://github.com/saghul/txiki.js) for the idea that a small runtime is worth having.
 
 <div align="center">
 
-Made with ❤️ by the 🍋 LemonHX & 🎄Xmas.JS team
+Made by LemonHX and the Xmas.JS team.
 
 </div>
