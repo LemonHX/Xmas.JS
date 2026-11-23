@@ -101,6 +101,14 @@ module.exports = { chunk: _.chunk };
 
 `require` works by static scan: oxc finds every `require("literal")` before the file runs. `require(variable)` throws `MODULE_NOT_FOUND` and says why. See [runtime/docs/modules.md](runtime/docs/modules.md).
 
+### Import from a URL
+
+```ts
+import * as rollup from 'https://unpkg.com/@rollup/browser/dist/es/rollup.browser.js';
+```
+
+`https:`, `http:` and `data:` specifiers are module names of their own, and a relative import inside a remote module resolves against its URL. Bytes are cached on disk under `.xmas/remote/`, so each URL is fetched once per machine and a cached module loads offline. The engine asks for modules synchronously, so the first fetch of a URL blocks that worker's thread while the network answers. That is not async loading. A 404 is never cached. See [runtime/docs/remote.md](runtime/docs/remote.md).
+
 ---
 
 ## Install
@@ -152,7 +160,7 @@ There is no REPL and no `xmas file.ts` shortcut at the moment. Use `serve`, or `
 | Node-style | assert, async_hooks, buffer, child_process, exec, fs, os, path, perf_hooks, process, stream, string_decoder, tty, util, zlib |
 | Network | sockets (TCP and UDP), the HTTP server |
 | Time | Temporal |
-| Code | WebAssembly, CommonJS, `import.meta` (`url`, `dir`, `dirname`, `path`, `filename`, `file`) |
+| Code | WebAssembly, CommonJS, `import.meta` (`url`, `dir`, `dirname`, `path`, `filename`, `file`, `main`, `env`), imports from `https:` and `data:` URLs |
 
 `fetch('file://...')` reads from disk. Node refuses that and Bun and Deno allow it.
 
@@ -177,7 +185,7 @@ Each module has a doc in [runtime/docs](runtime/docs) that lists what it does no
 
 Pre-1.0. The WASM engine, the HTTP server and the package manager are young. Pin your versions.
 
-Not done yet: `https://` imports, `import.meta.main`/`env`/`resolve`, `new WebAssembly.Table()`/`Global()` constructors from JS, streaming zlib classes (`createGzip` and friends), and the benchmark comparison against other runtimes.
+Not done yet: `import.meta.resolve`, `new WebAssembly.Table()`/`Global()` constructors from JS, streaming zlib classes (`createGzip` and friends), and the benchmark comparison against other runtimes.
 
 ---
 
