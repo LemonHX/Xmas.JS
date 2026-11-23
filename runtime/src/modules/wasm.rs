@@ -191,7 +191,6 @@ pub(crate) enum Slot {
     Memory(Rc<MemorySlot>),
     Table(Rc<TableSlot>),
     Global(Rc<GlobalSlot>),
-    Ref(Rc<RefSlot>),
 }
 
 /// A function reference read out of a table or a global.

@@ -384,3 +384,61 @@ fn a_funcref_global_reads_back_as_a_function() {
     ));
     assert_eq!(answer, "function,8");
 }
+
+#[test]
+fn compile_streaming_wants_the_wasm_content_type() {
+    let rejected = settled(
+        "WebAssembly.compileStreaming(new Response(new Uint8Array(0), { headers: { 'content-type': 'text/plain' } }))",
+    );
+    assert!(rejected.starts_with("rejected:TypeError"), "{rejected}");
+}
+
+/// The sources below are written with BYTES standing in for the module, because
+/// a format string and a JS body both count braces.
+fn script(body: &str, bytes: &str) -> String {
+    body.replace("BYTES", bytes)
+}
+
+#[test]
+fn compile_streaming_reads_a_response() {
+    let source = script(
+        "(function () {
+            var body = new Uint8Array(BYTES);
+            return WebAssembly.compileStreaming(
+                new Response(body, { headers: { 'content-type': 'application/wasm' } })
+            ).then(function (m) { return m instanceof WebAssembly.Module; });
+        })()",
+        EMPTY,
+    );
+    assert_eq!(settled(&source), "resolved:true");
+}
+
+#[test]
+fn instantiate_streaming_gives_back_both_halves() {
+    let source = script(
+        "(function () {
+            var body = new Uint8Array(BYTES);
+            return WebAssembly.instantiateStreaming(
+                new Response(body, { headers: { 'content-type': 'application/wasm' } })
+            ).then(function (r) {
+                return (r.module instanceof WebAssembly.Module) &&
+                    (r.instance instanceof WebAssembly.Instance);
+            });
+        })()",
+        EMPTY,
+    );
+    assert_eq!(settled(&source), "resolved:true");
+}
+
+#[test]
+fn instantiate_of_a_module_alone_gives_the_instance() {
+    let source = script(
+        "(function () {
+            var m = new WebAssembly.Module(new Uint8Array(BYTES));
+            return WebAssembly.instantiate(m)
+                .then(function (i) { return i instanceof WebAssembly.Instance; });
+        })()",
+        EMPTY,
+    );
+    assert_eq!(settled(&source), "resolved:true");
+}

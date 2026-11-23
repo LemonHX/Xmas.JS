@@ -355,8 +355,10 @@
   });
 
   // The spec has both a constructor and this: instantiate() is the promise-shaped one, and it also
-  // takes bytes, which it compiles first. It resolves with { module, instance } either way.
+  // takes bytes, which it compiles first. Handed a Module and nothing else it resolves with the
+  // Instance; in every other shape it resolves with { module, instance }.
   function instantiate(source, importObject) {
+    const bare = source instanceof Module && arguments.length < 2;
     let module;
     try {
       module = source instanceof Module ? source : new Module(source);
@@ -364,7 +366,8 @@
       return Promise.reject(error);
     }
     try {
-      return Promise.resolve({ module, instance: new Instance(module, importObject) });
+      const instance = new Instance(module, importObject);
+      return Promise.resolve(bare ? instance : { module, instance });
     } catch (error) {
       return Promise.reject(error);
     }
@@ -400,6 +403,20 @@
     }).then((bytes) => new Module(bytes));
   }
 
+  // Not streaming: the body is collected and compiled in one go, which is the same result by a
+  // longer road. Reading it chunk by chunk would buy nothing here -- the engine compiles bytes,
+  // and a compiled module is what both of these resolve with either way.
+  function instantiateStreaming(source, importObject) {
+    return compileStreaming(source).then((module) => {
+      try {
+        const instance = new Instance(module, importObject);
+        return { module, instance };
+      } catch (error) {
+        throw error;
+      }
+    });
+  }
+
   const WebAssembly = {
     CompileError,
     Global,
@@ -412,6 +429,7 @@
     compile,
     compileStreaming,
     instantiate,
+    instantiateStreaming,
     validate,
   };
 
