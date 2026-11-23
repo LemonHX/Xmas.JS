@@ -61,18 +61,54 @@ impl<'a> Visit<'a> for Scan<'a> {
 }
 
 /// The properties this layer answers, spelled as Bun does.
+///
+/// A remote module answers the same group from its URL: there is no path on disk for it, and the
+/// URL is the identity the program wrote and the one its relative imports resolve against.
 fn value(name: &str, url: &str) -> Option<String> {
-    let path = url.strip_prefix("file://")?;
-    let directory = match path.rsplit_once('/') {
-        Some((directory, _)) => directory,
-        None => return None,
+    // 'dir' and 'dirname' are the same thing here; Bun spells both and so does this.
+    if name != "url" && name != "path" && name != "filename" && name != "dir" && name != "dirname"
+        && name != "file"
+    {
+        return None;
+    }
+
+    let (directory, file) = if crate::resolve::is_remote(url) {
+        if url.starts_with("data:") {
+            // A data URL has no path to take apart: its whole text is its name, and there is no
+            // directory for a relative import to join against either.
+            let text = if name == "url" { url } else { "" };
+            return Some(quote(text));
+        }
+        // The URL one level up, which is what a relative import joins against and therefore the
+        // only useful meaning of a directory for a remote module.
+        let parsed = url::Url::parse(url).ok()?;
+        let file = parsed.path().rsplit('/').next().unwrap_or_default().to_owned();
+        let directory = parsed.join(".").ok()?.to_string();
+        let directory = directory.trim_end_matches('/').to_owned();
+        (directory, file)
+    } else {
+        let path = url.strip_prefix("file://")?;
+        let directory = match path.rsplit_once('/') {
+            Some((directory, _)) => directory,
+            None => return None,
+        };
+        let file = path.rsplit('/').next().unwrap_or_default().to_owned();
+        (directory.to_owned(), file)
     };
-    let file = path.rsplit('/').next().unwrap_or_default();
+
     let text = match name {
         "url" => url.to_owned(),
-        "path" | "filename" => path.to_owned(),
-        "dir" | "dirname" => directory.to_owned(),
-        "file" => file.to_owned(),
+        "path" | "filename" => {
+            if crate::resolve::is_remote(url) {
+                // A remote module has no path; its URL is the closest honest answer, and saying
+                // so beats handing back an empty string that looks like a real one.
+                url.to_owned()
+            } else {
+                url.strip_prefix("file://")?.to_owned()
+            }
+        }
+        "dir" | "dirname" => directory,
+        "file" => file,
         _ => return None,
     };
     Some(quote(&text))
@@ -91,6 +127,10 @@ fn quote(text: &str) -> String {
 /// `file://` for a path on disk. The path is already absolute: the loader only ever compiles a
 /// module it has resolved, and resolution produces absolute paths.
 pub fn url_of(path: &str) -> String {
+    // A module loaded from a URL is already identified by one.
+    if crate::resolve::is_remote(path) {
+        return path.to_owned();
+    }
     if path.starts_with('/') {
         format!("file://{path}")
     } else {

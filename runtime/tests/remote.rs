@@ -85,3 +85,17 @@ fn a_data_url_is_not_written_to_the_cache() {
     let after = std::fs::read_dir(".xmas/remote").map(|d| d.count()).unwrap_or(0);
     assert_eq!(before, after);
 }
+
+#[test]
+fn import_meta_of_a_remote_module_is_its_url() {
+    // A remote module has no path on disk. Its URL is the identity the program wrote and the one
+    // its own relative imports join against, so import.meta answers from that.
+    let lib = "data:text/javascript,export const url = import.meta.url;" .to_string();
+    let entry = format!(
+        "import {{ url }} from '{}';\n{}",
+        lib,
+        app("url")
+    );
+    let body = answered(&[("app.ts", &entry)]);
+    assert!(body.starts_with("data:text/javascript"), "{body}");
+}
