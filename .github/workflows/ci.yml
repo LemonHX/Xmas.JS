@@ -24,11 +24,11 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - name: Check out this repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: Xmas.JS
       - name: Check out the engine next door
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: 0xfe-project/quickjs-oxide
           path: quickjs-oxide
@@ -45,11 +45,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out this repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: Xmas.JS
       - name: Check out the engine next door
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: 0xfe-project/quickjs-oxide
           path: quickjs-oxide
