@@ -29,6 +29,9 @@ pub struct Modules {
     /// The names the engine itself knows: registered as module definitions rather than as source
     /// (every `node:` module this runtime ships). The loader must leave those alone.
     native: Rc<RefCell<BTreeSet<String>>>,
+    /// What `import.meta` needs beyond a module's own path: the entry, and the environment.
+    /// Shared, so the answer does not change between the first module and the last one compiled.
+    context: Rc<RefCell<crate::meta::Context>>,
 }
 
 impl Default for Modules {
@@ -42,6 +45,7 @@ impl Modules {
         Modules {
             sources: Rc::new(RefCell::new(BTreeMap::new())),
             native: Rc::new(RefCell::new(BTreeSet::new())),
+            context: Rc::new(RefCell::new(crate::meta::Context::default())),
         }
     }
 
@@ -56,6 +60,19 @@ impl Modules {
         self.native.borrow().contains(name)
     }
 
+    /// The module the program started at, which is what `import.meta.main` compares against.
+    ///
+    /// Set once per realm, before anything is evaluated: a module compiled while the entry was
+    /// still unknown would answer false for the rest of its life, and it is compiled once.
+    pub fn set_main(&self, name: &str) {
+        self.context.borrow_mut().main = Some(name.to_owned());
+    }
+
+    /// The environment `import.meta.env` answers from.
+    pub fn set_env(&self, vars: Vec<(String, String)>) {
+        self.context.borrow_mut().env = Some(vars.into_iter().collect());
+    }
+
     /// Install a module: compilation happens here, and only happens once.
     pub fn load(&self, specifier: &str, path: &str, source: &str) -> Result<Rc<Module>, String> {
         let kind = kind_of(path);
@@ -63,7 +80,7 @@ impl Modules {
         let code = if path.ends_with(".json") {
             format!("export default {};", source.trim_start_matches('\u{feff}'))
         } else {
-            compile(path, source)?
+            compile(path, source, &self.context.borrow())?
         };
         // A CommonJS file gets its shell: require, module, exports, __filename and __dirname.
         let code = crate::cjs::wrap(path, &code, &|name| {

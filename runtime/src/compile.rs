@@ -107,10 +107,14 @@ fn report(path: &str, source: &str, offset: Option<usize>, message: &str) -> Str
 /// asks for neither: `import.meta` is rewritten from the module's own path (crate::meta), and
 /// everything else goes through TypeScript and JSX. A plain JavaScript file that uses
 /// `import.meta` therefore pays one parse; one that does not is passed through untouched.
-pub fn compile(path: &str, source: &str) -> Result<String, String> {
+pub fn compile(
+    path: &str,
+    source: &str,
+    context: &crate::meta::Context,
+) -> Result<String, String> {
     let kind = kind_of(path);
     if kind == Kind::Js {
-        return Ok(crate::meta::rewrite(source, path)?.unwrap_or_else(|| source.to_owned()));
+        return Ok(crate::meta::rewrite(source, path, context)?.unwrap_or_else(|| source.to_owned()));
     }
     COMPILES.fetch_add(1, Ordering::Relaxed);
 
@@ -165,5 +169,5 @@ pub fn compile(path: &str, source: &str) -> Result<String, String> {
         initial_indent: 0,
     });
     let code = codegen.build(&program).code;
-    Ok(crate::meta::rewrite(&code, path)?.unwrap_or(code))
+    Ok(crate::meta::rewrite(&code, path, context)?.unwrap_or(code))
 }

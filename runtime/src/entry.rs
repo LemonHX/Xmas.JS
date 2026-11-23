@@ -45,6 +45,9 @@ fn build(addr: &str) -> Result<Driver, String> {
 pub fn realm(host: Host, addr: &str) -> Result<Driver, String> {
     let mut driver = Driver::new(host).map_err(|error| format!("build realm: {error}"))?;
     let modules = driver.host.modules.clone();
+    // The environment the realm was built with, which is what `import.meta.env` answers from. The
+    // snapshot is taken once at startup, so every module sees the same object either way.
+    modules.set_env(driver.host.env.all());
     driver
         .runtime()
         .set_module_loader(Loader::new(modules))
@@ -83,6 +86,9 @@ fn evaluate(driver: &mut Driver, path: &Path, source: &str) -> Result<Value, Str
 ///
 /// The realm has to have a loader, because that is what resolves the module's imports: see "realm".
 pub fn evaluate_named(driver: &mut Driver, name: &str, source: &str) -> Result<Value, String> {
+    // Before anything is compiled: a module asks `import.meta.main` once, at the moment it runs,
+    // and the answer is baked into its source.
+    driver.host.modules.set_main(name);
     // Compiling the entry into this realm's table is the point: the bootstrap's import then reads it
     // from there, so the file is read and compiled once.
     // The compiler's own message already starts with the path and the position.
