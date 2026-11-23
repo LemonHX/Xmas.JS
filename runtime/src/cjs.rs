@@ -21,7 +21,10 @@
 //! `require` gets just that function (as in LLRT), with no shell and no `module` or `exports`.
 
 use oxc::allocator::Allocator;
-use oxc::ast::ast::{Argument, CallExpression, Expression, IdentifierReference};
+use oxc::ast::ast::{
+    Argument, AssignmentExpression, AssignmentTarget, CallExpression, Expression, IdentifierReference,
+    ObjectPropertyKind, PropertyKey,
+};
 use oxc::ast_visit::{Visit, walk};
 use oxc::parser::{ParseOptions, Parser};
 use oxc::semantic::SemanticBuilder;
@@ -29,10 +32,29 @@ use oxc::span::SourceType;
 
 const NAMES: [&str; 5] = ["require", "module", "exports", "__filename", "__dirname"];
 
+/// Names a CommonJS file can be imported by, beyond `default`.
+///
+/// Read off the source: `exports.name = ...`, `exports['name'] = ...`, and the keys of an object
+/// literal assigned to `module.exports`. That is a scan, not an analysis -- a name added by a loop
+/// or a computed key is not found, and a name that is written and then deleted is still offered.
+/// Node's own interop has the same shape of answer for the same reason.
+fn is_export_name(name: &str) -> bool {
+    !name.is_empty() && !name.starts_with("__") && name != "default"
+}
+
 #[derive(Default)]
 struct Scan {
     requires: Vec<String>,
     free_name: bool,
+    exports: Vec<String>,
+}
+
+impl Scan {
+    fn export(&mut self, name: &str) {
+        if is_export_name(name) && !self.exports.iter().any(|seen| seen == name) {
+            self.exports.push(name.to_owned());
+        }
+    }
 }
 
 impl<'a> Visit<'a> for Scan {
@@ -54,6 +76,39 @@ impl<'a> Visit<'a> for Scan {
             }
         }
         walk::walk_call_expression(self, call);
+    }
+
+    fn visit_assignment_expression(&mut self, assign: &AssignmentExpression<'a>) {
+        if let AssignmentTarget::StaticMemberExpression(member) = &assign.left {
+            let on = match &member.object {
+                Expression::Identifier(identifier) => Some(identifier.name.as_str()),
+                _ => None,
+            };
+            let field = member.property.name.as_str();
+            if on == Some("exports") {
+                self.export(field);
+            }
+            // `module.exports = { a, b }`: the keys are the names the file offers.
+            if on == Some("module")
+                && field == "exports"
+                && let Expression::ObjectExpression(object) = &assign.right
+            {
+                for property in &object.properties {
+                    match property {
+                        ObjectPropertyKind::ObjectProperty(property) if !property.computed => {
+                            match &property.key {
+                                PropertyKey::StaticIdentifier(key) => self.export(&key.name),
+                                PropertyKey::StringLiteral(key) => self.export(&key.value),
+                                _ => {}
+                            }
+                        }
+                        ObjectPropertyKind::SpreadProperty(_) => {}
+                        _ => {}
+                    }
+                }
+            }
+        }
+        walk::walk_assignment_expression(self, assign);
     }
 }
 
@@ -144,8 +199,17 @@ pub fn wrap(path: &str, code: &str, keep: &dyn Fn(&str) -> bool) -> Option<Strin
     }
     shell.push_str(";(function(exports,require,module,__filename,__dirname){");
     shell.push_str(code);
-    shell.push_str(
-        "\n}).call(module.exports,exports,require,module,__filename,__dirname);module.loaded=true;export default module.exports;\n",
-    );
+    shell.push_str("\n}).call(module.exports,exports,require,module,__filename,__dirname);module.loaded=true;\n");
+    // Each name the file was seen to export is also a module export, so an \`import { x } from\`
+    // of a CommonJS file finds something. The names are read before any of them exist, so they
+    // have to be collected in a way that does not fail: \`export let x = e.x\` does, which is why
+    // these go through a local first.
+    if !scan.exports.is_empty() {
+        shell.push_str("const __exports=module.exports;\n");
+        for name in &scan.exports {
+            shell.push_str(&format!("export const {name}=__exports[{}];\n", quote(name)));
+        }
+    }
+    shell.push_str("export default module.exports;\n");
     Some(shell)
 }

@@ -97,6 +97,41 @@ fn an_esm_file_can_import_a_cjs_one() {
 }
 
 #[test]
+fn a_named_import_of_a_cjs_file_finds_the_export() {
+    let body = answered(&[
+        (
+            "app.ts",
+            "import { name, kind } from './lib.cjs';\nexport default { fetch() { return new Response(name + '/' + kind); } };\n",
+        ),
+        ("lib.cjs", "exports.name = 'lib';\nexports.kind = 'cjs';\n"),
+    ]);
+    assert_eq!(body, "lib/cjs");
+}
+
+#[test]
+fn a_named_import_of_a_cjs_object_module_exports_finds_the_keys() {
+    let body = answered(&[
+        (
+            "app.ts",
+            "import { a, b } from './lib.js';\nexport default { fetch() { return new Response(a + '+' + b); } };\n",
+        ),
+        ("lib.js", "module.exports = { a: '1', b: '2' };\n"),
+    ]);
+    assert_eq!(body, "1+2");
+}
+
+#[test]
+fn a_name_the_file_does_not_export_is_still_a_compile_error() {
+    let dir = tree(&[
+        ("app.ts", "import { missing } from './lib.cjs';\nexport default { fetch() { return new Response('x'); } };\n"),
+        ("lib.cjs", "exports.present = 1;\n"),
+    ]);
+    let error = std::panic::catch_unwind(|| start_file(&dir.join("app.ts")));
+    // Starting the file is what loads it: a missing name is a link error, not a request that fails.
+    assert!(error.is_err(), "a missing named export should not start");
+}
+
+#[test]
 fn a_computed_require_says_why_it_fails() {
     let body = answered(&[
         (

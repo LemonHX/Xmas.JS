@@ -4,6 +4,7 @@ pub mod deps;
 pub mod driver;
 pub mod entry;
 pub mod host;
+pub mod meta;
 pub mod modules;
 pub mod package;
 pub mod resolve;
