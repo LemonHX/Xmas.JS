@@ -34,17 +34,17 @@ Everything above is one process, written in Rust, with no system library underne
 
 ## Small on purpose
 
-Measured on one machine (Apple silicon macOS, release build with the default profile, nothing tuned):
+Measured on one machine (Apple silicon macOS, release build, fat LTO, one codegen unit, symbols stripped):
 
 | What | Number |
 | --- | --- |
-| Binary size | **21.8 MiB** (22,831,088 bytes), runtime, package manager, TS compiler and WebAssembly engine included |
-| Process start to first HTTP response | **20 to 62 ms**, five runs, median 28 ms (spawn, parse, compile, serve, one request) |
-| Idle memory, hello-world server, 1 worker | **19 MB** resident (RSS, `ps`) |
+| Binary size | **11.3 MiB** (11,821,360 bytes), runtime, package manager, TS compiler and WebAssembly engine included. The same code was 22,831,088 bytes before the profile below |
+| Process start to first HTTP response | **19 to 41 ms** over four warm runs (spawn, parse, compile, serve, one request). The very first run of a freshly built binary took 635 ms, which I put down to macOS checking a new executable, not to the runtime |
+| Idle memory, hello-world server, 1 worker | **17.8 MB** resident (RSS, `ps`) |
 
 These are not a comparison. Nobody else's runtime was measured with the same harness, so there is no "Nx faster" here. The comparison against LLRT, Node with Hono, and Bun is still to do, and it will go in this table when it exists.
 
-The binary has no `[profile.release]` tuning yet (no LTO, no strip, no `opt-level = "z"`), so that size is the starting point, not the floor.
+The profile keeps the two engines (quickjs-oxide, WNJR), the TypeScript compiler, hashing, JSON and TLS at `opt-level = 3` and builds every other crate, including smol and Trillium, at `opt-level = "z"`. Speed where code runs hot, size everywhere else.
 
 ---
 
