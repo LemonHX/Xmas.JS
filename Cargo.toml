@@ -19,8 +19,8 @@ default-members = ["."]
 xmas-runtime = { path = "runtime" }
 # The wasm engine is a sibling checkout, reached through the ../WNJR symlink so the path is the same
 # on every machine: wnjr-core runs a module, wnjr-wasi is the preview1 layer it calls out to.
-wnjr-core = { path = "../WNJR/wnjr-core" }
-wnjr-wasi = { path = "../WNJR/wnjr-wasi" }
+wnjr-core = { git = "https://github.com/0xfe-project/wnjr", rev = "39f2fa4a6e82e7476617ba936a51e4157bb337ac" }
+wnjr-wasi = { git = "https://github.com/0xfe-project/wnjr", rev = "39f2fa4a6e82e7476617ba936a51e4157bb337ac" }
 
 [dependencies]
 xmas-runtime = { workspace = true }
