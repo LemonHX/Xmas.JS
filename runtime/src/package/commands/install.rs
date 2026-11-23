@@ -8,7 +8,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
-use std::fs::{create_dir_all, read_to_string};
+use std::fs::{create_dir_all, read_dir, read_to_string, remove_dir_all};
 use std::io::ErrorKind;
 use std::time::Instant;
 
@@ -129,6 +129,49 @@ pub fn exec_install_scripts(tree: &DependencyTree, initial_stack: &[CompactStrin
     Ok(())
 }
 
+/// Remove what is in node_modules and not in the plan.
+///
+/// Only the top level is swept. A package that stays keeps its own nested tree with it, so what
+/// is left under a surviving package is still reachable from it; a package that goes takes its
+/// subtree with it. The two directories the runtime owns -- .bin and .xmas -- are not packages.
+fn prune(plan: &Plan) -> Result<()> {
+    let entries = match read_dir("node_modules") {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+
+    for entry in entries {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name == ".bin" || name == ".xmas" {
+            continue;
+        }
+        if entry.file_type()?.is_dir() && name.starts_with('@') {
+            // A scope is a directory of packages, not a package: keep the ones the plan names.
+            for scoped in read_dir(entry.path())? {
+                let scoped = scoped?;
+                let scoped_name = scoped.file_name().to_string_lossy().into_owned();
+                let full: CompactString = format!("{name}/{scoped_name}").into();
+                if !plan.trees.contains_key(&full) {
+                    remove_dir_all(scoped.path())?;
+                }
+            }
+            // A scope with every package gone is itself gone.
+            if read_dir(entry.path())?.next().is_none() {
+                remove_dir_all(entry.path())?;
+            }
+            continue;
+        }
+        let full: CompactString = name.as_str().into();
+        if !plan.trees.contains_key(&full) {
+            remove_dir_all(entry.path())?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Install packages based on package.json.
 pub fn install(args: &Options) -> Result<()> {
     let package = read_package()?;
@@ -141,6 +184,11 @@ pub fn install(args: &Options) -> Result<()> {
     let plan = prepare_plan(args, &package)?;
     let size = tree_size(&plan.trees);
     set_total(size as u64 * 2); // download + install
+
+    // A tree that already matches the plan can still hold what the plan dropped: removing a
+    // package rewrites package.json and nothing else, so the directory it left behind stays
+    // until someone sweeps. The sweep runs either way.
+    prune(&plan)?;
 
     if matches!(verify_installation(&package, &plan), Ok(true)) {
         log_verbose("Packages already installed")

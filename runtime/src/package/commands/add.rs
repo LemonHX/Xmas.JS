@@ -5,17 +5,27 @@ use color_eyre::owo_colors::OwoColorize;
 use compact_str::CompactString;
 use serde_json::Value;
 
+use super::install;
 use crate::package::npm::fetch_package;
 use crate::package::progress::PROGRESS_BAR;
 use crate::package::util::{read_package_or_default, save_package};
+use crate::package::Options;
 
 /// Execute the add command.
-pub fn cmd_add(names: &[CompactString], dev: bool, pin: bool) -> Result<()> {
+///
+/// Adding a package means putting it on disk, not only naming it in package.json: a manifest that
+/// lists something node_modules does not have is a broken tree, and asking for it twice is the
+/// kind of thing nobody does. So this is npm's `add`: write the field, then install.
+pub fn cmd_add(names: &[CompactString], dev: bool, pin: bool, options: &Options) -> Result<()> {
     if names.is_empty() {
         PROGRESS_BAR.suspend(|| println!("Note: no packages specified"));
     }
 
-    add_packages(names, dev, pin)
+    add_packages(names, dev, pin)?;
+    if names.is_empty() {
+        return Ok(());
+    }
+    install::install(options)
 }
 
 /// Add packages to package.json.

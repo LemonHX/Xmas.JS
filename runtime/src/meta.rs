@@ -17,7 +17,7 @@
 use std::path::Path;
 
 use oxc::allocator::Allocator;
-use oxc::ast::ast::{Expression, MemberExpression};
+use oxc::ast::ast::Expression;
 use oxc::ast_visit::{Visit, walk};
 use oxc::parser::{Parser, ParseOptions};
 use oxc::span::SourceType;
