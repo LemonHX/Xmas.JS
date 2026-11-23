@@ -213,6 +213,28 @@ mod tests {
     }
 
     #[test]
+    fn a_remote_module_answers_from_its_url() {
+        // Same property names, a different basis: there is no file, so dir is one URL level up --
+        // which is exactly what a relative import from that module joins against.
+        let url = "https://unpkg.com/a/dist/es/x.js";
+        assert_eq!(value("url", url).unwrap(), quoted(url));
+        assert_eq!(value("dir", url).unwrap(), quoted("https://unpkg.com/a/dist/es"));
+        assert_eq!(value("dirname", url).unwrap(), quoted("https://unpkg.com/a/dist/es"));
+        assert_eq!(value("file", url).unwrap(), quoted("x.js"));
+    }
+
+    #[test]
+    fn a_data_url_has_no_directory_to_report() {
+        let url = "data:text/javascript,export const x = 1";
+        assert_eq!(value("url", url).unwrap(), quoted(url));
+        assert_eq!(value("dir", url).unwrap(), "\"\"");
+    }
+
+    fn quoted(text: &str) -> String {
+        serde_json::to_string(text).unwrap()
+    }
+
+    #[test]
     fn a_module_that_never_mentions_it_is_left_alone() {
         assert!(rewrite("export const x = 1;", "/a/b.js").unwrap().is_none());
     }

@@ -105,8 +105,6 @@ pub(crate) struct ModuleSlot {
 /// One instantiated module, plus the slots of the memories it exports.
 pub(crate) struct InstanceSlot {
     instance: RefCell<Instance>,
-    engine: Engine,
-    module: WasmModule,
     memories: RefCell<Vec<Rc<MemorySlot>>>,
 }
 
@@ -212,13 +210,13 @@ pub(crate) enum Slot {
     Global(Rc<GlobalSlot>),
 }
 
-/// The JS values that externref slots name.
-///
-/// An externref is an index, not a pointer: WNJR's `RefValue::externref` carries a host label,
-/// and the label is a slot in this table. Per realm, because the values in it belong to one
-/// realm's heap. A slot is never reused and never freed, which is the price of not having a
-/// cycle collector over wasm references; an externref-heavy program growing this table without
-/// bound is a leak this version accepts.
+// The JS values that externref slots name.
+//
+// An externref is an index, not a pointer: WNJR's RefValue::externref carries a host label, and
+// the label is a slot in this table. Per realm, because the values in it belong to one realm's
+// heap. A slot is never reused and never freed, which is the price of not having a cycle
+// collector over wasm references; an externref-heavy program growing this table without bound is
+// a leak this version accepts.
 thread_local! {
     static EXTERNREFS: RefCell<Vec<Option<Value>>> = const { RefCell::new(Vec::new()) };
 }
@@ -230,10 +228,6 @@ fn intern_externref(value: Value) -> usize {
         slots.push(Some(value));
         slots.len() - 1
     })
-}
-
-fn externref_at(index: usize) -> Option<Value> {
-    EXTERNREFS.with(|slots| slots.borrow().get(index).cloned().flatten())
 }
 
 /// A function reference read out of a table or a global.
@@ -394,8 +388,6 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
                 .map_err(|error| link_error(scope, &error.to_string()))?;
             let slot = Slot::Instance(Rc::new(InstanceSlot {
                 instance: RefCell::new(instance),
-                engine,
-                module: slot.module.clone(),
                 memories: RefCell::new(Vec::new()),
             }));
             let prototype = prototype_of(scope, "Instance")?;
