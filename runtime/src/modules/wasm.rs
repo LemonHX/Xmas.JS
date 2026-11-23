@@ -576,7 +576,21 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             let Value::Int(index) = index else {
                 return Err(type_error(scope, "expected an element index"));
             };
-            let Some(element) = slot.export.table_get(index.max(0) as usize) else {
+            let Some(size) = slot.export.table_size() else {
+                return Err(type_error(scope, "expected a WebAssembly.Table"));
+            };
+            // Out of range is a RangeError, as the spec says; a table has no
+            // element there to hand back.
+            if index < 0 || index as usize >= size {
+                return Err(match scope.new_native_error(
+                    NativeErrorKind::Range,
+                    &format!("{index} is outside a table of {size} elements"),
+                ) {
+                    Ok(value) => RuntimeError::Exception(value),
+                    Err(error) => error,
+                });
+            }
+            let Some(element) = slot.export.table_get(index as usize) else {
                 return Err(type_error(scope, "expected a WebAssembly.Table"));
             };
             let element =

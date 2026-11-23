@@ -442,3 +442,79 @@ fn instantiate_of_a_module_alone_gives_the_instance() {
     );
     assert_eq!(settled(&source), "resolved:true");
 }
+
+/// A module with one immutable i32 global exported as `c`.
+const CONST: &str = "[0x00,0x61,0x73,0x6d,0x01,0x00,0x00,0x00,0x06,0x06,0x01,0x7f,0x00,0x41,0x2a,0x0b,0x07,0x05,0x01,0x01,0x63,0x03,0x00]";
+
+#[test]
+fn an_immutable_global_refuses_a_write() {
+    let source = script(
+        "(function () {
+            var i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array(BYTES)));
+            var g = i.exports.c;
+            try { g.value = 1; return 'no throw'; } catch (e) { return String(e.name); }
+        })()",
+        CONST,
+    );
+    assert_eq!(eval(&source), "TypeError");
+}
+
+#[test]
+fn a_table_index_out_of_range_is_a_type_error() {
+    let source = script(
+        "(function () {
+            var i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array(BYTES)));
+            try { return String(i.exports.t.get(99) === undefined); }
+            catch (e) { return String(e.name); }
+        })()",
+        REFS,
+    );
+    assert_eq!(eval(&source), "RangeError");
+}
+
+#[test]
+fn memory_grow_takes_pages_and_answers_with_the_old_length() {
+    let source = script(
+        "(function () {
+            var i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array(BYTES)));
+            var m = i.exports.mem;
+            var before = m.grow(2);
+            return [before, m.buffer.byteLength, m.grow(0)].join(',');
+        })()",
+        MEMORY,
+    );
+    assert_eq!(eval(&source), "1,196608,3");
+}
+
+#[test]
+fn memory_grow_past_the_limit_answers_minus_one() {
+    // Not an exception: the spec has grow answer -1, so a caller that wants the
+    // old length and a caller that wants to know it failed read the same value.
+    let source = script(
+        "(function () {
+            var i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array(BYTES)));
+            return String(i.exports.mem.grow(70000));
+        })()",
+        MEMORY,
+    );
+    assert_eq!(eval(&source), "-1");
+}
+
+#[test]
+fn each_class_names_itself_and_only_itself() {
+    let source = script(
+        "(function () {
+            var m = new WebAssembly.Module(new Uint8Array(BYTES));
+            var i = new WebAssembly.Instance(m);
+            var names = [
+                m instanceof WebAssembly.Module,
+                i instanceof WebAssembly.Instance,
+                i.exports.mem instanceof WebAssembly.Memory,
+                i.exports.mem instanceof WebAssembly.Table,
+            ];
+            return names.join(',');
+        })()",
+        MEMORY,
+    );
+    assert_eq!(eval(&source), "true,true,true,false");
+}
