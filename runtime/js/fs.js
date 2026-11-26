@@ -65,8 +65,27 @@
     }
     async appendFile(data, options) { return this.writeFile(data, options); }
     async stat() { return sync.fstatSync(this.fd); }
+    async sync() { sync.fsyncSync(this.fd); }
+    async datasync() { sync.fdatasyncSync(this.fd); }
+    async truncate(length = 0) { sync.ftruncateSync(this.fd, length); }
     async close() { if (this.fd >= 0) { __fs_close_sync(this.fd); this.fd = -1; } }
     async [Symbol.asyncDispose]() { return this.close(); }
+  }
+
+  // Host errors arrive as 'ENOENT: message'; Node's carry the same text as error.code.
+  const coded = (error) => {
+    if (error && typeof error.message === 'string' && error.code === undefined) {
+      const m = /^([A-Z][A-Z0-9]{1,15}): /.exec(error.message);
+      if (m) error.code = m[1];
+    }
+    return error;
+  };
+  for (const key of Object.getOwnPropertyNames(FileHandle.prototype)) {
+    const original = FileHandle.prototype[key];
+    if (key === 'constructor' || typeof original !== 'function') continue;
+    FileHandle.prototype[key] = async function (...args) {
+      try { return await original.apply(this, args); } catch (error) { throw coded(error); }
+    };
   }
 
   const promises = {
@@ -119,7 +138,7 @@
     async readlink(path) { return __fs_readlink_sync(pathOf(path)); },
     async access(path) { await promises.stat(path); },
     async open(path, flags = 'r', mode = 0o666) {
-      return new FileHandle(Number(__fs_open_sync(pathOf(path), String(flags), mode)));
+      try { return new FileHandle(Number(__fs_open_sync(pathOf(path), String(flags), mode))); } catch (error) { throw coded(error); }
     },
     async exists(path) {
       try { await promises.stat(path); return true; } catch { return false; }
@@ -148,6 +167,9 @@
         throw error;
       }
     },
+    fsyncSync(fd) { __fs_fsync_sync(fd, 0); },
+    fdatasyncSync(fd) { __fs_fsync_sync(fd, 1); },
+    ftruncateSync(fd, length = 0) { __fs_ftruncate_sync(fd, length); },
     fstatSync(fd) { return new Stats(JSON.parse(__fs_fstat_sync(fd))); },
     existsSync(path) {
       try {

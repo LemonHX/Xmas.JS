@@ -368,3 +368,30 @@ fn a_file_beats_a_directory_without_an_index() {
     ], "a.test.ts");
     assert_eq!((r.pass, r.fail), (1, 0), "{:?}", r.error);
 }
+
+#[test]
+fn a_file_handle_syncs_truncates_and_errors_carry_a_code() {
+    let r = run(&[(
+        "a.test.ts",
+        "
+        import { open, mkdtemp, rm, readFile } from 'node:fs/promises';
+        import { tmpdir } from 'node:os';
+        import { join } from 'node:path';
+        test('handle', async () => {
+            const dir = await mkdtemp(join(tmpdir(), 'fh-'));
+            const path = join(dir, 'f');
+            const h = await open(path, 'w');
+            await h.write('hello world');
+            await h.sync();
+            await h.datasync();
+            await h.truncate(5);
+            await h.close();
+            expect(await readFile(path, 'utf8')).toBe('hello');
+            const missing = await open(join(dir, 'none'), 'r+').catch((e) => e);
+            expect(missing.code).toBe('ENOENT');
+            await rm(dir, { recursive: true, force: true });
+        });
+    ",
+    )], "a.test.ts");
+    assert_eq!((r.pass, r.fail), (1, 0), "{:?}", r.error);
+}

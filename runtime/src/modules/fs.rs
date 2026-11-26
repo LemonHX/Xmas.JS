@@ -422,6 +422,40 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             .context()
             .define_function(
                 &global,
+                "__fs_fsync_sync",
+                2,
+                move |scope: &mut Scope<'_>, fd: f64, data_only: f64| -> Result<Value, RuntimeError> {
+                    match sync_fd(fd as i32, data_only != 0.0) {
+                        Ok(()) => Ok(Value::Undefined),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_fsync_sync: {error}"))?;
+    }
+
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_ftruncate_sync",
+                2,
+                move |scope: &mut Scope<'_>, fd: f64, length: f64| -> Result<Value, RuntimeError> {
+                    match truncate_fd(fd as i32, length as u64) {
+                        Ok(()) => Ok(Value::Undefined),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_ftruncate_sync: {error}"))?;
+    }
+
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
                 "__fs_close_sync",
                 1,
                 move |scope: &mut Scope<'_>, fd: f64| -> Result<Value, RuntimeError> {
@@ -895,6 +929,23 @@ fn open_fd(path: &str, flags: i32, mode: u32) -> std::io::Result<i32> {
 fn close_fd(fd: i32) -> std::io::Result<()> {
     if unsafe { libc::close(fd) } < 0 { Err(last_error()) } else { Ok(()) }
 }
+
+#[cfg(unix)]
+fn sync_fd(fd: i32, data_only: bool) -> std::io::Result<()> {
+    let result = unsafe { if data_only { libc::fdatasync(fd) } else { libc::fsync(fd) } };
+    if result < 0 { Err(last_error()) } else { Ok(()) }
+}
+
+#[cfg(unix)]
+fn truncate_fd(fd: i32, length: u64) -> std::io::Result<()> {
+    if unsafe { libc::ftruncate(fd, length as libc::off_t) } < 0 { Err(last_error()) } else { Ok(()) }
+}
+
+#[cfg(not(unix))]
+fn sync_fd(_: i32, _: bool) -> std::io::Result<()> { unsupported() }
+
+#[cfg(not(unix))]
+fn truncate_fd(_: i32, _: u64) -> std::io::Result<()> { unsupported() }
 
 #[cfg(unix)]
 fn with_fd<T>(fd: i32, job: impl FnOnce(&std::fs::File) -> std::io::Result<T>) -> std::io::Result<T> {
