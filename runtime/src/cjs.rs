@@ -47,6 +47,7 @@ struct Scan {
     requires: Vec<String>,
     free_name: bool,
     exports: Vec<String>,
+    reexports: Vec<String>,
 }
 
 impl Scan {
@@ -65,6 +66,23 @@ impl<'a> Visit<'a> for Scan {
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        // `__export(require("./x"))`, `__exportStar(require("./x"), exports)`, `tslib.__exportStar(...)`:
+        // the names of the required file are names of this one.
+        let helper = match &call.callee {
+            Expression::Identifier(callee) => Some(callee.name.as_str()),
+            Expression::StaticMemberExpression(member) => Some(member.property.name.as_str()),
+            _ => None,
+        };
+        if matches!(helper, Some("__export" | "__exportStar"))
+            && let Some(Argument::CallExpression(inner)) = call.arguments.first()
+            && matches!(&inner.callee, Expression::Identifier(callee) if callee.name == "require")
+            && let Some(Argument::StringLiteral(text)) = inner.arguments.first()
+        {
+            let spec = text.value.to_string();
+            if !self.reexports.contains(&spec) {
+                self.reexports.push(spec);
+            }
+        }
         if let Expression::Identifier(callee) = &call.callee
             && callee.name == "require"
             && call.arguments.len() == 1
@@ -112,6 +130,37 @@ impl<'a> Visit<'a> for Scan {
     }
 }
 
+/// The export names of a CommonJS file that another one re-exports, followed through its own
+/// re-exports a few levels deep.
+fn reexported_names(path: &str, depth: usize) -> Vec<String> {
+    if depth > 4 || !(path.ends_with(".js") || path.ends_with(".cjs")) {
+        return Vec::new();
+    }
+    let Ok(code) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, &code, SourceType::unambiguous())
+        .with_options(ParseOptions {
+            parse_regular_expression: false,
+            allow_return_outside_function: true,
+            ..ParseOptions::default()
+        })
+        .parse();
+    if parsed.panicked || !parsed.errors.is_empty() || parsed.module_record.has_module_syntax {
+        return Vec::new();
+    }
+    let mut scan = Scan::default();
+    scan.visit_program(&parsed.program);
+    let mut names = scan.exports.clone();
+    for spec in &scan.reexports {
+        if let Ok(target) = crate::resolve::resolve_require(path, spec) {
+            names.extend(reexported_names(&target, depth + 1));
+        }
+    }
+    names
+}
+
 fn quote(text: &str) -> String {
     serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_owned())
 }
@@ -157,6 +206,13 @@ pub fn wrap(path: &str, code: &str, keep: &dyn Fn(&str) -> bool) -> Option<Strin
     }
     let mut scan = Scan::default();
     scan.visit_program(&parsed.program);
+    for spec in scan.reexports.clone() {
+        if let Ok(target) = crate::resolve::resolve_require(path, &spec) {
+            for name in reexported_names(&target, 0) {
+                scan.export(&name);
+            }
+        }
+    }
 
     let mut shell = String::new();
     let mut table = Vec::new();

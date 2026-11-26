@@ -99,6 +99,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         "hostname",
         "homedir",
         "tmpdir",
+        "availableParallelism",
         "endianness",
         "cpus",
         "totalmem",

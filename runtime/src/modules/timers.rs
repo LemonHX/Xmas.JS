@@ -112,7 +112,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     let exports = super::collect(driver, &module, &names)?;
     super::define_with_alias(driver, "timers", exports)?;
 
-    let promise_names = ["setTimeout", "setImmediate"];
+    let promise_names = ["setTimeout", "setImmediate", "setInterval", "scheduler"];
     let promises = driver
         .eval("globalThis.__timers_promises")
         .map_err(|error| format!("timers/promises module: {error}"))?;

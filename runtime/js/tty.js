@@ -43,7 +43,8 @@
       return size === null ? [0, 0] : size;
     }
     getColorDepth() {
-      return this._options.colorDepth === undefined ? colorDepth() : this._options.colorDepth;
+      const options = this && this._options;
+      return !options || options.colorDepth === undefined ? colorDepth() : options.colorDepth;
     }
     hasColors(count = 16) {
       const palette = { 1: 2, 4: 16, 8: 256, 24: 16777216 };

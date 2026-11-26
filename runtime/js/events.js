@@ -140,8 +140,59 @@
   globalThis.CustomEvent = CustomEvent;
   globalThis.EventTarget = EventTarget;
 
+  // Static helpers of node:events.
+  const once = (emitter, name, options) => new Promise((resolve, reject) => {
+    const signal = options && options.signal;
+    if (signal && signal.aborted) return reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError', code: 'ABORT_ERR' }));
+    const isTarget = typeof emitter.addEventListener === 'function' && typeof emitter.on !== 'function';
+    const cleanup = () => {
+      if (isTarget) { emitter.removeEventListener(name, onEvent); } else { emitter.removeListener(name, onEvent); if (name !== 'error') emitter.removeListener('error', onError); }
+      if (signal) signal.removeEventListener('abort', onAbort);
+    };
+    const onEvent = (...args) => { cleanup(); resolve(args); };
+    const onError = (error) => { cleanup(); reject(error); };
+    const onAbort = () => { cleanup(); reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError', code: 'ABORT_ERR' })); };
+    if (isTarget) emitter.addEventListener(name, onEvent, { once: true });
+    else { emitter.on(name, onEvent); if (name !== 'error') emitter.on('error', onError); }
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+  });
+  const on = (emitter, name) => {
+    const queue = [];
+    const waiting = [];
+    let failure = null;
+    let finished = false;
+    const handler = (...args) => { const w = waiting.shift(); if (w) w.resolve({ value: args, done: false }); else queue.push(args); };
+    const errorHandler = (error) => { failure = error; const w = waiting.shift(); if (w) w.reject(error); };
+    emitter.on(name, handler);
+    if (name !== 'error') emitter.on('error', errorHandler);
+    const stop = () => { finished = true; emitter.removeListener(name, handler); emitter.removeListener('error', errorHandler); for (const w of waiting.splice(0)) w.resolve({ value: undefined, done: true }); };
+    return {
+      next() {
+        if (queue.length) return Promise.resolve({ value: queue.shift(), done: false });
+        if (failure) { const e = failure; failure = null; return Promise.reject(e); }
+        if (finished) return Promise.resolve({ value: undefined, done: true });
+        return new Promise((resolve, reject) => waiting.push({ resolve, reject }));
+      },
+      return() { stop(); return Promise.resolve({ value: undefined, done: true }); },
+      throw(error) { stop(); return Promise.reject(error); },
+      [Symbol.asyncIterator]() { return this; },
+    };
+  };
+  const listenerCount = (emitter, name) => emitter.listenerCount(name);
+  const getEventListeners = (emitter, name) => (typeof emitter.listeners === 'function' ? emitter.listeners(name) : []);
+  const setMaxListeners = (count, ...targets) => { if (targets.length === 0) EventEmitter.defaultMaxListeners = count; for (const t of targets) if (typeof t.setMaxListeners === 'function') t.setMaxListeners(count); };
+  const addAbortListener = (signal, listener) => {
+    if (signal.aborted) { queueMicrotask(() => listener({ target: signal, type: 'abort' })); return { [Symbol.dispose]() {} }; }
+    signal.addEventListener('abort', listener, { once: true });
+    return { [Symbol.dispose]() { signal.removeEventListener('abort', listener); } };
+  };
+  const errorMonitor = Symbol('events.errorMonitor');
+  if (EventEmitter.defaultMaxListeners === undefined) EventEmitter.defaultMaxListeners = 10;
+  Object.assign(EventEmitter, { once, on, listenerCount, getEventListeners, setMaxListeners, errorMonitor, addAbortListener, EventEmitter });
+
   globalThis.__events_module = {
     default: EventEmitter,
+    once, on, listenerCount, getEventListeners, setMaxListeners, errorMonitor, addAbortListener,
     EventEmitter,
     Event,
     CustomEvent,

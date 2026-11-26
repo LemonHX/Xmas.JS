@@ -366,6 +366,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         "Duplex",
         "Transform",
         "PassThrough",
+        "getDefaultHighWaterMark",
+        "setDefaultHighWaterMark",
         "pipeline",
         "finished",
         "promises",

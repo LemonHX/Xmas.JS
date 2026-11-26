@@ -73,3 +73,59 @@ fn workspace_packages_resolve_without_node_modules() {
     ], "packages/app/a.test.ts");
     assert_eq!((r.pass, r.fail), (1, 0), "{:?}", r.error);
 }
+
+#[test]
+fn events_timers_module_and_fs_descriptors() {
+    let r = run(&[("a.test.ts", "
+        import { EventEmitter, once, addAbortListener } from 'node:events';
+        import { scheduler, setTimeout as sleep } from 'node:timers/promises';
+        import { createRequire, isBuiltin } from 'node:module';
+        import { openSync, readSync, closeSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+        import { tmpdir } from 'node:os';
+        import { execArgv } from 'node:process';
+        test('once', async () => {
+          const e = new EventEmitter();
+          setTimeout(() => e.emit('x', 1, 2), 1);
+          expect(await once(e, 'x')).toEqual([1, 2]);
+          expect(typeof addAbortListener).toBe('function');
+        });
+        test('timers', async () => {
+          await scheduler.wait(1);
+          expect(await sleep(1, 'v')).toBe('v');
+          expect(Array.isArray(execArgv)).toBe(true);
+        });
+        test('module', () => {
+          expect(isBuiltin('node:fs')).toBe(true);
+          expect(typeof createRequire('/x')).toBe('function');
+        });
+        test('fd', () => {
+          const file = tmpdir() + '/xmas-fd-' + Date.now();
+          writeFileSync(file, 'abcdef');
+          const fd = openSync(file, 'r');
+          const buf = new Uint8Array(3);
+          expect(readSync(fd, buf, 0, 3, 1)).toBe(3);
+          expect(String.fromCharCode(...buf)).toBe('bcd');
+          closeSync(fd);
+          rmSync(file);
+          expect(existsSync(file)).toBe(false);
+        });
+    ")], "a.test.ts");
+    assert_eq!((r.pass, r.fail), (4, 0), "{:?}", r.error);
+}
+
+#[test]
+fn wildcard_exports_and_commonjs_reexports() {
+    let r = run(&[
+        ("a.test.ts", "
+            import { wild } from 'pkg/utils/thing';
+            import { inner, other } from 'cjs';
+            test('x', () => { expect([wild, inner, other]).toEqual(['w', 'i', 'o']); });
+        "),
+        ("node_modules/pkg/package.json", r#"{"name":"pkg","exports":{"./utils/*":{"import":"./dist/utils/*.js"}}}"#),
+        ("node_modules/pkg/dist/utils/thing.js", "export const wild = 'w';"),
+        ("node_modules/cjs/package.json", r#"{"name":"cjs","main":"./index.js"}"#),
+        ("node_modules/cjs/index.js", "function __export(m){for(var p in m) if(!exports.hasOwnProperty(p)) exports[p]=m[p];}\nObject.defineProperty(exports,'__esModule',{value:true});\n__export(require('./src'));\nexports.other = 'o';"),
+        ("node_modules/cjs/src.js", "exports.inner = 'i';"),
+    ], "a.test.ts");
+    assert_eq!((r.pass, r.fail), (1, 0), "{:?}", r.error);
+}

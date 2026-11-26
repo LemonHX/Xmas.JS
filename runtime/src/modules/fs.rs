@@ -460,6 +460,67 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             .map_err(|error| format!("__fs_chmod_sync: {error}"))?;
     }
 
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_rm_sync",
+                2,
+                move |scope: &mut Scope<'_>, path: String, flags: String| -> Result<Value, RuntimeError> {
+                    let outcome: std::io::Result<Value> = (|| { let meta = std::fs::symlink_metadata(&path);
+                        match meta {
+                            Ok(m) if m.is_dir() => { if flags.contains('r') { std::fs::remove_dir_all(&path)? } else { std::fs::remove_dir(&path)? } }
+                            Ok(_) => std::fs::remove_file(&path)?,
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound && flags.contains('f') => {}
+                            Err(e) => return Err(e),
+                        }
+                        Ok(Value::Undefined) })();
+                    match outcome {
+                        Ok(value) => Ok(value),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_rm_sync: {error}"))?;
+    }
+
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_rename_sync",
+                2,
+                move |scope: &mut Scope<'_>, from: String, to: String| -> Result<Value, RuntimeError> {
+                    let outcome: std::io::Result<Value> = (|| { std::fs::rename(&from, &to)?; Ok(Value::Undefined) })();
+                    match outcome {
+                        Ok(value) => Ok(value),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_rename_sync: {error}"))?;
+    }
+
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_link_sync",
+                2,
+                move |scope: &mut Scope<'_>, from: String, to: String| -> Result<Value, RuntimeError> {
+                    let outcome: std::io::Result<Value> = (|| { std::fs::hard_link(&from, &to)?; Ok(Value::Undefined) })();
+                    match outcome {
+                        Ok(value) => Ok(value),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_link_sync: {error}"))?;
+    }
+
     driver
         .eval(PRELUDE)
         .map_err(|error| format!("fs prelude: {error}"))?;
@@ -489,6 +550,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         "access",
         "lstat",
         "open",
+        "constants",
+        "FileHandle",
     ]);
     let promise_names = names[2..].to_vec();
     // The synchronous family, which node's `fs` has next to the callback and promise ones.
@@ -501,12 +564,30 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         "appendFileSync",
         "readFileSync",
         "chmodSync",
+        "openSync",
+        "closeSync",
+        "readSync",
+        "fstatSync",
+        "lstatSync",
+        "mkdtempSync",
+        "realpathSync",
+        "renameSync",
+        "rmSync",
+        "linkSync",
+        "statfsSync",
+        "constants",
+        "Stats",
+        "BigIntStats",
+        "Dirent",
+        "ReadStream",
+        "WriteStream",
         "createWriteStream",
         "createReadStream",
     ]);
     let exports = super::collect(driver, &module, &names)?;
     super::define_with_alias(driver, "fs", exports)?;
-    let promise_exports = super::collect(driver, &promises, &promise_names)?;
+    let mut promise_exports = super::collect(driver, &promises, &promise_names)?;
+    promise_exports.push(("default".to_string(), promises.clone()));
     super::define_with_alias(driver, "fs/promises", promise_exports)
 }
 

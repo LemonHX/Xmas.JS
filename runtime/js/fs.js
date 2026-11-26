@@ -95,6 +95,14 @@
 
   // Node's *Sync calls. They block the realm thread, which is what they are for: a script that wants
   // a file now should not have to become a state machine to get one.
+  const fds = new Map();
+  let nextFd = 3;
+  const __fs_realpath_sync_js = (path) => path;
+  const __fs_read_file_sync_bytes = (path) => new TextEncoder().encode(__fs_read_file_sync(path));
+  class Stats {}
+  class BigIntStats {}
+  class Dirent {}
+  const constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1, O_RDONLY: 0, O_WRONLY: 1, O_RDWR: 2, O_CREAT: 64, O_EXCL: 128, O_TRUNC: 512, O_APPEND: 1024, COPYFILE_EXCL: 1 };
   const sync = {
     readdirSync(path, options) {
       const withTypes = !!(options && typeof options === 'object' && options.withFileTypes);
@@ -165,6 +173,44 @@
         },
       });
     },
+    lstatSync(path) { return sync.statSync(path); },
+    fstatSync(fd) { return sync.statSync(fds.get(fd).path); },
+    realpathSync(path) { return __fs_realpath_sync_js(pathOf(path)); },
+    renameSync(from, to) { __fs_rename_sync(pathOf(from), pathOf(to)); },
+    rmSync(path, options) { const o = options || {}; __fs_rm_sync(pathOf(path), (o.recursive ? 'r' : '') + (o.force ? 'f' : '')); },
+    linkSync(from, to) { __fs_link_sync(pathOf(from), pathOf(to)); },
+    statfsSync() { throw new Error('statfsSync is not supported'); },
+    mkdtempSync(prefix) {
+      const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+      for (let attempt = 0; attempt < 20; attempt++) {
+        let suffix = '';
+        for (let i = 0; i < 6; i++) suffix += chars[Math.floor(Math.random() * chars.length)];
+        const path = String(prefix) + suffix;
+        if (!sync.existsSync(path)) { sync.mkdirSync(path); return path; }
+      }
+      throw new Error('mkdtempSync: no free name for ' + prefix);
+    },
+    // File descriptors are a table of paths and positions over the whole-file calls.
+    openSync(path, flags = 'r') {
+      const target = pathOf(path);
+      const f = String(flags);
+      if (f.startsWith('w')) sync.writeFileSync(target, '');
+      else if (f.startsWith('a') && !sync.existsSync(target)) sync.writeFileSync(target, '');
+      else if (f.startsWith('r')) sync.statSync(target);
+      const fd = nextFd++;
+      fds.set(fd, { path: target, flags: f, position: 0 });
+      return fd;
+    },
+    closeSync(fd) { fds.delete(fd); },
+    readSync(fd, buffer, offset = 0, length, position) {
+      const entry = fds.get(fd);
+      const data = new Uint8Array(__fs_read_file_sync_bytes(entry.path));
+      const start = position == null ? entry.position : position;
+      const count = Math.min(length === undefined ? buffer.length - offset : length, Math.max(0, data.length - start));
+      buffer.set(data.subarray(start, start + count), offset);
+      if (position == null) entry.position += count;
+      return count;
+    },
     chmodSync(path, mode) { __fs_chmod_sync(pathOf(path), (typeof mode === 'number' ? mode : parseInt(mode, 8)).toString(8)); },
     readFileSync(path) {
       // Text only: the synchronous read is the one text needs, and a Buffer is a promise the
@@ -177,7 +223,12 @@
   globalThis.fs = promises;
   globalThis.__fs_promises = promises;
   globalThis.__fs_sync = sync;
-  globalThis.__fs_module = { promises, ...sync, ...promises };
+  class FileHandle {}
+  promises.constants = constants;
+  promises.FileHandle = FileHandle;
+  class ReadStream {}
+  class WriteStream {}
+  globalThis.__fs_module = { promises, ...sync, ...promises, constants, Stats, BigIntStats, Dirent, ReadStream, WriteStream };
   // `import fs from 'node:fs'` is the whole module, as in node; `fs.readFile` stays the promise one.
   globalThis.__fs_module.default = globalThis.__fs_module;
 })();

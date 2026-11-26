@@ -96,6 +96,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         "inspect",
         "inherits",
         "promisify",
+        "aborted",
+        "parseEnv",
         "callbackify",
         "deprecate",
         "debuglog",

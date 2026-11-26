@@ -319,6 +319,21 @@
     inspect,
     inherits,
     promisify,
+    aborted: (signal, resource) => new Promise((resolve) => {
+      if (signal.aborted) return resolve();
+      signal.addEventListener('abort', () => resolve(), { once: true });
+    }),
+    parseEnv: (text) => {
+      const out = {};
+      for (const line of String(text).split(/\r?\n/)) {
+        const m = /^\s*(?:export\s+)?([\w.-]+)\s*=\s*(.*?)\s*$/.exec(line);
+        if (!m || line.trimStart().startsWith('#')) continue;
+        let v = m[2];
+        if (/^(["']).*\1$/.test(v)) v = v.slice(1, -1); else v = v.replace(/\s+#.*$/, '');
+        out[m[1]] = v;
+      }
+      return out;
+    },
     callbackify,
     deprecate,
     debuglog,

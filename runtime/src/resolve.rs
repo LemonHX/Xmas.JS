@@ -331,11 +331,24 @@ fn exports_target(root: &Path, subpath: &str, mode: Mode) -> Option<PathBuf> {
     } else {
         format!("./{subpath}")
     };
+    let mut wildcard: Option<String> = None;
     let mut target: &serde_json::Value = match exports {
         serde_json::Value::String(_) if subpath.is_empty() => exports,
         // Conditions with no subpath keys at all are the shorthand for ".".
         serde_json::Value::Object(map) if subpath.is_empty() && !map.keys().any(|k| k.starts_with('.')) => exports,
-        serde_json::Value::Object(map) => map.get(&key)?,
+        serde_json::Value::Object(map) => match map.get(&key) {
+            Some(found) => found,
+            None => {
+                // "./utils/*": the star stands for the rest of the subpath, in the target too.
+                let (found, star) = map.iter().find_map(|(pattern, value)| {
+                    let (head, tail) = pattern.split_once('*')?;
+                    let rest = key.strip_prefix(head)?.strip_suffix(tail)?;
+                    (!rest.is_empty()).then(|| (value, rest.to_owned()))
+                })?;
+                wildcard = Some(star);
+                found
+            }
+        },
         _ => return None,
     };
     // Conditions: the ones this runtime can honestly claim to be.
@@ -343,7 +356,10 @@ fn exports_target(root: &Path, subpath: &str, mode: Mode) -> Option<PathBuf> {
         match target {
             serde_json::Value::String(target) => {
                 let relative = target.strip_prefix("./")?;
-                return Some(PathBuf::from(relative));
+                return Some(PathBuf::from(match &wildcard {
+                    Some(star) => relative.replace('*', star),
+                    None => relative.to_owned(),
+                }));
             }
             serde_json::Value::Object(map) => {
                 let conditions: &[&str] = match mode {

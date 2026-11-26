@@ -18,6 +18,13 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         .map_err(|error| format!("events module: {error}"))?;
     let names = [
         "default",
+        "once",
+        "on",
+        "listenerCount",
+        "getEventListeners",
+        "setMaxListeners",
+        "errorMonitor",
+        "addAbortListener",
         "EventEmitter",
         "Event",
         "CustomEvent",

@@ -112,6 +112,12 @@
   process.argv = meta.argv;
   process.argv0 = meta.argv.length > 0 ? meta.argv[0] : '';
   process.execPath = meta.execPath;
+  if (process.execArgv === undefined) process.execArgv = [];
+  if (process.title === undefined) process.title = 'xmas';
+  if (process.release === undefined) process.release = { name: 'xmas' };
+  if (process.emitWarning === undefined) process.emitWarning = (warning) => { if (globalThis.console) console.error('Warning:', warning && warning.message ? warning.message : warning); };
+  if (process.umask === undefined) process.umask = () => 0o22;
+  if (process.kill === undefined) process.kill = () => { throw new Error('process.kill is not supported'); };
   process.env = env;
   process.platform = meta.platform;
   process.arch = meta.arch;

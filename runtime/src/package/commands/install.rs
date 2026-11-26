@@ -75,6 +75,19 @@ pub fn verify_installation(package: &PackageMetadata, plan: &Plan) -> Result<boo
     Ok(installed.satisfies(package))
 }
 
+/// Whether the project's package.json lists `name` under `trustedDependencies`.
+fn is_trusted(name: &str) -> bool {
+    read_to_string("package.json")
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|json| {
+            json.get("trustedDependencies")
+                .and_then(|list| list.as_array())
+                .map(|list| list.iter().any(|item| item.as_str() == Some(name)))
+        })
+        .unwrap_or(false)
+}
+
 fn exec_install_scripts_in(stack: &[CompactString]) -> Result<()> {
     let path = stack.join("/node_modules/");
 
@@ -89,6 +102,26 @@ fn exec_install_scripts_in(stack: &[CompactString]) -> Result<()> {
     };
 
     let package_json: PackageMetadata = serde_json::from_str(&package_json)?;
+
+    // Like Bun, a dependency's lifecycle scripts run only when the project lists it in
+    // `trustedDependencies`. Anything else is skipped with a warning.
+    let scripts: Vec<&str> = ["preinstall", "install", "postinstall"]
+        .into_iter()
+        .filter(|name| matches!(package_json.scripts.get(*name), Some(Value::String(_))))
+        .collect();
+    if !scripts.is_empty() {
+        let name = stack.last().map(|name| name.as_str()).unwrap_or_default();
+        if !is_trusted(name) {
+            PROGRESS_BAR.suspend(|| {
+                eprintln!(
+                    "warning: skipped {} script of {} (add it to \"trustedDependencies\" in package.json to run it)",
+                    scripts.join("/"),
+                    stack.join(" > ")
+                );
+            });
+            return Ok(());
+        }
+    }
 
     for script_name in ["preinstall", "install", "postinstall"] {
         if let Some(Value::String(script)) = package_json.scripts.get(script_name) {
