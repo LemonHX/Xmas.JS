@@ -52,6 +52,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     console::install(driver)?;
     timers::install(driver)?;
     event::install(driver)?;
+    driver.eval(include_str!("../../js/structured_clone.js")).map_err(|error| format!("structuredClone: {error}"))?;
     perf_hooks::install(driver)?;
     diagnostics_channel::install(driver)?;
     async_hooks::install(driver)?;

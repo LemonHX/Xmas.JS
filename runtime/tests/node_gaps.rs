@@ -317,3 +317,41 @@ fn child_stderr_delivers_every_chunk_while_the_child_runs() {
     ")], "a.test.ts");
     assert_eq!((r.pass, r.fail), (1, 0), "{:?}", r.error);
 }
+
+#[test]
+fn structured_clone_copies_what_the_algorithm_copies() {
+    let r = run(&[("a.test.ts", "
+        test('values', () => {
+          const a: any = { n: 1, s: 'x', d: new Date(5), r: /a+/gi, m: new Map([[1, { z: 1 }]]), set: new Set([1, 2]), arr: [1, [2]], big: 10n, u: undefined };
+          a.self = a;
+          a.bytes = new Uint8Array([1, 2, 3]);
+          a.shared = a.arr;
+          const b: any = structuredClone(a);
+          expect(b).not.toBe(a);
+          expect(b.self).toBe(b);
+          expect(b.d instanceof Date && b.d.getTime()).toBe(5);
+          expect(b.r.source).toBe('a+');
+          expect(b.r.flags).toBe('gi');
+          expect(b.m.get(1)).toEqual({ z: 1 });
+          expect(b.m.get(1)).not.toBe(a.m.get(1));
+          expect([...b.set]).toEqual([1, 2]);
+          expect(b.big).toBe(10n);
+          expect('u' in b).toBe(true);
+          expect([...b.bytes]).toEqual([1, 2, 3]);
+          expect(b.bytes.buffer).not.toBe(a.bytes.buffer);
+          expect(b.shared).toBe(b.arr);
+        });
+        test('errors and the things that cannot be cloned', () => {
+          const e: any = structuredClone(new RangeError('boom', { cause: 'c' }));
+          expect(e instanceof RangeError).toBe(true);
+          expect(e.message).toBe('boom');
+          expect(e.cause).toBe('c');
+          expect(() => structuredClone({ f() {} })).toThrow();
+          expect(() => structuredClone(Symbol('s'))).toThrow();
+          try { structuredClone(() => 1); } catch (error: any) { expect(error.name).toBe('DataCloneError'); }
+          expect(structuredClone(null)).toBe(null);
+          expect(structuredClone(3)).toBe(3);
+        });
+    ")], "a.test.ts");
+    assert_eq!((r.pass, r.fail), (2, 0), "{:?}", r.error);
+}
