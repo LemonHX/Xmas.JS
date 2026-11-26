@@ -23,6 +23,8 @@ pub mod perf_hooks;
 pub mod process;
 pub mod server;
 pub mod sockets;
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
 pub mod stream;
 pub mod stream_web;
 pub mod string_decoder;
@@ -73,6 +75,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     // the server builds a Request out of a parsed head, so it needs Headers and Response
     server::install(driver)?;
     websocket::install(driver)?;
+    #[cfg(feature = "sqlite")]
+    sqlite::install(driver)?;
     // $ runs a command through the platform shell, and needs nothing above it.
     exec::install(driver)?;
     // child_process builds Readables and Writables out of the same host, so it comes after stream

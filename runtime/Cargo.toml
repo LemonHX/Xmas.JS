@@ -6,7 +6,13 @@ license = "MIT"
 publish = false
 description = "JavaScript engine embedding layer: realm driver, host services and compile"
 
+[features]
+default = ["sqlite"]
+# xmas:sqlite, the interface of bun:sqlite on FrankenSQLite (pure Rust).
+sqlite = ["dep:fsqlite"]
+
 [dependencies]
+fsqlite = { version = "=0.5.1", optional = true, default-features = false, features = ["native", "json", "fts5"] }
 # The package manager is a module here (src/package), not a crate: an import that names a package
 # nobody installed asks it for one (src/deps.rs) with a plain function call.
 # The engine is a git dependency, pinned to a rev: the embedder-owned ArrayBuffer entry this
