@@ -849,7 +849,10 @@ pub fn install(driver: &mut Driver) -> std::result::Result<(), String> {
     ];
     let mut exports = vec![("default".to_string(), path.clone())];
     exports.extend(super::collect(driver, &path, &names)?);
-    super::define_with_alias(driver, "path", exports)?;
+    super::define_with_alias(driver, "path", exports.clone())?;
+    // path.win32 is the posix implementation here, so the subpath modules are the same object.
+    super::define_with_alias(driver, "path/posix", exports.clone())?;
+    super::define_with_alias(driver, "path/win32", exports)?;
     Ok(())
 }
 

@@ -106,9 +106,66 @@ fn resolve_as(referrer: &str, specifier: &str, mode: Mode) -> Result<String, Str
         }
         current = dir.parent().map(Path::to_path_buf);
     }
+    // Not installed: a package of the workspace the importer lives in is found where it is.
+    if let Some(root) = workspace_package(&directory(referrer), package) {
+        if subpath.is_empty() {
+            let from_exports = exports_target(&root, subpath, mode).and_then(|t| probe(&root.join(t), mode));
+            let from_entry = || package_entry(&root, mode).and_then(|t| probe(&root.join(t), mode));
+            if let Some(found) = from_exports.or_else(from_entry).or_else(|| index(&root)).or_else(|| probe(&root.join("src/index"), mode)) {
+                return Ok(found);
+            }
+        } else if let Some(found) = exports_target(&root, subpath, mode)
+            .and_then(|t| probe(&root.join(t), mode))
+            .or_else(|| probe(&root.join(subpath), mode))
+            .or_else(|| probe(&root.join("src").join(subpath), mode))
+        {
+            return Ok(found);
+        }
+    }
     Err(format!(
         "cannot find package '{specifier}' from {referrer} (no node_modules with it)"
     ))
+}
+
+/// The directory of the workspace package called `name`, for an importer under `start`.
+///
+/// The workspace root is the nearest ancestor whose package.json has `workspaces` (an array, or
+/// an object with `packages`). Patterns are a directory, or `dir/*`, or `dir/**` taken as `dir/*`.
+fn workspace_package(start: &Path, name: &str) -> Option<PathBuf> {
+    let mut current = Some(start.to_path_buf());
+    while let Some(dir) = current {
+        if let Ok(text) = std::fs::read_to_string(dir.join("package.json")) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                let list = match json.get("workspaces") {
+                    Some(serde_json::Value::Array(list)) => Some(list.clone()),
+                    Some(serde_json::Value::Object(o)) => o.get("packages").and_then(|p| p.as_array()).cloned(),
+                    _ => None,
+                };
+                if let Some(list) = list {
+                    for pattern in list.iter().filter_map(|p| p.as_str()) {
+                        let pattern = pattern.trim_start_matches("./").trim_end_matches('/');
+                        let candidates: Vec<PathBuf> = match pattern.strip_suffix("/**").or_else(|| pattern.strip_suffix("/*")) {
+                            Some(parent) => std::fs::read_dir(dir.join(parent))
+                                .map(|it| it.flatten().map(|e| e.path()).collect())
+                                .unwrap_or_default(),
+                            None => vec![dir.join(pattern)],
+                        };
+                        for candidate in candidates {
+                            let named = std::fs::read_to_string(candidate.join("package.json")).ok()
+                                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+                                .and_then(|j| j.get("name").and_then(|n| n.as_str()).map(|n| n == name));
+                            if named == Some(true) {
+                                return Some(candidate);
+                            }
+                        }
+                    }
+                    return None;
+                }
+            }
+        }
+        current = dir.parent().map(Path::to_path_buf);
+    }
+    None
 }
 
 /// Whether `name` is a URL this runtime fetches, rather than a path.
@@ -276,6 +333,8 @@ fn exports_target(root: &Path, subpath: &str, mode: Mode) -> Option<PathBuf> {
     };
     let mut target: &serde_json::Value = match exports {
         serde_json::Value::String(_) if subpath.is_empty() => exports,
+        // Conditions with no subpath keys at all are the shorthand for ".".
+        serde_json::Value::Object(map) if subpath.is_empty() && !map.keys().any(|k| k.starts_with('.')) => exports,
         serde_json::Value::Object(map) => map.get(&key)?,
         _ => return None,
     };

@@ -435,6 +435,31 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             .map_err(|error| format!("__fs_write_file_sync: {error}"))?;
     }
 
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_chmod_sync",
+                2,
+                move |scope: &mut Scope<'_>, path: String, mode: String| -> Result<Value, RuntimeError> {
+                    let bits = u32::from_str_radix(&mode, 8).map_err(|_| throw(scope, "invalid mode"))?;
+                    #[cfg(unix)]
+                    let outcome = {
+                        use std::os::unix::fs::PermissionsExt;
+                        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(bits))
+                    };
+                    #[cfg(not(unix))]
+                    let outcome = std::fs::metadata(&path).map(|_| ());
+                    match outcome {
+                        Ok(()) => Ok(Value::Undefined),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_chmod_sync: {error}"))?;
+    }
+
     driver
         .eval(PRELUDE)
         .map_err(|error| format!("fs prelude: {error}"))?;
@@ -459,10 +484,29 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         "readdir",
         "stat",
         "exists",
+        "mkdtemp",
+        "chmod",
+        "access",
+        "lstat",
+        "open",
+    ]);
+    let promise_names = names[2..].to_vec();
+    // The synchronous family, which node's `fs` has next to the callback and promise ones.
+    names.extend([
+        "readdirSync",
+        "statSync",
+        "existsSync",
+        "mkdirSync",
+        "writeFileSync",
+        "appendFileSync",
+        "readFileSync",
+        "chmodSync",
+        "createWriteStream",
+        "createReadStream",
     ]);
     let exports = super::collect(driver, &module, &names)?;
     super::define_with_alias(driver, "fs", exports)?;
-    let promise_exports = super::collect(driver, &promises, &names[2..])?;
+    let promise_exports = super::collect(driver, &promises, &promise_names)?;
     super::define_with_alias(driver, "fs/promises", promise_exports)
 }
 

@@ -115,5 +115,16 @@
 
   globalThis.URL = URL;
   globalThis.URLSearchParams = URLSearchParams;
-  globalThis.__url_module = { URL, URLSearchParams, default: { URL, URLSearchParams } };
+  const fileURLToPath = (value) => {
+    const url = typeof value === 'string' ? new URL(value) : value;
+    if (url.protocol !== 'file:') throw new TypeError('The URL must be of scheme file');
+    return decodeURIComponent(url.pathname);
+  };
+  const pathToFileURL = (path) => {
+    const text = String(path);
+    const absolute = text.startsWith('/') ? text : (globalThis.process && process.cwd ? process.cwd() : '') + '/' + text;
+    return new URL('file://' + encodeURI(absolute).replace(/[?#]/g, encodeURIComponent));
+  };
+  const format = (url) => (typeof url === 'string' ? url : url.href);
+  globalThis.__url_module = { URL, URLSearchParams, fileURLToPath, pathToFileURL, format, default: { URL, URLSearchParams, fileURLToPath, pathToFileURL, format } };
 })();

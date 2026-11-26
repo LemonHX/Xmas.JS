@@ -55,6 +55,39 @@
         return info;
       });
     },
+    async mkdtemp(prefix) {
+      const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+      for (let attempt = 0; attempt < 20; attempt++) {
+        let suffix = '';
+        for (let i = 0; i < 6; i++) suffix += chars[Math.floor(Math.random() * chars.length)];
+        const path = String(prefix) + suffix;
+        try { await promises.stat(path); } catch { await promises.mkdir(path); return path; }
+      }
+      throw new Error('mkdtemp: could not find a free name for ' + prefix);
+    },
+    async chmod(path, mode) { __fs_chmod_sync(pathOf(path), (typeof mode === 'number' ? mode : parseInt(mode, 8)).toString(8)); },
+    async access(path) { await promises.stat(path); },
+    lstat(path) { return promises.stat(path); },
+    // A FileHandle over whole-file calls: enough for readFile/writeFile/appendFile/stat/close.
+    async open(path, flags = 'r') {
+      const target = pathOf(path);
+      if (/^[wa]/.test(String(flags))) {
+        if (String(flags).startsWith('w')) await promises.writeFile(target, '');
+        else { try { await promises.stat(target); } catch { await promises.writeFile(target, ''); } }
+      } else await promises.stat(target);
+      return {
+        fd: 0,
+        readFile: (options) => promises.readFile(target, options),
+        writeFile: (data, options) => promises.writeFile(target, data, options),
+        appendFile: (data, options) => promises.appendFile(target, data, options),
+        write: async (data) => { await promises.appendFile(target, data); return { bytesWritten: typeof data === 'string' ? data.length : data.byteLength, buffer: data }; },
+        stat: () => promises.stat(target),
+        sync: async () => {},
+        datasync: async () => {},
+        close: async () => {},
+        [Symbol.asyncDispose]: async () => {},
+      };
+    },
     async exists(path) {
       try { await promises.stat(path); return true; } catch { return false; }
     },
@@ -101,6 +134,38 @@
       const encoding = typeof options === 'string' ? options : options && options.encoding;
       __fs_write_file_sync(pathOf(path), dataOf(data, encoding), true);
     },
+    // Streams over the synchronous calls. Writable/Readable are looked up when called, because the
+    // stream module is installed after this one.
+    createWriteStream(path, options) {
+      const target = pathOf(path);
+      const flags = typeof options === 'object' && options ? options.flags : undefined;
+      const encoding = typeof options === 'string' ? options : options && options.encoding;
+      let append = flags === 'a' || flags === 'a+';
+      return new globalThis.__stream_module.Writable({
+        write(chunk, enc, callback) {
+          try {
+            __fs_write_file_sync(target, dataOf(chunk, typeof chunk === 'string' ? (encoding || enc) : undefined), append);
+            append = true;
+            callback();
+          } catch (error) { callback(error); }
+        },
+        final(callback) {
+          try { if (!append) __fs_write_file_sync(target, dataOf('', undefined), false); callback(); } catch (error) { callback(error); }
+        },
+      });
+    },
+    createReadStream(path) {
+      const target = pathOf(path);
+      let done = false;
+      return new globalThis.__stream_module.Readable({
+        read() {
+          if (done) return;
+          done = true;
+          try { this.push(__fs_read_file_sync(target)); this.push(null); } catch (error) { this.destroy(error); }
+        },
+      });
+    },
+    chmodSync(path, mode) { __fs_chmod_sync(pathOf(path), (typeof mode === 'number' ? mode : parseInt(mode, 8)).toString(8)); },
     readFileSync(path) {
       // Text only: the synchronous read is the one text needs, and a Buffer is a promise the
       // caller can build from it.
@@ -112,5 +177,7 @@
   globalThis.fs = promises;
   globalThis.__fs_promises = promises;
   globalThis.__fs_sync = sync;
-  globalThis.__fs_module = { promises, default: promises, ...sync, ...promises };
+  globalThis.__fs_module = { promises, ...sync, ...promises };
+  // `import fs from 'node:fs'` is the whole module, as in node; `fs.readFile` stays the promise one.
+  globalThis.__fs_module.default = globalThis.__fs_module;
 })();

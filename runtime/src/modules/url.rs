@@ -69,7 +69,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     let module = driver
         .eval("globalThis.__url_module")
         .map_err(|error| format!("url module: {error}"))?;
-    let exports = super::collect(driver, &module, &["URL", "URLSearchParams", "default"])?;
+    let exports = super::collect(driver, &module, &["URL", "URLSearchParams", "fileURLToPath", "pathToFileURL", "format", "default"])?;
     super::define_with_alias(driver, "url", exports)
 }
 
