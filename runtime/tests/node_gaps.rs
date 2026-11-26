@@ -395,3 +395,23 @@ fn a_file_handle_syncs_truncates_and_errors_carry_a_code() {
     )], "a.test.ts");
     assert_eq!((r.pass, r.fail), (1, 0), "{:?}", r.error);
 }
+
+#[test]
+fn run_file_runs_a_module_until_its_timers_are_done() {
+    let dir = std::env::temp_dir().join(format!("xmas-run-file-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = dir.join("out.txt");
+    let entry = dir.join("main.ts");
+    std::fs::write(
+        &entry,
+        format!(
+            "import {{ writeFileSync }} from 'node:fs';\nsetTimeout(() => writeFileSync({:?}, 'done'), 50);\n",
+            out.to_str().unwrap()
+        ),
+    )
+    .unwrap();
+    xmas_runtime::entry::run_file(&entry).unwrap();
+    assert_eq!(std::fs::read_to_string(&out).unwrap(), "done");
+    assert!(xmas_runtime::entry::run_file(&dir.join("missing.ts")).is_err());
+    std::fs::remove_dir_all(&dir).ok();
+}

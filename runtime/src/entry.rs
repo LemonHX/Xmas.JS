@@ -33,6 +33,22 @@ pub fn serve_app(addr: &str, workers: usize, entry: &Path) -> Result<Server, Str
     })
 }
 
+/// Run the module at path as a program: evaluate it, then keep the realm alive until nothing is
+/// pending (timers, I/O). `process.argv` is the real command line, so `xmas main.ts --port 1`
+/// sees [xmas, main.ts, --port, 1].
+pub fn run_file(path: &Path) -> Result<(), String> {
+    let mut driver = build("")?;
+    let path = std::fs::canonicalize(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    evaluate_file(&mut driver, &path)?;
+    driver.run_until_idle_blocking()?;
+    let rejected = driver.take_rejections();
+    if rejected.is_empty() {
+        Ok(())
+    } else {
+        Err(rejected.join("\n"))
+    }
+}
+
 /// One realm, with the modules installed and nothing else.
 fn build(addr: &str) -> Result<Driver, String> {
     realm(Host::new(), addr)

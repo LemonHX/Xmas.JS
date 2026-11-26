@@ -136,6 +136,10 @@ enum Commands {
         test_name_pattern: Option<String>,
     },
 
+    /// `xmas <file> [args]`: run a module as a program
+    #[command(external_subcommand)]
+    Script(Vec<OsString>),
+
     // ==================== Server ====================
     /// Serve a module as an HTTP app
     Serve {
@@ -178,6 +182,21 @@ fn main() -> anyhow::Result<()> {
             workers,
         } => serve(&entry, &host, port, workers),
 
+        Commands::Script(words) => {
+            let file = PathBuf::from(&words[0]);
+            if !file.is_file() {
+                eprintln!("error: unrecognized subcommand or missing file '{}'", file.display());
+                std::process::exit(2);
+            }
+            match xmas_runtime::entry::run_file(&file) {
+                Ok(()) => Ok(()),
+                Err(message) => {
+                    eprintln!("error: {message}");
+                    std::process::exit(1)
+                }
+            }
+        }
+
         Commands::Test { filters, timeout, bail, test_name_pattern } => {
             let options = xmas_runtime::testrun::Options {
                 timeout_ms: timeout,
@@ -215,7 +234,7 @@ fn package_command(command: Commands, options: Options) -> anyhow::Result<()> {
         Commands::Why { name, version } => commands::cmd_why(&name, version.as_ref()),
         Commands::Create { name } => commands::cmd_create(&options, &name),
         Commands::Dlx { name, args } => commands::exec::cmd_download_and_exec(&options, &name, &args),
-        Commands::Serve { .. } | Commands::Test { .. } => {
+        Commands::Serve { .. } | Commands::Test { .. } | Commands::Script(_) => {
             unreachable!("serve and test are handled before this")
         }
     };
