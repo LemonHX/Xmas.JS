@@ -5,6 +5,70 @@
   const pathOf = (path) => path instanceof URL ? path.pathname : String(path);
   const dataOf = (data, encoding) => typeof data === "string" ? Buffer.from(data, encoding || "utf8") : Buffer.from(data);
 
+  const constants = JSON.parse(__fs_constants());
+  class Stats {
+    constructor(info) {
+      Object.assign(this, info);
+      this.atime = new Date(info.atimeMs);
+      this.mtime = new Date(info.mtimeMs);
+      this.ctime = new Date(info.ctimeMs);
+      this.birthtime = new Date(info.birthtimeMs);
+    }
+    _is(type) { return (this.mode & constants.S_IFMT) === type; }
+    isFile() { return this._is(constants.S_IFREG); }
+    isDirectory() { return this._is(constants.S_IFDIR); }
+    isSymbolicLink() { return this._is(constants.S_IFLNK); }
+    isFIFO() { return this._is(0o010000); }
+    isSocket() { return this._is(0o140000); }
+    isCharacterDevice() { return this._is(0o020000); }
+    isBlockDevice() { return this._is(0o060000); }
+  }
+  class Dirent {
+    constructor(name, parentPath, item) { this.name = name; this.parentPath = parentPath; this.path = parentPath; this._item = item; }
+    isFile() { return !this._item.dir && !this._item.link; }
+    isDirectory() { return !!this._item.dir; }
+    isSymbolicLink() { return !!this._item.link; }
+    isFIFO() { return false; }
+    isSocket() { return false; }
+    isCharacterDevice() { return false; }
+    isBlockDevice() { return false; }
+  }
+  const direntsOf = (json, parent) => JSON.parse(json).map((item) => new Dirent(item.name, parent, item));
+
+  const readAll = (fd) => {
+    const chunks = [];
+    for (;;) {
+      const chunk = new Uint8Array(__fs_read_sync(fd, 65536, -1));
+      if (chunk.length === 0) break;
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  };
+  class FileHandle {
+    constructor(fd) { this.fd = fd; }
+    async read(buffer, offset = 0, length, position = null) {
+      const bytesRead = sync.readSync(this.fd, buffer, offset, length, position);
+      return { bytesRead, buffer };
+    }
+    async write(data, ...rest) {
+      const bytesWritten = sync.writeSync(this.fd, data, ...rest);
+      return { bytesWritten, buffer: data };
+    }
+    async readFile(options) {
+      const encoding = typeof options === 'string' ? options : options && options.encoding;
+      const all = readAll(this.fd);
+      return encoding ? all.toString(encoding) : all;
+    }
+    async writeFile(data, options) {
+      const encoding = typeof options === 'string' ? options : options && options.encoding;
+      sync.writeSync(this.fd, dataOf(data, encoding));
+    }
+    async appendFile(data, options) { return this.writeFile(data, options); }
+    async stat() { return sync.fstatSync(this.fd); }
+    async close() { if (this.fd >= 0) { __fs_close_sync(this.fd); this.fd = -1; } }
+    async [Symbol.asyncDispose]() { return this.close(); }
+  }
+
   const promises = {
     readFile(path, options) {
       const encoding = typeof options === 'string' ? options : options && options.encoding;
@@ -35,26 +99,11 @@
     realpath(path) { return __fs_realpath(pathOf(path)); },
     readdir(path, options) {
       const withTypes = !!(options && typeof options === 'object' && options.withFileTypes);
-      return __fs_readdir(pathOf(path)).then((json) => {
-        const items = JSON.parse(json);
-        return withTypes ? items.map((item) => ({
-          name: item.name,
-          isFile: () => !item.dir,
-          isDirectory: () => item.dir,
-          isSymbolicLink: () => item.link,
-        })) : items.map((item) => item.name);
-      });
+      const parent = pathOf(path);
+      return __fs_readdir(parent).then((json) => withTypes ? direntsOf(json, parent) : JSON.parse(json).map((item) => item.name));
     },
-    stat(path) {
-      return __fs_stat(pathOf(path)).then((json) => {
-        const info = JSON.parse(json);
-        info.isFile = () => !info.dir;
-        info.isDirectory = () => !!info.dir;
-        info.isSymbolicLink = () => !!info.link;
-        info.mtime = new Date(info.mtimeMs);
-        return info;
-      });
-    },
+    stat(path) { return __fs_stat(pathOf(path)).then((json) => new Stats(JSON.parse(json))); },
+    lstat(path) { return __fs_lstat(pathOf(path)).then((json) => new Stats(JSON.parse(json))); },
     async mkdtemp(prefix) {
       const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
       for (let attempt = 0; attempt < 20; attempt++) {
@@ -66,27 +115,11 @@
       throw new Error('mkdtemp: could not find a free name for ' + prefix);
     },
     async chmod(path, mode) { __fs_chmod_sync(pathOf(path), (typeof mode === 'number' ? mode : parseInt(mode, 8)).toString(8)); },
+    async symlink(target, path) { __fs_symlink_sync(String(target), pathOf(path)); },
+    async readlink(path) { return __fs_readlink_sync(pathOf(path)); },
     async access(path) { await promises.stat(path); },
-    lstat(path) { return promises.stat(path); },
-    // A FileHandle over whole-file calls: enough for readFile/writeFile/appendFile/stat/close.
-    async open(path, flags = 'r') {
-      const target = pathOf(path);
-      if (/^[wa]/.test(String(flags))) {
-        if (String(flags).startsWith('w')) await promises.writeFile(target, '');
-        else { try { await promises.stat(target); } catch { await promises.writeFile(target, ''); } }
-      } else await promises.stat(target);
-      return {
-        fd: 0,
-        readFile: (options) => promises.readFile(target, options),
-        writeFile: (data, options) => promises.writeFile(target, data, options),
-        appendFile: (data, options) => promises.appendFile(target, data, options),
-        write: async (data) => { await promises.appendFile(target, data); return { bytesWritten: typeof data === 'string' ? data.length : data.byteLength, buffer: data }; },
-        stat: () => promises.stat(target),
-        sync: async () => {},
-        datasync: async () => {},
-        close: async () => {},
-        [Symbol.asyncDispose]: async () => {},
-      };
+    async open(path, flags = 'r', mode = 0o666) {
+      return new FileHandle(Number(__fs_open_sync(pathOf(path), String(flags), mode)));
     },
     async exists(path) {
       try { await promises.stat(path); return true; } catch { return false; }
@@ -95,36 +128,30 @@
 
   // Node's *Sync calls. They block the realm thread, which is what they are for: a script that wants
   // a file now should not have to become a state machine to get one.
-  const fds = new Map();
-  let nextFd = 3;
-  const __fs_realpath_sync_js = (path) => path;
-  const __fs_read_file_sync_bytes = (path) => new TextEncoder().encode(__fs_read_file_sync(path));
-  class Stats {}
-  class BigIntStats {}
-  class Dirent {}
-  const constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1, O_RDONLY: 0, O_WRONLY: 1, O_RDWR: 2, O_CREAT: 64, O_EXCL: 128, O_TRUNC: 512, O_APPEND: 1024, COPYFILE_EXCL: 1 };
+  const modeOf = (mode) => (typeof mode === 'number' ? mode : parseInt(mode, 8));
   const sync = {
     readdirSync(path, options) {
       const withTypes = !!(options && typeof options === 'object' && options.withFileTypes);
-      const items = JSON.parse(__fs_readdir_sync(pathOf(path)));
-      return withTypes ? items.map((item) => ({
-        name: item.name,
-        isFile: () => !item.dir,
-        isDirectory: () => item.dir,
-        isSymbolicLink: () => item.link,
-      })) : items.map((item) => item.name);
+      const parent = pathOf(path);
+      const json = __fs_readdir_sync(parent);
+      return withTypes ? direntsOf(json, parent) : JSON.parse(json).map((item) => item.name);
     },
-    statSync(path) {
-      const info = JSON.parse(__fs_stat_sync(pathOf(path)));
-      info.isFile = () => !info.dir;
-      info.isDirectory = () => !!info.dir;
-      info.isSymbolicLink = () => !!info.link;
-      info.mtime = new Date(info.mtimeMs);
-      return info;
+    statSync(path, options) {
+      try { return new Stats(JSON.parse(__fs_stat_sync(pathOf(path), true))); } catch (error) {
+        if (options && options.throwIfNoEntry === false && /^ENOENT\b/.test(String(error && error.message))) return undefined;
+        throw error;
+      }
     },
+    lstatSync(path, options) {
+      try { return new Stats(JSON.parse(__fs_stat_sync(pathOf(path), false))); } catch (error) {
+        if (options && options.throwIfNoEntry === false && /^ENOENT\b/.test(String(error && error.message))) return undefined;
+        throw error;
+      }
+    },
+    fstatSync(fd) { return new Stats(JSON.parse(__fs_fstat_sync(fd))); },
     existsSync(path) {
       try {
-        __fs_stat_sync(pathOf(path));
+        __fs_stat_sync(pathOf(path), true);
         return true;
       } catch (error) {
         return false;
@@ -173,13 +200,12 @@
         },
       });
     },
-    lstatSync(path) { return sync.statSync(path); },
-    fstatSync(fd) { return sync.statSync(fds.get(fd).path); },
-    realpathSync(path) { return __fs_realpath_sync_js(pathOf(path)); },
+    realpathSync(path) { return __fs_realpath_sync(pathOf(path)); },
     renameSync(from, to) { __fs_rename_sync(pathOf(from), pathOf(to)); },
     rmSync(path, options) { const o = options || {}; __fs_rm_sync(pathOf(path), (o.recursive ? 'r' : '') + (o.force ? 'f' : '')); },
+    symlinkSync(target, path) { __fs_symlink_sync(String(target), pathOf(path)); },
+    readlinkSync(path) { return __fs_readlink_sync(pathOf(path)); },
     linkSync(from, to) { __fs_link_sync(pathOf(from), pathOf(to)); },
-    statfsSync() { throw new Error('statfsSync is not supported'); },
     mkdtempSync(prefix) {
       const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
       for (let attempt = 0; attempt < 20; attempt++) {
@@ -190,26 +216,28 @@
       }
       throw new Error('mkdtempSync: no free name for ' + prefix);
     },
-    // File descriptors are a table of paths and positions over the whole-file calls.
-    openSync(path, flags = 'r') {
-      const target = pathOf(path);
-      const f = String(flags);
-      if (f.startsWith('w')) sync.writeFileSync(target, '');
-      else if (f.startsWith('a') && !sync.existsSync(target)) sync.writeFileSync(target, '');
-      else if (f.startsWith('r')) sync.statSync(target);
-      const fd = nextFd++;
-      fds.set(fd, { path: target, flags: f, position: 0 });
-      return fd;
+    openSync(path, flags = 'r', mode = 0o666) { return Number(__fs_open_sync(pathOf(path), String(flags), modeOf(mode))); },
+    closeSync(fd) { __fs_close_sync(fd); },
+    readSync(fd, buffer, offsetOrOptions, length, position) {
+      let offset = offsetOrOptions;
+      if (offset !== null && typeof offset === 'object') ({ offset = 0, length, position } = offset);
+      offset = offset || 0;
+      if (length === undefined || length === null) length = buffer.byteLength - offset;
+      const where = position === undefined || position === null || position === -1 ? -1 : Number(position);
+      const got = new Uint8Array(__fs_read_sync(fd, length, where));
+      new Uint8Array(buffer.buffer, buffer.byteOffset + offset, got.length).set(got);
+      return got.length;
     },
-    closeSync(fd) { fds.delete(fd); },
-    readSync(fd, buffer, offset = 0, length, position) {
-      const entry = fds.get(fd);
-      const data = new Uint8Array(__fs_read_file_sync_bytes(entry.path));
-      const start = position == null ? entry.position : position;
-      const count = Math.min(length === undefined ? buffer.length - offset : length, Math.max(0, data.length - start));
-      buffer.set(data.subarray(start, start + count), offset);
-      if (position == null) entry.position += count;
-      return count;
+    writeSync(fd, data, a, b, c) {
+      if (typeof data === 'string') {
+        const position = typeof a === 'number' ? a : -1;
+        return Number(__fs_write_fd_sync(fd, dataOf(data, typeof b === 'string' ? b : 'utf8'), position));
+      }
+      const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      const offset = typeof a === 'number' ? a : 0;
+      const length = typeof b === 'number' ? b : view.length - offset;
+      const position = typeof c === 'number' ? c : -1;
+      return Number(__fs_write_fd_sync(fd, view.slice(offset, offset + length), position));
     },
     chmodSync(path, mode) { __fs_chmod_sync(pathOf(path), (typeof mode === 'number' ? mode : parseInt(mode, 8)).toString(8)); },
     readFileSync(path) {
@@ -219,16 +247,28 @@
     },
   };
 
+  // Host errors arrive as 'ENOENT: message'; Node's carry the same text as error.code and a name of Error.
+  for (const key of Object.keys(sync)) {
+    const original = sync[key];
+    if (typeof original !== 'function' || key.startsWith('create')) continue;
+    sync[key] = function (...args) {
+      try { return original.apply(this, args); } catch (error) {
+        if (error && typeof error.message === 'string' && error.code === undefined) {
+          const m = /^([A-Z][A-Z0-9]{1,15}): /.exec(error.message);
+          if (m) error.code = m[1];
+        }
+        throw error;
+      }
+    };
+  }
+
   // For convenience in the probe: scripts can just use fs.readFile(...) directly. The official API goes through import.
   globalThis.fs = promises;
   globalThis.__fs_promises = promises;
   globalThis.__fs_sync = sync;
-  class FileHandle {}
   promises.constants = constants;
   promises.FileHandle = FileHandle;
-  class ReadStream {}
-  class WriteStream {}
-  globalThis.__fs_module = { promises, ...sync, ...promises, constants, Stats, BigIntStats, Dirent, ReadStream, WriteStream };
+  globalThis.__fs_module = { promises, ...sync, ...promises, constants, Stats, Dirent };
   // `import fs from 'node:fs'` is the whole module, as in node; `fs.readFile` stays the promise one.
   globalThis.__fs_module.default = globalThis.__fs_module;
 })();

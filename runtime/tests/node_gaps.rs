@@ -34,10 +34,9 @@ fn fs_has_named_sync_exports_and_streams() {
 }
 
 #[test]
-fn diagnostics_channel_and_v8_exist() {
+fn diagnostics_channel_exists() {
     let r = run(&[("a.test.ts", "
         import dc, { channel, hasSubscribers, tracingChannel } from 'node:diagnostics_channel';
-        import v8 from 'node:v8';
         test('dc', () => {
           expect(hasSubscribers('x')).toBe(false);
           const seen: unknown[] = [];
@@ -49,11 +48,8 @@ fn diagnostics_channel_and_v8_exist() {
           expect(t.traceSync(() => 5)).toBe(5);
           expect(dc.channel).toBe(channel);
         });
-        test('v8', () => {
-          expect(v8.deserialize(v8.serialize({ a: [1, 2] }))).toEqual({ a: [1, 2] });
-        });
     ")], "a.test.ts");
-    assert_eq!((r.pass, r.fail), (2, 0), "{:?}", r.error);
+    assert_eq!((r.pass, r.fail), (1, 0), "{:?}", r.error);
 }
 
 #[test]
@@ -127,5 +123,113 @@ fn wildcard_exports_and_commonjs_reexports() {
         ("node_modules/cjs/index.js", "function __export(m){for(var p in m) if(!exports.hasOwnProperty(p)) exports[p]=m[p];}\nObject.defineProperty(exports,'__esModule',{value:true});\n__export(require('./src'));\nexports.other = 'o';"),
         ("node_modules/cjs/src.js", "exports.inner = 'i';"),
     ], "a.test.ts");
+    assert_eq!((r.pass, r.fail), (1, 0), "{:?}", r.error);
+}
+
+#[test]
+fn path_win32_follows_windows_rules() {
+    let r = run(&[("a.test.ts", "
+        import path from 'node:path';
+        import win32 from 'node:path/win32';
+        import { win32 as w2 } from 'node:path';
+        test('win32', () => {
+          expect(win32).toBe(path.win32);
+          expect(w2.sep).toBe('\\\\');
+          expect(win32.isAbsolute('C:\\\\x')).toBe(true);
+          expect(win32.isAbsolute('/x')).toBe(true);
+          expect(win32.isAbsolute('x')).toBe(false);
+          expect(win32.join('C:/Users', 'Ada', '..', 'code')).toBe('C:\\\\Users\\\\code');
+          expect(win32.resolve('C:\\\\a', '..', 'b')).toBe('C:\\\\b');
+          expect(win32.parse('\\\\\\\\nas\\\\share\\\\proj').root).toBe('\\\\\\\\nas\\\\share\\\\');
+          expect(win32.basename('C:\\\\a\\\\b.txt', '.txt')).toBe('b');
+          expect(path.sep).toBe('/');
+        });
+    ")], "a.test.ts");
+    assert_eq!((r.pass, r.fail), (1, 0), "{:?}", r.error);
+}
+
+#[test]
+fn fs_descriptors_stats_and_links_are_real() {
+    let r = run(&[("a.test.ts", "
+        import fs, { openSync, readSync, writeSync, closeSync, fstatSync, lstatSync, statSync, realpathSync, symlinkSync, writeFileSync, readFileSync, mkdirSync, rmSync, readdirSync, Stats, Dirent, constants } from 'node:fs';
+        import { open, lstat, stat, readdir } from 'node:fs/promises';
+        import { tmpdir } from 'node:os';
+        const dir = tmpdir() + '/xmas-fs-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
+        mkdirSync(dir);
+        test('binary read and write through a descriptor', () => {
+          const file = dir + '/bin';
+          const out = openSync(file, 'w');
+          expect(writeSync(out, new Uint8Array([0, 255, 128, 10]))).toBe(4);
+          expect(writeSync(out, 'hi')).toBe(2);
+          closeSync(out);
+          const fd = openSync(file, 'r');
+          const buf = new Uint8Array(6);
+          expect(readSync(fd, buf, 0, 6, null)).toBe(6);
+          expect([...buf]).toEqual([0, 255, 128, 10, 104, 105]);
+          expect(readSync(fd, buf, 0, 6, null)).toBe(0);
+          expect(readSync(fd, buf, 0, 2, 4)).toBe(2);
+          expect(fstatSync(fd).size).toBe(6);
+          closeSync(fd);
+        });
+        test('append mode appends and w truncates', () => {
+          const file = dir + '/ap';
+          writeFileSync(file, 'abc');
+          const a = openSync(file, 'a'); writeSync(a, 'def'); closeSync(a);
+          expect(readFileSync(file)).toBe('abcdef');
+          const w = openSync(file, 'w'); closeSync(w);
+          expect(statSync(file).size).toBe(0);
+          expect(() => openSync(dir + '/nope', 'r')).toThrow();
+        });
+        test('lstat sees a link, stat follows it, realpath resolves it', async () => {
+          writeFileSync(dir + '/target', 'x');
+          symlinkSync(dir + '/target', dir + '/link');
+          expect(lstatSync(dir + '/link').isSymbolicLink()).toBe(true);
+          expect(statSync(dir + '/link').isSymbolicLink()).toBe(false);
+          expect(statSync(dir + '/link').isFile()).toBe(true);
+          expect((await lstat(dir + '/link')).isSymbolicLink()).toBe(true);
+          expect((await stat(dir + '/link')).isFile()).toBe(true);
+          expect(realpathSync(dir + '/link')).toBe(realpathSync(dir + '/target'));
+          expect(lstatSync(dir + '/missing', { throwIfNoEntry: false })).toBe(undefined);
+        });
+        test('Stats carry the fields Node gives them', () => {
+          const s = statSync(dir);
+          expect(s instanceof Stats).toBe(true);
+          expect(s.isDirectory()).toBe(true);
+          for (const k of ['dev', 'ino', 'mode', 'nlink', 'uid', 'gid', 'size', 'blksize', 'blocks', 'atimeMs', 'mtimeMs', 'ctimeMs', 'birthtimeMs']) expect(typeof s[k]).toBe('number');
+          expect(s.mtime instanceof Date).toBe(true);
+          expect(s.ino).toBeGreaterThan(0);
+          expect(constants.O_CREAT).toBeGreaterThan(0);
+        });
+        test('Dirent and FileHandle', async () => {
+          const entries = readdirSync(dir, { withFileTypes: true });
+          expect(entries[0] instanceof Dirent).toBe(true);
+          const link = entries.find((e) => e.name === 'link');
+          expect(link.isSymbolicLink()).toBe(true);
+          expect(link.isFile()).toBe(false);
+          expect(link.parentPath).toBe(dir);
+          expect((await readdir(dir, { withFileTypes: true })).length).toBe(entries.length);
+          const h = await open(dir + '/bin', 'r');
+          const buf = new Uint8Array(4);
+          const { bytesRead } = await h.read(buf, 0, 4, 0);
+          expect(bytesRead).toBe(4);
+          expect([...buf]).toEqual([0, 255, 128, 10]);
+          expect((await h.stat()).size).toBe(6);
+          await h.close();
+          rmSync(dir, { recursive: true, force: true });
+        });
+    ")], "a.test.ts");
+    assert_eq!((r.pass, r.fail), (5, 0), "{:?}", r.error);
+}
+
+#[test]
+fn os_signals_come_from_the_platform() {
+    let r = run(&[("a.test.ts", "
+        import os from 'node:os';
+        test('signals', () => {
+          expect(os.constants.signals.SIGTERM).toBe(15);
+          expect(os.constants.signals.SIGKILL).toBe(9);
+          expect(os.constants.signals.SIGINT).toBe(2);
+        });
+    ")], "a.test.ts");
     assert_eq!((r.pass, r.fail), (1, 0), "{:?}", r.error);
 }

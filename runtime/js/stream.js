@@ -587,7 +587,7 @@
 
   const api = {
     Stream, Readable, Writable, Duplex, Transform, PassThrough,
-    getDefaultHighWaterMark: (objectMode) => (objectMode ? 16 : 65536), setDefaultHighWaterMark() {},
+    getDefaultHighWaterMark: (objectMode) => (objectMode ? 16 : 65536),
     pipeline, finished, promises: { pipeline, finished },
   };
   api.default = api;

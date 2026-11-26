@@ -273,23 +273,31 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
                         let meta = smol::fs::metadata(path)
                             .await
                             .map_err(|error| describe(&error))?;
-                        let mtime = meta
-                            .modified()
-                            .ok()
-                            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-                            .map(|since| since.as_secs_f64() * 1000.0)
-                            .unwrap_or(0.0);
-                        Ok(Payload::Text(format!(
-                            "{{\"size\":{},\"dir\":{},\"link\":{},\"mtimeMs\":{}}}",
-                            meta.len(),
-                            meta.is_dir(),
-                            meta.file_type().is_symlink(),
-                            mtime
-                        )))
+                        Ok(Payload::Text(stat_json(&meta)))
                     })
                 },
             )
             .map_err(|error| format!("__fs_stat: {error}"))?;
+    }
+
+    {
+        let pending = pending.clone();
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_lstat",
+                1,
+                move |scope: &mut Scope<'_>, path: String| {
+                    start(scope, &pending, async move {
+                        let meta = smol::fs::symlink_metadata(path)
+                            .await
+                            .map_err(|error| describe(&error))?;
+                        Ok(Payload::Text(stat_json(&meta)))
+                    })
+                },
+            )
+            .map_err(|error| format!("__fs_lstat: {error}"))?;
     }
 
 
@@ -345,29 +353,122 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             .define_function(
                 &global,
                 "__fs_stat_sync",
-                1,
-                move |scope: &mut Scope<'_>, path: String| -> Result<Value, RuntimeError> {
-                    let meta = match std::fs::symlink_metadata(&path) {
-                        Ok(meta) => meta,
-                        Err(error) => return Err(throw(scope, &describe(&error))),
-                    };
-                    let mtime = meta
-                        .modified()
-                        .ok()
-                        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-                        .map(|since| since.as_secs_f64() * 1000.0)
-                        .unwrap_or(0.0);
-                    Ok(text_value(&format!(
-                        "{{\"size\":{},\"dir\":{},\"link\":{},\"mtimeMs\":{}}}",
-                        meta.len(),
-                        meta.is_dir(),
-                        meta.file_type().is_symlink(),
-                        mtime
-                    )))
+                2,
+                move |scope: &mut Scope<'_>, path: String, follow: bool| -> Result<Value, RuntimeError> {
+                    let meta = if follow { std::fs::metadata(&path) } else { std::fs::symlink_metadata(&path) };
+                    match meta {
+                        Ok(meta) => Ok(text_value(&stat_json(&meta))),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
                 },
             )
             .map_err(|error| format!("__fs_stat_sync: {error}"))?;
     }
+
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_fstat_sync",
+                1,
+                move |scope: &mut Scope<'_>, fd: f64| -> Result<Value, RuntimeError> {
+                    match with_fd(fd as i32, |file| file.metadata()) {
+                        Ok(meta) => Ok(text_value(&stat_json(&meta))),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_fstat_sync: {error}"))?;
+    }
+
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_realpath_sync",
+                1,
+                move |scope: &mut Scope<'_>, path: String| -> Result<Value, RuntimeError> {
+                    match std::fs::canonicalize(&path) {
+                        Ok(real) => Ok(text_value(&real.to_string_lossy())),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_realpath_sync: {error}"))?;
+    }
+
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_open_sync",
+                3,
+                move |scope: &mut Scope<'_>, path: String, flags: String, mode: f64| -> Result<Value, RuntimeError> {
+                    let bits = match flag_bits(&flags) { Ok(bits) => bits, Err(error) => return Err(throw(scope, &describe(&error))) };
+                    match open_fd(&path, bits, mode as u32) {
+                        Ok(fd) => Ok(text_value(&fd.to_string())),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_open_sync: {error}"))?;
+    }
+
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_close_sync",
+                1,
+                move |scope: &mut Scope<'_>, fd: f64| -> Result<Value, RuntimeError> {
+                    match close_fd(fd as i32) {
+                        Ok(()) => Ok(Value::Undefined),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_close_sync: {error}"))?;
+    }
+
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_read_sync",
+                3,
+                move |scope: &mut Scope<'_>, fd: f64, length: f64, position: f64| -> Result<Value, RuntimeError> {
+                    match read_fd(fd as i32, length as usize, position) {
+                        Ok(bytes) => bytes::give(scope, &bytes),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_read_sync: {error}"))?;
+    }
+
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_write_fd_sync",
+                3,
+                move |scope: &mut Scope<'_>, fd: f64, data: Value, position: f64| -> Result<Value, RuntimeError> {
+                    let bytes = bytes::take(scope, &data)?;
+                    match write_fd(fd as i32, &bytes, position) {
+                        Ok(count) => Ok(text_value(&count.to_string())),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_write_fd_sync: {error}"))?;
+    }
+
 
     {
         driver
@@ -521,6 +622,55 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             .map_err(|error| format!("__fs_link_sync: {error}"))?;
     }
 
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_symlink_sync",
+                2,
+                move |scope: &mut Scope<'_>, target: String, path: String| -> Result<Value, RuntimeError> {
+                    #[cfg(unix)]
+                    let outcome = std::os::unix::fs::symlink(&target, &path);
+                    #[cfg(windows)]
+                    let outcome = if std::path::Path::new(&target).is_dir() {
+                        std::os::windows::fs::symlink_dir(&target, &path)
+                    } else {
+                        std::os::windows::fs::symlink_file(&target, &path)
+                    };
+                    match outcome {
+                        Ok(()) => Ok(Value::Undefined),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_symlink_sync: {error}"))?;
+    }
+
+    {
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_readlink_sync",
+                1,
+                move |scope: &mut Scope<'_>, path: String| -> Result<Value, RuntimeError> {
+                    match std::fs::read_link(&path) {
+                        Ok(target) => Ok(text_value(&target.to_string_lossy())),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_readlink_sync: {error}"))?;
+    }
+
+    {
+        driver
+            .context()
+            .define_function(&global, "__fs_constants", 0, |_: &mut Scope<'_>| -> Result<Value, RuntimeError> { Ok(text_value(&constants_json())) })
+            .map_err(|error| format!("__fs_constants: {error}"))?;
+    }
+
     driver
         .eval(PRELUDE)
         .map_err(|error| format!("fs prelude: {error}"))?;
@@ -551,7 +701,6 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         "lstat",
         "open",
         "constants",
-        "FileHandle",
     ]);
     let promise_names = names[2..].to_vec();
     // The synchronous family, which node's `fs` has next to the callback and promise ones.
@@ -565,6 +714,9 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         "readFileSync",
         "chmodSync",
         "openSync",
+        "writeSync",
+        "symlinkSync",
+        "readlinkSync",
         "closeSync",
         "readSync",
         "fstatSync",
@@ -574,13 +726,9 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         "renameSync",
         "rmSync",
         "linkSync",
-        "statfsSync",
         "constants",
         "Stats",
-        "BigIntStats",
         "Dirent",
-        "ReadStream",
-        "WriteStream",
         "createWriteStream",
         "createReadStream",
     ]);
@@ -681,4 +829,159 @@ fn describe(error: &std::io::Error) -> String {
         _ => "EIO",
     };
     format!("{code}: {error}")
+}
+
+/// Everything Node's Stats carries, as the JSON the prelude turns into a Stats object.
+fn stat_json(meta: &std::fs::Metadata) -> String {
+    let ms = |time: std::io::Result<std::time::SystemTime>| -> f64 {
+        time.ok()
+            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+            .map(|since| since.as_secs_f64() * 1000.0)
+            .unwrap_or(0.0)
+    };
+    #[cfg(unix)]
+    let (dev, ino, mode, nlink, uid, gid, rdev, blksize, blocks, atime, ctime) = {
+        use std::os::unix::fs::MetadataExt;
+        (
+            meta.dev(),
+            meta.ino(),
+            meta.mode(),
+            meta.nlink(),
+            meta.uid(),
+            meta.gid(),
+            meta.rdev(),
+            meta.blksize(),
+            meta.blocks(),
+            meta.atime() as f64 * 1000.0 + (meta.atime_nsec() as f64) / 1e6,
+            meta.ctime() as f64 * 1000.0 + (meta.ctime_nsec() as f64) / 1e6,
+        )
+    };
+    #[cfg(not(unix))]
+    let (dev, ino, mode, nlink, uid, gid, rdev, blksize, blocks, atime, ctime) = (
+        0u64,
+        0u64,
+        if meta.is_dir() { 0o040000u32 } else { 0o100000u32 },
+        1u64,
+        0u32,
+        0u32,
+        0u64,
+        4096u64,
+        0u64,
+        ms(meta.accessed()),
+        ms(meta.modified()),
+    );
+    format!(
+        "{{\"dev\":{dev},\"ino\":{ino},\"mode\":{mode},\"nlink\":{nlink},\"uid\":{uid},\"gid\":{gid},\"rdev\":{rdev},\"size\":{},\"blksize\":{blksize},\"blocks\":{blocks},\"atimeMs\":{atime},\"mtimeMs\":{},\"ctimeMs\":{ctime},\"birthtimeMs\":{}}}",
+        meta.len(),
+        ms(meta.modified()),
+        ms(meta.created()),
+    )
+}
+
+#[cfg(unix)]
+fn last_error() -> std::io::Error {
+    std::io::Error::last_os_error()
+}
+
+#[cfg(unix)]
+fn open_fd(path: &str, flags: i32, mode: u32) -> std::io::Result<i32> {
+    let c_path = std::ffi::CString::new(path)
+        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
+    let fd = unsafe { libc::open(c_path.as_ptr(), flags | libc::O_CLOEXEC, mode as libc::c_uint) };
+    if fd < 0 { Err(last_error()) } else { Ok(fd) }
+}
+
+#[cfg(unix)]
+fn close_fd(fd: i32) -> std::io::Result<()> {
+    if unsafe { libc::close(fd) } < 0 { Err(last_error()) } else { Ok(()) }
+}
+
+#[cfg(unix)]
+fn with_fd<T>(fd: i32, job: impl FnOnce(&std::fs::File) -> std::io::Result<T>) -> std::io::Result<T> {
+    use std::os::unix::io::FromRawFd;
+    let file = std::mem::ManuallyDrop::new(unsafe { std::fs::File::from_raw_fd(fd) });
+    job(&file)
+}
+
+#[cfg(unix)]
+fn read_fd(fd: i32, length: usize, position: f64) -> std::io::Result<Vec<u8>> {
+    let mut buffer = vec![0u8; length];
+    let count = unsafe {
+        if position >= 0.0 {
+            libc::pread(fd, buffer.as_mut_ptr() as *mut libc::c_void, length, position as libc::off_t)
+        } else {
+            libc::read(fd, buffer.as_mut_ptr() as *mut libc::c_void, length)
+        }
+    };
+    if count < 0 {
+        return Err(last_error());
+    }
+    buffer.truncate(count as usize);
+    Ok(buffer)
+}
+
+#[cfg(unix)]
+fn write_fd(fd: i32, data: &[u8], position: f64) -> std::io::Result<usize> {
+    let count = unsafe {
+        if position >= 0.0 {
+            libc::pwrite(fd, data.as_ptr() as *const libc::c_void, data.len(), position as libc::off_t)
+        } else {
+            libc::write(fd, data.as_ptr() as *const libc::c_void, data.len())
+        }
+    };
+    if count < 0 { Err(last_error()) } else { Ok(count as usize) }
+}
+
+#[cfg(not(unix))]
+fn unsupported<T>() -> std::io::Result<T> {
+    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "file descriptors are not supported on this platform"))
+}
+#[cfg(not(unix))]
+fn open_fd(_: &str, _: i32, _: u32) -> std::io::Result<i32> { unsupported() }
+#[cfg(not(unix))]
+fn close_fd(_: i32) -> std::io::Result<()> { unsupported() }
+#[cfg(not(unix))]
+fn with_fd<T>(_: i32, _: impl FnOnce(&std::fs::File) -> std::io::Result<T>) -> std::io::Result<T> { unsupported() }
+#[cfg(not(unix))]
+fn read_fd(_: i32, _: usize, _: f64) -> std::io::Result<Vec<u8>> { unsupported() }
+#[cfg(not(unix))]
+fn write_fd(_: i32, _: &[u8], _: f64) -> std::io::Result<usize> { unsupported() }
+
+/// Node's flag strings ('r', 'w+', 'ax', ...) or a number, as the platform's open(2) bits.
+#[cfg(unix)]
+fn flag_bits(flags: &str) -> std::io::Result<i32> {
+    if let Ok(number) = flags.parse::<i32>() {
+        return Ok(number);
+    }
+    let bits = match flags {
+        "r" | "rs" | "sr" => libc::O_RDONLY,
+        "r+" | "rs+" | "sr+" => libc::O_RDWR,
+        "w" => libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC,
+        "wx" | "xw" => libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC | libc::O_EXCL,
+        "w+" => libc::O_RDWR | libc::O_CREAT | libc::O_TRUNC,
+        "wx+" | "xw+" => libc::O_RDWR | libc::O_CREAT | libc::O_TRUNC | libc::O_EXCL,
+        "a" | "as" | "sa" => libc::O_WRONLY | libc::O_CREAT | libc::O_APPEND,
+        "ax" | "xa" => libc::O_WRONLY | libc::O_CREAT | libc::O_APPEND | libc::O_EXCL,
+        "a+" | "as+" | "sa+" => libc::O_RDWR | libc::O_CREAT | libc::O_APPEND,
+        "ax+" | "xa+" => libc::O_RDWR | libc::O_CREAT | libc::O_APPEND | libc::O_EXCL,
+        _ => return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput)),
+    };
+    Ok(bits)
+}
+#[cfg(not(unix))]
+fn flag_bits(_: &str) -> std::io::Result<i32> { unsupported() }
+
+/// The platform's own values for fs.constants, as JSON.
+#[cfg(unix)]
+fn constants_json() -> String {
+    format!(
+        "{{\"F_OK\":{},\"R_OK\":{},\"W_OK\":{},\"X_OK\":{},\"O_RDONLY\":{},\"O_WRONLY\":{},\"O_RDWR\":{},\"O_CREAT\":{},\"O_EXCL\":{},\"O_TRUNC\":{},\"O_APPEND\":{},\"O_NOFOLLOW\":{},\"O_DIRECTORY\":{},\"S_IFMT\":{},\"S_IFREG\":{},\"S_IFDIR\":{},\"S_IFLNK\":{},\"COPYFILE_EXCL\":1}}",
+        libc::F_OK, libc::R_OK, libc::W_OK, libc::X_OK, libc::O_RDONLY, libc::O_WRONLY, libc::O_RDWR,
+        libc::O_CREAT, libc::O_EXCL, libc::O_TRUNC, libc::O_APPEND, libc::O_NOFOLLOW, libc::O_DIRECTORY,
+        libc::S_IFMT, libc::S_IFREG, libc::S_IFDIR, libc::S_IFLNK
+    )
+}
+#[cfg(not(unix))]
+fn constants_json() -> String {
+    "{\"F_OK\":0,\"R_OK\":4,\"W_OK\":2,\"X_OK\":1,\"S_IFMT\":61440,\"S_IFREG\":32768,\"S_IFDIR\":16384,\"S_IFLNK\":40960,\"COPYFILE_EXCL\":1}".to_string()
 }

@@ -367,7 +367,6 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         "Transform",
         "PassThrough",
         "getDefaultHighWaterMark",
-        "setDefaultHighWaterMark",
         "pipeline",
         "finished",
         "promises",

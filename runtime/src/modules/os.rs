@@ -35,6 +35,15 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         .map_err(|error| format!("global: {error}"))?;
 
     {
+        driver
+            .context()
+            .define_function(&global, "__os_signals", 0, move |_: &mut Scope<'_>| {
+                text(&signals_json())
+            })
+            .map_err(|error| format!("__os_signals: {error}"))?;
+    }
+
+    {
         let snapshot = snapshot(&driver.host.env);
         driver
             .context()
@@ -176,4 +185,17 @@ fn snapshot(env: &Env) -> String {
     out.push_str(&quote(&shell));
     out.push('}');
     out
+}
+
+/// The platform's own signal numbers, as Node's os.constants.signals reports them.
+#[cfg(unix)]
+fn signals_json() -> String {
+    let list: &[(&str, i32)] = &[("SIGHUP", libc::SIGHUP), ("SIGINT", libc::SIGINT), ("SIGQUIT", libc::SIGQUIT), ("SIGILL", libc::SIGILL), ("SIGTRAP", libc::SIGTRAP), ("SIGABRT", libc::SIGABRT), ("SIGBUS", libc::SIGBUS), ("SIGFPE", libc::SIGFPE), ("SIGKILL", libc::SIGKILL), ("SIGUSR1", libc::SIGUSR1), ("SIGSEGV", libc::SIGSEGV), ("SIGUSR2", libc::SIGUSR2), ("SIGPIPE", libc::SIGPIPE), ("SIGALRM", libc::SIGALRM), ("SIGTERM", libc::SIGTERM), ("SIGCHLD", libc::SIGCHLD), ("SIGCONT", libc::SIGCONT), ("SIGSTOP", libc::SIGSTOP), ("SIGTSTP", libc::SIGTSTP), ("SIGTTIN", libc::SIGTTIN), ("SIGTTOU", libc::SIGTTOU), ("SIGURG", libc::SIGURG), ("SIGXCPU", libc::SIGXCPU), ("SIGXFSZ", libc::SIGXFSZ), ("SIGVTALRM", libc::SIGVTALRM), ("SIGPROF", libc::SIGPROF), ("SIGWINCH", libc::SIGWINCH), ("SIGIO", libc::SIGIO), ("SIGSYS", libc::SIGSYS)];
+    let body: Vec<String> = list.iter().map(|(name, number)| format!("\"{name}\":{number}")).collect();
+    format!("{{{}}}", body.join(","))
+}
+
+#[cfg(not(unix))]
+fn signals_json() -> String {
+    "{\"SIGHUP\":1,\"SIGINT\":2,\"SIGILL\":4,\"SIGABRT\":22,\"SIGFPE\":8,\"SIGKILL\":9,\"SIGSEGV\":11,\"SIGTERM\":15}".to_string()
 }

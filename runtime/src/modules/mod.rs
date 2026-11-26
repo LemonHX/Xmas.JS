@@ -36,10 +36,8 @@ pub mod timers;
 pub mod tty;
 pub mod url;
 pub mod util;
-pub mod v8;
 pub mod wasm;
 pub mod websocket;
-pub mod worker_threads;
 pub mod zlib;
 
 use crate::driver::Driver;
@@ -65,9 +63,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     tty::install(driver)?;
     util::install(driver)?;
     os::install(driver)?;
-    v8::install(driver)?;
     module::install(driver)?;
-    worker_threads::install(driver)?;
     temporal::install(driver)?;
     fs::install(driver)?;
     crypto::install(driver)?;

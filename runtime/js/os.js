@@ -33,7 +33,7 @@
     EOL: facts.eol,
     devNull: facts.platform === 'win32' ? '\\\\.\\nul' : '/dev/null',
     constants: {
-      signals: {},
+      signals: JSON.parse(__os_signals()),
       errno: {},
       priority: {},
     },

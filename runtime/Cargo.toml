@@ -78,7 +78,7 @@ which = "8.0.0"
 owo-colors = "4.2.3"
 
 # Cloning a package directory into node_modules in one call. See `package::plan::place_dir`.
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 # Directory links on windows: there is no symlink without a privilege, so a junction stands in.

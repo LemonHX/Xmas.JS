@@ -22,6 +22,7 @@ use crate::driver::Driver;
 use crate::modules::quote;
 
 const PRELUDE: &str = include_str!("../../js/path.js");
+const WIN32: &str = include_str!("../../js/path_win32.js");
 
 /// LLRT's signature for the optional suffix; keeping the tuple keeps the copied
 /// code identical to the original.
@@ -825,6 +826,12 @@ pub fn install(driver: &mut Driver) -> std::result::Result<(), String> {
     driver
         .eval(PRELUDE)
         .map_err(|error| format!("path prelude: {error}"))?;
+    driver
+        .eval(WIN32)
+        .map_err(|error| format!("path win32: {error}"))?;
+    driver
+        .eval("globalThis.path.win32 = globalThis.__path_win32;")
+        .map_err(|error| format!("path win32 link: {error}"))?;
 
     let path = driver
         .eval("globalThis.path")
@@ -850,9 +857,14 @@ pub fn install(driver: &mut Driver) -> std::result::Result<(), String> {
     let mut exports = vec![("default".to_string(), path.clone())];
     exports.extend(super::collect(driver, &path, &names)?);
     super::define_with_alias(driver, "path", exports.clone())?;
-    // path.win32 is the posix implementation here, so the subpath modules are the same object.
-    super::define_with_alias(driver, "path/posix", exports.clone())?;
-    super::define_with_alias(driver, "path/win32", exports)?;
+    // path.posix is the host flavour (this build is for a posix host); path.win32 is Node's own win32 code.
+    super::define_with_alias(driver, "path/posix", exports)?;
+    let win32 = driver
+        .eval("globalThis.__path_win32")
+        .map_err(|error| format!("path win32 object: {error}"))?;
+    let mut win32_exports = vec![("default".to_string(), win32.clone())];
+    win32_exports.extend(super::collect(driver, &win32, &names)?);
+    super::define_with_alias(driver, "path/win32", win32_exports)?;
     Ok(())
 }
 
