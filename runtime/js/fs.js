@@ -268,7 +268,21 @@
   globalThis.__fs_sync = sync;
   promises.constants = constants;
   promises.FileHandle = FileHandle;
-  globalThis.__fs_module = { promises, ...sync, ...promises, constants, Stats, Dirent };
+  // Node's callback API: fs.readdir(path, options, callback). With no callback the promise comes back,
+  // which is what the promise-style top-level names here have always done.
+  const withCallback = (name) => {
+    const original = promises[name];
+    return function (...args) {
+      const last = args[args.length - 1];
+      if (typeof last !== 'function') return original.apply(this, args);
+      const callback = args.pop();
+      original.apply(this, args).then((value) => callback(null, value), (error) => callback(error));
+    };
+  };
+  const callbackNames = ['readFile', 'writeFile', 'appendFile', 'mkdir', 'rm', 'unlink', 'rmdir', 'rename', 'copyFile', 'realpath', 'readdir', 'stat', 'lstat', 'mkdtemp', 'chmod', 'access', 'open', 'symlink', 'readlink'];
+  const callbacks = {};
+  for (const name of callbackNames) if (typeof promises[name] === 'function') callbacks[name] = withCallback(name);
+  globalThis.__fs_module = { promises, ...sync, ...promises, ...callbacks, constants, Stats, Dirent };
   // `import fs from 'node:fs'` is the whole module, as in node; `fs.readFile` stays the promise one.
   globalThis.__fs_module.default = globalThis.__fs_module;
 })();

@@ -233,3 +233,27 @@ fn os_signals_come_from_the_platform() {
     ")], "a.test.ts");
     assert_eq!((r.pass, r.fail), (1, 0), "{:?}", r.error);
 }
+
+#[test]
+fn fs_callbacks_and_promises_both_work() {
+    let r = run(&[("a.test.ts", "
+        import fs, { readdir, stat, readFile } from 'node:fs';
+        import { readdir as readdirP } from 'node:fs/promises';
+        import { fileURLToPath } from 'node:url';
+        const here = fileURLToPath(new URL('.', import.meta.url));
+        test('callback form', async () => {
+          const names = await new Promise((resolve, reject) => readdir(here, (e, v) => e ? reject(e) : resolve(v)));
+          expect(names).toContain('a.test.ts');
+          const entries = await new Promise((resolve, reject) => fs.readdir(here, { withFileTypes: true }, (e, v) => e ? reject(e) : resolve(v)));
+          expect(entries[0].isFile()).toBe(true);
+          const err = await new Promise((resolve) => stat('/nope-xmas', (e) => resolve(e)));
+          expect(err.code).toBe('ENOENT');
+        });
+        test('promise form still works', async () => {
+          expect(await readdirP(here)).toContain('a.test.ts');
+          expect(typeof (await readFile(here + 'a.test.ts', 'utf8'))).toBe('string');
+          expect(fs.promises.readdir).toBe(readdirP);
+        });
+    ")], "a.test.ts");
+    assert_eq!((r.pass, r.fail), (2, 0), "{:?}", r.error);
+}
