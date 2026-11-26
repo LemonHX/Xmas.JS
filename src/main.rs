@@ -118,6 +118,24 @@ enum Commands {
         args: Vec<OsString>,
     },
 
+    /// Run the tests (files named *.test.ts, *_test.ts, *.spec.ts and the like)
+    Test {
+        /// Only the files whose path contains one of these
+        filters: Vec<String>,
+
+        /// Per-test timeout in milliseconds
+        #[arg(long, default_value_t = 5000)]
+        timeout: u64,
+
+        /// Stop after the first failure
+        #[arg(long)]
+        bail: bool,
+
+        /// Only run tests whose full name matches this regular expression
+        #[arg(short = 't', long)]
+        test_name_pattern: Option<String>,
+    },
+
     // ==================== Server ====================
     /// Serve a module as an HTTP app
     Serve {
@@ -160,6 +178,20 @@ fn main() -> anyhow::Result<()> {
             workers,
         } => serve(&entry, &host, port, workers),
 
+        Commands::Test { filters, timeout, bail, test_name_pattern } => {
+            let options = xmas_runtime::testrun::Options {
+                timeout_ms: timeout,
+                bail,
+                name_pattern: test_name_pattern,
+            };
+            let root = std::env::current_dir()?;
+            if xmas_runtime::testrun::run(&root, &filters, &options) {
+                Ok(())
+            } else {
+                std::process::exit(1)
+            }
+        }
+
         // The package manager: one call per command, and the trace and the progress bars are put
         // away afterwards whatever the command did.
         command => package_command(command, options),
@@ -183,7 +215,9 @@ fn package_command(command: Commands, options: Options) -> anyhow::Result<()> {
         Commands::Why { name, version } => commands::cmd_why(&name, version.as_ref()),
         Commands::Create { name } => commands::cmd_create(&options, &name),
         Commands::Dlx { name, args } => commands::exec::cmd_download_and_exec(&options, &name, &args),
-        Commands::Serve { .. } => unreachable!("serve is handled before this"),
+        Commands::Serve { .. } | Commands::Test { .. } => {
+            unreachable!("serve and test are handled before this")
+        }
     };
 
     package::finish();

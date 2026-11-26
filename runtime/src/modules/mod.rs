@@ -25,6 +25,7 @@ pub mod server;
 pub mod sockets;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
+pub mod testing;
 pub mod stream;
 pub mod stream_web;
 pub mod string_decoder;

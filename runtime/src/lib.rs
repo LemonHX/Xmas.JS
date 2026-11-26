@@ -10,3 +10,4 @@ pub mod package;
 pub mod remote;
 pub mod resolve;
 pub mod testkit;
+pub mod testrun;
