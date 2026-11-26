@@ -25,7 +25,7 @@ use crate::package::{
     npm::{Dependency, DependencyTree},
     metadata::PackageMetadata,
     pool::Pool,
-    progress::{log_progress, log_verbose, log_warning},
+    progress::{begin, end, inc_progress, log_verbose, log_warning},
     scoped_path::scoped_join,
     util::{retry_async, VersionSpecifier},
 };
@@ -66,6 +66,19 @@ pub fn tree_size(trees: &FxHashMap<CompactString, DependencyTree>) -> usize {
             .sum::<usize>()
 }
 
+/// How many distinct packages the trees hold: a package that sits in several places is downloaded once.
+pub fn unique_count(trees: &FxHashMap<CompactString, DependencyTree>) -> usize {
+    fn walk(trees: &FxHashMap<CompactString, DependencyTree>, seen: &mut std::collections::HashSet<String>) {
+        for tree in trees.values() {
+            seen.insert(tree.root.id());
+            walk(&tree.children, seen);
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    walk(trees, &mut seen);
+    seen.len()
+}
+
 /// Local work runs on blocking threads: unpacking and linking are CPU and disk, not sockets.
 ///
 /// These permits are separate from the network ones (`net::IN_FLIGHT`) on purpose: a link that
@@ -86,10 +99,13 @@ async fn download_package(dep: Dependency) -> Result<()> {
 
     if metadata(target_path.join("_complete")).is_ok() {
         log_verbose(&format!("Skipped downloading {}", dep.id()));
+        inc_progress();
         return Ok(());
     }
 
     log_verbose(&format!("Downloading {}@{}", dep.name, dep.version));
+    let label = format!("↓ {}", dep.id());
+    begin(&label);
 
     let registry_auth = read_config()?
         .registry
@@ -123,7 +139,7 @@ async fn download_package(dep: Dependency) -> Result<()> {
     })
     .await?;
 
-    log_progress(&format!("Downloaded {}", dep.id().bright_blue()));
+    end(&label);
 
     Ok(())
 }
@@ -239,8 +255,12 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
             "Skipping installation for {}",
             dep.id().bright_blue()
         ));
+        inc_progress();
         return Ok(());
     }
+
+    let label = format!("↑ {}", dep.id());
+    begin(&label);
 
     let _ = remove_dir_all(&target_path);
 
@@ -258,7 +278,7 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
     })
     .await?;
 
-    log_progress(&format!("Installed {}", dep.id().bright_blue()));
+    end(&label);
 
     Ok(())
 }

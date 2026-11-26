@@ -33,7 +33,7 @@ pub use progress::PROGRESS_BAR;
 /// down here is only what a command reads.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Options {
-    /// Say what is happening, including the progress bars.
+    /// Say what is happening, as log lines above the progress bar.
     pub verbose: bool,
     /// Refuse to touch the lockfile.
     pub immutable: bool,

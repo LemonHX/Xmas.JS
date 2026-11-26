@@ -16,7 +16,7 @@ use crate::package::commands::exec::shell;
 use crate::package::config::read_config;
 use crate::package::npm::DependencyTree;
 use crate::package::metadata::PackageMetadata;
-use crate::package::plan::{execute_plan, setup_bins, tree_size, Plan};
+use crate::package::plan::{execute_plan, setup_bins, tree_size, unique_count, Plan};
 use crate::package::progress::{finish_progress, log_progress, log_verbose, set_total, PROGRESS_BAR};
 use crate::package::resolve::Lockfile;
 use crate::package::scoped_path::scoped_join;
@@ -183,7 +183,8 @@ pub fn install(args: &Options) -> Result<()> {
 
     let plan = prepare_plan(args, &package)?;
     let size = tree_size(&plan.trees);
-    set_total(size as u64 * 2); // download + install
+    // One step per distinct download, one per placed package.
+    set_total((unique_count(&plan.trees) + size) as u64);
 
     // A tree that already matches the plan can still hold what the plan dropped: removing a
     // package rewrites package.json and nothing else, so the directory it left behind stays
