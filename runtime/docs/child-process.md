@@ -29,9 +29,7 @@ which is what they are for.
 
 ## What is not here
 
-- **Only SIGKILL can be sent.** `kill('SIGTERM')` throws, with a message that says why: a chosen
-  signal means `kill(2)`, and this runtime does not take libc. `kill()` with no argument works
-  and means SIGKILL (TerminateProcess on windows).
+- **Signals are real on unix.** `kill('SIGTERM')` (a name, a number, or nothing, which means SIGTERM) is `kill(2)` on the child. Windows has no signals, so any of them ends the process.
 - **No `stdio` array.** A child's three streams are its pipes; `inherit`, `ignore` and passing a
   socket in are not implemented, because the third one would mean handing a socket through by
   hand.

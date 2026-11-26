@@ -53,6 +53,31 @@ pub struct Running {
 }
 
 impl Running {
+    /// Send a chosen signal. On unix this is kill(2) on the child's pid; windows has no signals, so
+    /// every one of them ends the process, as Node does there.
+    pub fn signal(&self, number: i32) -> Result<(), String> {
+        let mut child = self
+            .child
+            .lock()
+            .map_err(|_| "the child's lock is poisoned".to_string())?;
+        #[cfg(unix)]
+        {
+            if number == 0 {
+                return Ok(());
+            }
+            let pid = child.id() as libc::pid_t;
+            if unsafe { libc::kill(pid, number) } < 0 {
+                return Err(std::io::Error::last_os_error().to_string());
+            }
+            Ok(())
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = number;
+            child.kill().map_err(|error| error.to_string())
+        }
+    }
+
     /// Kill the child. There is no way to send it a chosen signal without libc, so this is SIGKILL
     /// on unix and TerminateProcess on windows, which is what "stop it" means on both.
     pub fn kill(&self) -> Result<(), String> {

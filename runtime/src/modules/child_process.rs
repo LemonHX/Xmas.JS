@@ -5,8 +5,7 @@
 //! so `js/child_process.js` builds those out of the same read/write/wait promises and this file
 //! is the bridge.
 //!
-//! Two deliberate gaps, both in docs/child-process.md: only SIGKILL can be sent (any other signal
-//! needs libc), and `stdio` is not configurable, because a child's third stream would have to be
+//! One deliberate gap, in docs/child-process.md: `stdio` is not configurable, because a child's third stream would have to be
 //! a socket this host passes through by hand.
 
 use std::cell::RefCell;
@@ -26,8 +25,48 @@ const PRELUDE: &str = include_str!("../../js/child_process.js");
 /// What a read resolves with when the pipe has closed.
 const EOF: &str = "eof";
 
-/// The signals this runtime can send. Everything else needs libc.
-const KILLABLE: &str = "SIGKILL";
+/// A signal as the name Node takes ('SIGTERM', 'TERM'), a number, or nothing (which means SIGTERM).
+#[cfg(unix)]
+fn signal_number(text: &str) -> Option<i32> {
+    if text.is_empty() {
+        return Some(libc::SIGTERM);
+    }
+    if let Ok(number) = text.parse::<i32>() {
+        return Some(number);
+    }
+    let upper = text.to_uppercase();
+    let name = upper.strip_prefix("SIG").unwrap_or(&upper);
+    Some(match name {
+        "HUP" => libc::SIGHUP,
+        "INT" => libc::SIGINT,
+        "QUIT" => libc::SIGQUIT,
+        "ILL" => libc::SIGILL,
+        "TRAP" => libc::SIGTRAP,
+        "ABRT" => libc::SIGABRT,
+        "BUS" => libc::SIGBUS,
+        "FPE" => libc::SIGFPE,
+        "KILL" => libc::SIGKILL,
+        "USR1" => libc::SIGUSR1,
+        "SEGV" => libc::SIGSEGV,
+        "USR2" => libc::SIGUSR2,
+        "PIPE" => libc::SIGPIPE,
+        "ALRM" => libc::SIGALRM,
+        "TERM" => libc::SIGTERM,
+        "CHLD" => libc::SIGCHLD,
+        "CONT" => libc::SIGCONT,
+        "STOP" => libc::SIGSTOP,
+        "TSTP" => libc::SIGTSTP,
+        "TTIN" => libc::SIGTTIN,
+        "TTOU" => libc::SIGTTOU,
+        _ => return None,
+    })
+}
+
+#[cfg(not(unix))]
+fn signal_number(text: &str) -> Option<i32> {
+    if text.is_empty() { return Some(15); }
+    Some(text.parse::<i32>().unwrap_or(9))
+}
 
 #[derive(Default)]
 struct State {
@@ -205,21 +244,14 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
                 "__cp_kill",
                 2,
                 move |scope: &mut Scope<'_>, id: f64, signal: String| -> Result<Value, RuntimeError> {
-                    let wanted = if signal.is_empty() {
-                        KILLABLE.to_string()
-                    } else {
-                        signal.to_uppercase()
+                    let number = match signal_number(&signal) {
+                        Some(number) => number,
+                        None => {
+                            return Err(throw(scope, &format!("Unknown signal: {signal}")));
+                        }
                     };
-                    if wanted != KILLABLE {
-                        return Err(throw(
-                            scope,
-                            &format!(
-                                "sending {wanted} needs libc, which this runtime does not take; {KILLABLE} is the signal it can send"
-                            ),
-                        ));
-                    }
                     match state.children.borrow().get(&(id as u64)) {
-                        Some(child) => match child.kill() {
+                        Some(child) => match child.signal(number) {
                             Ok(()) => Ok(Value::Bool(true)),
                             Err(message) => Err(throw(scope, &message)),
                         },

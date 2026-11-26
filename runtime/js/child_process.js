@@ -120,8 +120,26 @@
     try {
       __cp_spawn(id, line, throughShell ? '[]' : encodeArguments(arguments_), cwd, env, throughShell);
     } catch (error) {
-      // Node reports a failed spawn as an 'error' event on the returned object, not as a throw.
-      queueMicrotask(() => child.emit('error', error));
+      // Node reports a failed spawn as an 'error' event on the returned object, not as a throw, and
+      // the object still has its three streams (empty ones), which callers attach listeners to.
+      const m = /^([A-Z][A-Z0-9]{1,15}): /.exec(String(error && error.message));
+      const failure = error instanceof Error ? error : new Error(String(error));
+      if (failure.code === undefined) failure.code = m ? m[1] : 'ENOENT';
+      failure.errno = failure.code === 'ENOENT' ? -2 : failure.errno;
+      failure.syscall = 'spawn ' + String(command);
+      // Node's text: 'spawn <command> ENOENT', and a stack that starts with it (callers log the stack).
+      failure.message = 'spawn ' + String(command) + ' ' + failure.code;
+      failure.stack = 'Error: ' + failure.message + '\n' + String(failure.stack || '').split('\n').filter((l) => /^\s+at /.test(l)).join('\n');
+      failure.path = String(command);
+      failure.spawnargs = arguments_.map(String);
+      const empty = () => new Readable({ read() { this.push(null); } });
+      child.stdout = empty();
+      child.stderr = empty();
+      child.stdin = new Writable({ write(chunk, enc, done) { done(); } });
+      queueMicrotask(() => {
+        child.emit('error', failure);
+        child.emit('close', -2, null);
+      });
       return child;
     }
 
@@ -133,6 +151,11 @@
     __cp_wait(id).then(
       (report) => {
         const status = JSON.parse(report);
+        if (status.signal !== null && status.signal !== undefined && /^\d+$/.test(String(status.signal))) {
+          const names = globalThis.__os.constants.signals;
+          const found = Object.keys(names).find((name) => names[name] === Number(status.signal));
+          if (found) status.signal = found;
+        }
         child.exitCode = status.code;
         child.signalCode = status.signal;
         child.emit('exit', status.code, status.signal);

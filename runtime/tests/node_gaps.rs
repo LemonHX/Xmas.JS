@@ -257,3 +257,63 @@ fn fs_callbacks_and_promises_both_work() {
     ")], "a.test.ts");
     assert_eq!((r.pass, r.fail), (2, 0), "{:?}", r.error);
 }
+
+#[test]
+fn child_process_sends_the_signal_it_is_given() {
+    let r = run(&[("a.test.ts", "
+        import { spawn } from 'node:child_process';
+        test('SIGTERM ends a sleeping child and the close event says which signal', async () => {
+          const child = spawn('sleep', ['30']);
+          const closed = new Promise((resolve) => child.on('close', (code, signal) => resolve({ code, signal })));
+          expect(child.kill('SIGTERM')).toBe(true);
+          const { code, signal } = await closed;
+          expect(code === null || code !== 0).toBe(true);
+          expect(signal === 'SIGTERM' || signal === null).toBe(true);
+        });
+        test('an unknown signal name throws', () => {
+          const child = spawn('sleep', ['30']);
+          expect(() => child.kill('SIGNOPE')).toThrow();
+          child.kill('SIGKILL');
+        });
+    ")], "a.test.ts");
+    assert_eq!((r.pass, r.fail), (2, 0), "{:?}", r.error);
+}
+
+#[test]
+fn spawn_of_a_missing_program_has_streams_and_a_code() {
+    let r = run(&[("a.test.ts", "
+        import { spawn } from 'node:child_process';
+        test('missing program', async () => {
+          const child = spawn('/no/such/program-xmas', ['a']);
+          expect(typeof child.stdout.on).toBe('function');
+          expect(typeof child.stderr.on).toBe('function');
+          const error: any = await new Promise((resolve) => child.on('error', resolve));
+          expect(error.code).toBe('ENOENT');
+          expect(error.path).toBe('/no/such/program-xmas');
+          expect(error.message).toBe('spawn /no/such/program-xmas ENOENT');
+          expect(String(error.stack).startsWith('Error: spawn /no/such/program-xmas ENOENT')).toBe(true);
+        });
+    ")], "a.test.ts");
+    assert_eq!((r.pass, r.fail), (1, 0), "{:?}", r.error);
+}
+
+#[test]
+fn child_stderr_delivers_every_chunk_while_the_child_runs() {
+    let r = run(&[
+        ("fake.sh", "#!/bin/sh\nprintf 'a\\n' >&2; sleep 0.1\nprintf 'b\\n' >&2; sleep 0.1\nprintf 'c\\n' >&2\n"),
+        ("a.test.ts", "
+        import { spawn } from 'node:child_process';
+        import { fileURLToPath } from 'node:url';
+        test('chunks arrive before exit', async () => {
+          const script = fileURLToPath(new URL('./fake.sh', import.meta.url));
+          const child = spawn('sh', [script]);
+          const seen: string[] = [];
+          let exited = false;
+          child.stderr.on('data', (c) => seen.push((exited ? 'late:' : '') + String(c).trim()));
+          child.on('exit', () => { exited = true; });
+          await new Promise((resolve) => child.on('close', resolve));
+          expect(seen).toEqual(['a', 'b', 'c']);
+        });
+    ")], "a.test.ts");
+    assert_eq!((r.pass, r.fail), (1, 0), "{:?}", r.error);
+}

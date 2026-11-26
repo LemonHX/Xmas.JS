@@ -172,7 +172,7 @@ fn a_child_can_be_killed() {
         r#"(async () => {
             const child = spawn('sleep', ['30']);
             const closed = new Promise((done) => child.on('close', (code, signal) => done({ code, signal })));
-            child.kill();
+            child.kill('SIGKILL');
             const result = await closed;
             globalThis.result = String(result.code) + '/' + String(result.signal);
             globalThis.done = 'yes';
@@ -180,20 +180,20 @@ fn a_child_can_be_killed() {
     )
     .expect("start");
     run(&mut h, "done");
-    assert_eq!(h.expect_text("String(result)"), "null/9");
+    assert_eq!(h.expect_text("String(result)"), "null/SIGKILL");
 }
 
 #[test]
-fn a_signal_that_needs_libc_is_refused() {
+fn an_unknown_signal_is_refused_and_a_known_one_is_sent() {
     let mut h = harness();
     h.eval(
         r#"(async () => {
             const child = spawn('sleep', ['30']);
             try {
                 child.kill('SIGTERM');
-                globalThis.result = 'sent';
+                try { child.kill('SIGNOPE'); globalThis.result = 'sent'; } catch (error) { globalThis.result = 'refused'; }
             } catch (error) {
-                globalThis.result = error.message.indexOf('SIGKILL') >= 0 ? 'refused' : error.message;
+                globalThis.result = error.message;
             }
             child.kill();
             globalThis.done = 'yes';

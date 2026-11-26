@@ -83,6 +83,8 @@
       // to the data listeners instead of queueing it in the native buffer.
       if (this._flowing && this._waiters.length === 0 && lengthOf(this) === 0) {
         this.emit('data', asBytes(data));
+        // An asynchronous source (a child's pipe) is only asked for more when something pulls.
+        if (!this._reading) this._flush();
         return true;
       }
       const length = __stream_push(this._stream, data);
