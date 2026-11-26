@@ -355,3 +355,16 @@ fn structured_clone_copies_what_the_algorithm_copies() {
     ")], "a.test.ts");
     assert_eq!((r.pass, r.fail), (2, 0), "{:?}", r.error);
 }
+
+#[test]
+fn a_file_beats_a_directory_without_an_index() {
+    let r = run(&[
+        ("a.test.ts", "
+            import { which } from './metrics';
+            test('file', () => { expect(which).toBe('file'); });
+        "),
+        ("metrics.ts", "export const which = 'file';"),
+        ("metrics/output-rate.ts", "export const other = 1;"),
+    ], "a.test.ts");
+    assert_eq!((r.pass, r.fail), (1, 0), "{:?}", r.error);
+}

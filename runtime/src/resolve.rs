@@ -256,6 +256,13 @@ fn probe(candidate: &Path, mode: Mode) -> Option<String> {
         if let Some(found) = index(candidate) {
             return Some(found);
         }
+        // A directory with no entry is not the answer when a file of the same name and an extension
+        // exists beside it: './metrics' is metrics.ts even when a metrics/ directory is there too.
+        for extension in EXTENSIONS {
+            if let Some(found) = probe_with(candidate, extension) {
+                return Some(found);
+            }
+        }
         return None;
     }
 
