@@ -91,6 +91,15 @@ impl CancelHandle {
         self.0.store(true, Ordering::Relaxed);
     }
 
+    /// Puts the switch back, once whatever the cancel was stopping has unwound.
+    ///
+    /// A cancel is a latch: interrupt keeps answering yes until it is cleared, so a driver that
+    /// cancelled one run would refuse every loop after it. Clearing is what makes the realm
+    /// usable again after a kill.
+    pub fn revoke(&self) {
+        self.0.store(false, Ordering::Relaxed);
+    }
+
     pub fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::Relaxed)
     }

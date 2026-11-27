@@ -1,5 +1,7 @@
 //! xmas:realm: a source string as a module, evaluated on demand.
 
+use std::time::Duration;
+
 use quickjs_oxide::engine::api::core::Value;
 use xmas_runtime::testkit::{Harness, text_of};
 
@@ -177,4 +179,78 @@ fn evaluate_refuses_a_source_that_is_not_a_string() {
         "try { globalThis.__r.evaluate(42); return 'no throw'; } catch (e) { return e.name; }",
     );
     assert_eq!(out, "TypeError");
+}
+
+/// The promise `evaluate` answered with is rejected when the realm is killed under it, rather
+/// than left waiting for a module the engine threw out of.
+#[test]
+fn kill_rejects_a_waiting_evaluation() {
+    let mut h = Harness::with_modules();
+    realm(&mut h);
+    h.eval(
+        "globalThis.__state = 'pending';
+         globalThis.__r.evaluate('await new Promise(function () {})').then(
+           function () { globalThis.__state = 'resolved'; },
+           function (e) { globalThis.__state = 'rejected:' + e.message; });
+         undefined",
+    )
+    .unwrap();
+    for _ in 0..8 {
+        let _ = h.driver().slice();
+    }
+    run(&mut h, "globalThis.__r.kill(); return 'killed';");
+    for _ in 0..8 {
+        let _ = h.driver().slice();
+    }
+    let state = run(&mut h, "return String(globalThis.__state);");
+    assert!(state.contains("rejected"), "the evaluation was not rejected: {state}");
+}
+
+/// A loop the realm is running is interrupted by its kill switch, from another thread -- which is
+/// the only way it can be, because JS gets no turn while the loop spins.
+#[test]
+fn kill_stops_a_running_loop() {
+    let mut h = Harness::with_modules();
+    realm(&mut h);
+    h.eval(
+        "globalThis.__state = 'pending';
+         globalThis.__r.evaluate('globalThis.__ticks = 0; while (true) { globalThis.__ticks = globalThis.__ticks + 1; }').then(
+           function () { globalThis.__state = 'resolved'; },
+           function (e) { globalThis.__state = 'rejected:' + e.message; });
+         undefined",
+    )
+    .unwrap();
+
+    let switch = h.driver().host.realms.switch(0).expect("realm 0");
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(250));
+        switch.kill();
+    });
+
+    let mut stopped = false;
+    for _ in 0..50 {
+        if h
+            .driver()
+            .timed(Duration::from_millis(400), |d| d.slice())
+            .is_err()
+        {
+            stopped = true;
+            break;
+        }
+    }
+    for _ in 0..40 {
+        let _ = h.driver().slice();
+    }
+
+    assert!(stopped, "the loop was never interrupted");
+    let state = run(&mut h, "return String(globalThis.__state);");
+    assert!(state.contains("rejected"), "the evaluation was not rejected: {state}");
+    assert_eq!(run(&mut h, "return String(globalThis.__r.killed);"), "true");
+    // The driver is not left poisoned by the kill: a later loop still runs.
+    assert_eq!(run(&mut h, "for (let i = 0; i < 1000; i++) {} return String(1 + 1);"), "2");
+    let out = run(
+        &mut h,
+        "try { globalThis.__r.evaluate('1'); return 'no throw'; } catch (e) { return e.message; }",
+    );
+    assert!(out.contains("was killed"), "{out}");
 }

@@ -14,9 +14,17 @@
 //! which language to compile: the compiler picks TypeScript or JavaScript by the last dot. A
 //! relative import inside the source resolves against the name's own directory, which the run
 //! number does not disturb.
+//!
+//! Killing has to stop code that is already running -- a `while` loop the model wrote -- and JS
+//! gets no turn to do anything while that loop runs. So the flag lives here, in Rust, and the
+//! interrupt the engine checks reads it: `kill()` calls `__realm_kill`, which sets the flag, the
+//! loop unwinds with an ordinary throw on its next statement, and the driver is usable again
+//! because the interrupt was only ever `some killed realm is running` rather than a latch.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use quickjs_oxide::engine::api::core::{JsString, RuntimeError, Scope, Value};
 
@@ -39,12 +47,193 @@ fn counted(name: &str, run: u64) -> String {
     }
 }
 
+/// The realms of one driver, and which of them is running right now.
+///
+/// The engine's interrupt asks one question -- should this run stop -- and this is the answer: the
+/// realm that entered is killed. A run that is not from a realm (a plain `eval`) is never
+/// interrupted, so a killed realm cannot poison the rest of the driver.
+#[derive(Clone, Default)]
+pub struct Realms {
+    /// One switch per realm. `Arc<AtomicBool>` rather than a plain flag because the one caller a
+    /// JS-level `kill()` cannot serve is the interesting one: something outside this thread
+    /// stopping a run that is already spinning.
+    killed: Rc<RefCell<Vec<Arc<AtomicBool>>>>,
+    /// The realm whose source the engine is currently evaluating, if any.
+    running: Rc<Cell<Option<usize>>>,
+}
+
+/// A realm's kill switch, in a form another thread can hold.
+///
+/// This is how an embedder stops an agent: it keeps the handle, and calls `kill` from whatever
+/// thread the stop comes in on. It works while the realm's code is running, which a JS call to
+/// `realm.kill()` cannot, because JS does not get a turn then.
+#[derive(Clone)]
+pub struct KillSwitch(Arc<AtomicBool>);
+
+impl KillSwitch {
+    pub fn kill(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+
+    pub fn killed(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+impl Realms {
+    fn alive(&self, id: usize) -> bool {
+        self.killed
+            .borrow()
+            .get(id)
+            .is_none_or(|switch| !switch.load(Ordering::Relaxed))
+    }
+
+    fn kill(&self, id: usize) {
+        if let Some(switch) = self.killed.borrow().get(id) {
+            switch.store(true, Ordering::Relaxed);
+        }
+    }
+
+    fn add(&self) -> usize {
+        let mut killed = self.killed.borrow_mut();
+        killed.push(Arc::new(AtomicBool::new(false)));
+        killed.len() - 1
+    }
+
+    /// The switch for realm `id`, for an embedder that has to kill it from another thread.
+    pub fn switch(&self, id: usize) -> Option<KillSwitch> {
+        self.killed.borrow().get(id).map(|s| KillSwitch(Arc::clone(s)))
+    }
+
+    /// Whether the evaluation in progress belongs to a realm that was killed under it.
+    pub fn interrupted(&self) -> bool {
+        match self.running.get() {
+            Some(id) => !self.alive(id),
+            None => false,
+        }
+    }
+
+    /// What the interrupt is looking at, for a test that has to see why it did not fire.
+    pub fn watching(&self) -> Option<usize> {
+        self.running.get()
+    }
+
+    /// The realm whose source is being evaluated from now on.
+    ///
+    /// Set before the `import` that starts it, because the interrupt has to answer during that
+    /// import and JS gets no turn then.
+    fn begin(&self, id: usize) {
+        self.running.set(Some(id));
+    }
+
+    /// Nothing is being evaluated any more. Called when the evaluation settles, and by `abandon`
+    /// when it was stopped instead: the interrupt has to stop answering once the run is over, or
+    /// the driver would refuse every loop after it.
+    pub fn end(&self) {
+        self.running.set(None);
+    }
+}
+
+/// Rejects whatever was waiting on an evaluation the interrupt stopped.
+///
+/// The module's evaluation was thrown out of, so no `import` answer is coming and whoever awaited
+/// `evaluate` would wait forever. Returns whether anything was waiting; nothing is when the
+/// interrupt came from a deadline or a driver-level cancel rather than a realm kill.
+pub fn abandon(driver: &mut Driver, reason: &str) -> bool {
+    let call = format!(
+        "globalThis.__realm_module.abandon(new Error({}))",
+        super::quote(reason)
+    );
+    matches!(driver.context().eval(&call), Ok(Value::Bool(true)))
+}
+
 pub fn install(driver: &mut Driver) -> Result<(), String> {
     let global = driver
         .context()
         .global_object()
         .map_err(|error| format!("global: {error}"))?;
+    let realms = Realms::default();
     let counter = Rc::new(Cell::new(0u64));
+
+    {
+        let realms = realms.clone();
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__realm_add",
+                0,
+                move |_: &mut Scope<'_>| Ok::<Value, RuntimeError>(Value::Float(realms.add() as f64)),
+            )
+            .map_err(|error| format!("__realm_add: {error}"))?;
+    }
+
+    {
+        let realms = realms.clone();
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__realm_kill",
+                1,
+                move |_: &mut Scope<'_>, id: f64| {
+                    if id >= 0.0 {
+                        realms.kill(id as usize);
+                    }
+                    Ok::<Value, RuntimeError>(Value::Undefined)
+                },
+            )
+            .map_err(|error| format!("__realm_kill: {error}"))?;
+    }
+
+    {
+        let realms = realms.clone();
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__realm_alive",
+                1,
+                move |_: &mut Scope<'_>, id: f64| {
+                    Ok::<Value, RuntimeError>(Value::Bool(id >= 0.0 && realms.alive(id as usize)))
+                },
+            )
+            .map_err(|error| format!("__realm_alive: {error}"))?;
+    }
+
+    {
+        let realms = realms.clone();
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__realm_begin",
+                1,
+                move |_: &mut Scope<'_>, id: f64| {
+                    if id >= 0.0 {
+                        realms.begin(id as usize);
+                    }
+                    Ok::<Value, RuntimeError>(Value::Undefined)
+                },
+            )
+            .map_err(|error| format!("__realm_begin: {error}"))?;
+    }
+
+    {
+        let realms = realms.clone();
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__realm_end",
+                0,
+                move |_: &mut Scope<'_>| {
+                    realms.end();
+                    Ok::<Value, RuntimeError>(Value::Undefined)
+                },
+            )
+            .map_err(|error| format!("__realm_end: {error}"))?;
+    }
 
     {
         let modules = driver.host.modules.clone();
@@ -81,6 +270,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
         .context()
         .eval("globalThis.__realm_module")
         .map_err(|error| format!("__realm_module: {error}"))?;
+    driver.host.realms = realms;
     let names = ["createRealm", "Realm", "default"];
     let exports = super::collect(driver, &module, &names)?;
     super::define_name(driver, "xmas:realm", exports)

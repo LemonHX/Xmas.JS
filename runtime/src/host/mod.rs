@@ -40,6 +40,8 @@ pub struct Host {
     pub modules: Modules,
     /// The return channel for host async work; fs and future crypto go through it.
     pub pending: Pending,
+    /// Which realms exist and which of them is being evaluated; the interrupt reads it.
+    pub realms: crate::modules::realm::Realms,
 }
 
 impl Default for Host {
@@ -68,6 +70,7 @@ impl Host {
             timers: Timers::new(),
             modules: Modules::new(),
             pending: Pending::new(),
+            realms: crate::modules::realm::Realms::default(),
         }
     }
 
@@ -76,6 +79,7 @@ impl Host {
         Engine {
             clock: self.clock.clone(),
             console: self.console.clone(),
+            realms: self.realms.clone(),
         }
     }
 }
@@ -84,12 +88,15 @@ impl Host {
 pub struct Engine {
     clock: Clock,
     console: Console,
+    realms: crate::modules::realm::Realms,
 }
 
 impl EngineHostTrait for Engine {
-    /// Timeout or an external stop request. Setting a deadline per request depends on this line.
+    /// A timeout, an external stop request, or a realm killed under its own run. The last one is
+    /// what makes `realm.kill()` stop a loop that is already spinning: the flag is in Rust, so it
+    /// is set whatever JS is doing.
     fn interrupt(&mut self) -> bool {
-        self.clock.stop_requested()
+        self.realms.interrupted() || self.clock.stop_requested()
     }
 
     /// The engine's own output (such as qjs's print) goes to our console, and tests can intercept it.

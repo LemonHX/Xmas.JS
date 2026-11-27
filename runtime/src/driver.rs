@@ -282,7 +282,18 @@ impl Driver {
             let outcome = self.runtime.run_pending_job();
             let outcome = match outcome {
                 Ok(outcome) => outcome,
-                Err(error) => return Err(self.render(error)),
+                Err(error) => {
+                    let message = self.render(error);
+                    // A run the realm's kill switch stopped is thrown out of where it stands, so
+                    // the module's evaluation never answers. Whoever awaited `evaluate` would
+                    // wait forever: reject them here, and let go of the interrupt so the driver
+                    // is not left refusing every loop after it.
+                    if self.host.realms.interrupted() {
+                        self.host.realms.end();
+                        crate::modules::realm::abandon(self, "the realm was killed while this ran");
+                    }
+                    return Err(message);
+                }
             };
             if !outcome.executed() {
                 break;

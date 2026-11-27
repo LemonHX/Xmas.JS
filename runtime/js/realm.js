@@ -18,12 +18,17 @@
   // Plain fields, not #private: the same shape the other preludes keep, and it survives being
   // read by a tool that parses this file as a class body.
   const NAME = new WeakMap();
-  const KILLED = new WeakMap();
+  const ID = new WeakMap();
+
+  // A run that was waiting on a killed realm has a promise nobody will settle: the engine threw
+  // out of the module's evaluation, so no import answer is coming. Keyed by realm id, so killing
+  // one realm leaves the evaluations of every other realm alone.
+  const WAITING = new Map();
 
   class Realm {
     constructor(options) {
       NAME.set(this, (options && options.name) || 'realm');
-      KILLED.set(this, false);
+      ID.set(this, __realm_add());
     }
 
     get name() {
@@ -31,7 +36,7 @@
     }
 
     get killed() {
-      return KILLED.get(this);
+      return !__realm_alive(ID.get(this));
     }
 
     /**
@@ -41,7 +46,8 @@
      * undefined for a module that has none, as eta's own realm answers.
      */
     evaluate(source, options) {
-      if (KILLED.get(this)) {
+      const id = ID.get(this);
+      if (!__realm_alive(id)) {
         throw new Error('realm "' + NAME.get(this) + '" was killed');
       }
       if (typeof source !== 'string') {
@@ -49,17 +55,52 @@
       }
       const name = (options && options.identifier) || 'esm.js';
       const where = __realm_load(name, source);
-      return asModule(where).then(function (namespace) {
+
+      // From here until the evaluation settles the engine is running this realm's code, and the
+      // interrupt answers by looking at that. It has to be said before the import, because the
+      // import is where the loop runs.
+      const entry = { reject: null, id };
+      const waiting = new Promise(function (_, reject) {
+        entry.reject = reject;
+      });
+      let pending = WAITING.get(id);
+      if (!pending) WAITING.set(id, (pending = new Set()));
+      pending.add(entry);
+
+      const done = function () {
+        pending.delete(entry);
+        if (pending.size === 0) WAITING.delete(id);
+        __realm_end();
+      };
+
+      __realm_begin(id);
+      const settled = asModule(where).then(function (namespace) {
+        done();
         return {
           value: Object.hasOwn(namespace, 'default') ? namespace.default : undefined,
           identifier: where,
         };
+      }, function (error) {
+        done();
+        throw error;
       });
+      // Whichever comes first: the module finishing, or the realm being killed under it.
+      return Promise.race([settled, waiting]);
     }
 
-    /** Abandons the realm: later calls throw. Nothing already running is interrupted. */
+    /**
+     * Stops the realm: code running now is interrupted on its next statement, later calls throw,
+     * and an evaluation waiting on it is rejected rather than left hanging.
+     */
     kill() {
-      KILLED.set(this, true);
+      const id = ID.get(this);
+      __realm_kill(id);
+      const reason = new Error('realm "' + NAME.get(this) + '" was killed');
+      const pending = WAITING.get(id);
+      if (pending) {
+        WAITING.delete(id);
+        for (const entry of pending) entry.reject(reason);
+      }
     }
   }
 
@@ -67,5 +108,23 @@
     return new Realm(options);
   }
 
-  globalThis.__realm_module = { Realm, createRealm, default: createRealm };
+  /**
+   * Rejects every evaluation still waiting, saying why. Called by the driver when an interrupt
+   * stopped a run: the module's evaluation was thrown out of, so no import answer is coming and
+   * whoever awaited it would wait forever without this.
+   */
+  function abandon(reason) {
+    let first = null;
+    for (const [id, pending] of WAITING) {
+      WAITING.delete(id);
+      for (const entry of pending) {
+        entry.reject(reason instanceof Error ? reason : new Error(String(reason)));
+        if (!first) first = entry;
+      }
+    }
+    __realm_end();
+    return first !== null;
+  }
+
+  globalThis.__realm_module = { abandon: abandon, createRealm: createRealm, Realm: Realm, default: createRealm };
 })();
