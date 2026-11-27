@@ -16,8 +16,16 @@ three `*Sync` calls block the realm thread until the command is gone.
 one argument whatever it contains. `exec` and `execSync` put the line through the platform shell,
 so `|`, `&&` and redirection work there and nowhere else.
 
-The options that are read: `cwd`, `env`, `shell`, `encoding`, `maxBuffer`, and `failOnError`
-(the last two on the `*Sync` calls).
+The options that are read: `cwd`, `env`, `shell`, `stdio`, `encoding`, `maxBuffer`, and
+`failOnError` (the last two on the `*Sync` calls).
+
+`stdio` is one answer for all three streams: `'inherit'` lets the child write to this process's
+own descriptors, `'ignore'` gives it nothing, and `'pipe'` (the default) is what makes
+`stdout` and `stderr` readable. An array is honoured when every entry agrees; a mix keeps the
+pipes. `'inherit'` is what a program that talks to the terminal needs, and with it the two
+readers report end at once because there is nothing of ours to read:
+
+    spawn('git', ['status'], { stdio: 'inherit' });
 
 ## Where it lives
 
@@ -30,9 +38,9 @@ which is what they are for.
 ## What is not here
 
 - **Signals are real on unix.** `kill('SIGTERM')` (a name, a number, or nothing, which means SIGTERM) is `kill(2)` on the child. Windows has no signals, so any of them ends the process.
-- **No `stdio` array.** A child's three streams are its pipes; `inherit`, `ignore` and passing a
-  socket in are not implemented, because the third one would mean handing a socket through by
-  hand.
+- **No `ipc` and no file descriptors in `stdio`.** A socket or a FileHandle handed to a child
+  would mean passing a descriptor through by hand; `'inherit'`, `'ignore'` and `'pipe'` are
+  the three that are implemented.
 - **No `detached`, no `input` option, no `uid`/`gid`.** Same reason as the signal one: they are
   process attributes that need the platform's own API.
 - **`pid` is always -1.** The id the caller sees is this runtime's, not the operating system's.

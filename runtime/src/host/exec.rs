@@ -40,6 +40,16 @@ pub enum Stdin {
     Pipe,
 }
 
+/// Where the command's output goes.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Stdout {
+    /// A pipe, read through `Running::stdout` and `Running::stderr`.
+    Pipe,
+    /// The file descriptors this process already has. Nothing is captured, which is what a
+    /// program that talks to the terminal wants: its output is the terminal's.
+    Inherit,
+}
+
 /// One running command.
 pub struct Running {
     child: Arc<Mutex<Child>>,
@@ -103,17 +113,38 @@ pub fn spawn(
     env: &[(String, String)],
     stdin: Stdin,
 ) -> Result<Running, String> {
-    let mut child = start(recipe, cwd, env, stdin)?;
+    spawn_with_stdout(recipe, cwd, env, stdin, Stdout::Pipe)
+}
+
+/// Start a command whose output goes where the caller says.
+///
+/// With [`Stdout::Inherit`] the two receivers come back already closed: there are no bytes to
+/// read, because the child wrote them itself. `stdin` still works the same either way.
+pub fn spawn_with_stdout(
+    recipe: Recipe<'_>,
+    cwd: Option<&str>,
+    env: &[(String, String)],
+    stdin: Stdin,
+    stdout_where: Stdout,
+) -> Result<Running, String> {
+    let mut child = start(recipe, cwd, env, stdin, stdout_where)?;
 
     let (stdout_tx, stdout) = smol::channel::bounded(BACKLOG);
     let (stderr_tx, stderr) = smol::channel::bounded(BACKLOG);
     let (status_tx, status) = smol::channel::bounded(1);
 
-    if let Some(pipe) = child.stdout.take() {
-        pump(pipe, stdout_tx);
-    }
-    if let Some(pipe) = child.stderr.take() {
-        pump(pipe, stderr_tx);
+    if stdout_where == Stdout::Inherit {
+        // An inherited stream is not a pipe of ours, so nothing is ever written into these:
+        // closing the senders here is what makes a reader see end-of-input instead of waiting.
+        drop(stdout_tx);
+        drop(stderr_tx);
+    } else {
+        if let Some(pipe) = child.stdout.take() {
+            pump(pipe, stdout_tx);
+        }
+        if let Some(pipe) = child.stderr.take() {
+            pump(pipe, stderr_tx);
+        }
     }
 
     let stdin = child.stdin.take().map(feed);
@@ -138,7 +169,7 @@ pub fn capture(
     env: &[(String, String)],
     input: Option<&[u8]>,
 ) -> Result<Captured, String> {
-    let mut child = start(recipe, cwd, env, Stdin::Pipe)?;
+    let mut child = start(recipe, cwd, env, Stdin::Pipe, Stdout::Pipe)?;
 
     let writing = child.stdin.take().map(|pipe| {
         let input = input.unwrap_or_default().to_vec();
@@ -192,6 +223,7 @@ fn start(
     cwd: Option<&str>,
     env: &[(String, String)],
     stdin: Stdin,
+    stdout: Stdout,
 ) -> Result<Child, String> {
     let mut builder = match recipe {
         Recipe::Shell(command) => shell(command),
@@ -213,8 +245,14 @@ fn start(
             Stdin::Null => Stdio::null(),
             Stdin::Pipe => Stdio::piped(),
         })
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stdout(match stdout {
+            Stdout::Pipe => Stdio::piped(),
+            Stdout::Inherit => Stdio::inherit(),
+        })
+        .stderr(match stdout {
+            Stdout::Pipe => Stdio::piped(),
+            Stdout::Inherit => Stdio::inherit(),
+        });
 
     builder
         .spawn()

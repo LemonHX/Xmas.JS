@@ -27,6 +27,46 @@ fn harness() -> Harness {
 }
 
 #[test]
+fn spawn_with_inherit_hands_the_output_to_this_process() {
+    let mut h = harness();
+    // The child writes to the descriptors this process already has, so nothing comes back on a
+    // stream: the two readers report end at once, which is what a caller waiting on them sees.
+    h.eval(
+        r#"(async () => {
+            const child = spawn('printf', ['inherited'], { stdio: 'inherit' });
+            const chunks = [];
+            child.stdout.on('data', (chunk) => chunks.push(chunk));
+            await new Promise((done) => child.on('close', done));
+            globalThis.result = chunks.length;
+            globalThis.code = child.exitCode;
+            globalThis.done = 'yes';
+        })()"#,
+    )
+    .expect("eval");
+    run(&mut h, "done");
+    assert_eq!(h.expect_text("String(globalThis.result)"), "0");
+    assert_eq!(h.expect_text("String(globalThis.code)"), "0");
+}
+
+#[test]
+fn spawn_pipes_when_asked_for_pipes() {
+    let mut h = harness();
+    h.eval(
+        r#"(async () => {
+            const child = spawn('printf', ['piped'], { stdio: ['ignore', 'pipe', 'pipe'] });
+            const chunks = [];
+            child.stdout.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+            await new Promise((done) => child.on('close', done));
+            globalThis.result = chunks.map((chunk) => chunk.toString()).join('');
+            globalThis.done = 'yes';
+        })()"#,
+    )
+    .expect("eval");
+    run(&mut h, "done");
+    assert_eq!(h.expect_text("String(globalThis.result)"), "piped");
+}
+
+#[test]
 fn spawn_hands_the_output_back_as_a_stream() {
     let mut h = harness();
     h.eval(

@@ -8,9 +8,10 @@ use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::env::{current_dir, current_exe, set_current_dir, temp_dir};
 use std::ffi::{OsStr, OsString};
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
-use which::which;
+use which::{which, which_in};
 
 use crate::package::commands::add::add_packages;
 use crate::package::commands::{install, new_path};
@@ -49,6 +50,49 @@ pub fn cmd_download_and_exec(
     )
 }
 
+/// The interpreter a script asks for on its first line, when that interpreter is node.
+///
+/// A package's bin is a script with a shebang, and the ones on npm overwhelmingly name node. There
+/// is no node here: this runtime is what runs JavaScript. So a script that asks for node is handed
+/// to this executable instead, and the shebang resolves to the interpreter that exists.
+///
+/// Anything else -- `#!/bin/sh`, `#!/usr/bin/env python3` -- is left alone: it asks for a program
+/// this runtime is not.
+fn asks_for_node(path: &Path) -> bool {
+    use std::io::Read;
+
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut first = [0u8; 128];
+    let Ok(read) = file.read(&mut first) else {
+        return false;
+    };
+    let Ok(line) = std::str::from_utf8(&first[..read]) else {
+        return false;
+    };
+    let Some(line) = line.lines().next() else {
+        return false;
+    };
+    let Some(rest) = line.strip_prefix("#!") else {
+        return false;
+    };
+
+    let mut words = rest.split_whitespace();
+    match words.next() {
+        // `#!/usr/bin/env node`, with or without flags before the name (`env -S node`).
+        Some(env) if env.ends_with("/env") || env == "env" => {
+            words.filter(|w| !w.starts_with('-')).next() == Some("node")
+        }
+        Some(interpreter) => {
+            Path::new(interpreter)
+                .file_name()
+                .is_some_and(|name| name == "node")
+        }
+        None => false,
+    }
+}
+
 /// Execute a command with arguments
 ///
 /// On unix this replaces the process, which is what makes `xmas dlx` and `xmas run` behave like
@@ -61,6 +105,29 @@ pub fn exec_with_args(
     args: &[OsString],
     env: Vec<(OsString, OsString)>,
 ) -> Result<()> {
+    // The name is looked up on the PATH handed to the child, not this process's: `xmas exec`
+    // puts node_modules/.bin there for the child only, and this process may never have had it.
+    let path = env
+        .iter()
+        .find(|(name, _)| name == "PATH")
+        .map(|(_, value)| value.clone());
+    let cwd = current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let resolved = path
+        .as_deref()
+        .and_then(|path| which_in(exe, Some(path), &cwd).ok())
+        .unwrap_or_else(|| PathBuf::from(exe));
+
+    // A bin script that asks for node runs on this runtime.
+    let (exe, args) = if asks_for_node(&resolved) {
+        let mut args = args.to_vec();
+        args.insert(0, resolved.into_os_string());
+        (current_exe()?.into_os_string(), args)
+    } else {
+        (exe.to_os_string(), args.to_vec())
+    };
+    let exe = exe.as_os_str();
+    let args = args.as_slice();
+
     let mut args = args.to_vec();
     args.insert(0, exe.to_os_string());
 

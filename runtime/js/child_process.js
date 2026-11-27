@@ -4,8 +4,8 @@
 // read/write/wait promises `$` uses, exec() and execFile() collect that into one callback, and the
 // three *Sync calls block the realm thread the way a synchronous call has to.
 //
-// Known gaps, written down in docs/child-process.md: only SIGKILL can be sent, and stdio is not
-// configurable.
+// Known gap, written down in docs/child-process.md: only SIGKILL can be sent. stdio is honoured
+// for 'inherit', 'pipe' and 'ignore'; 'ipc' and file descriptors are not.
 
 (function (global) {
   'use strict';
@@ -95,6 +95,20 @@
     return JSON.stringify(list);
   }
 
+  // Node's stdio option has many shapes; what a caller means by the ones that matter here is one
+  // answer for all three streams. A string ('inherit', 'ignore', 'pipe') is that answer, and an
+  // array is when every entry agrees -- a mix keeps the pipes, which is what can be read back.
+  function stdioMode(setting) {
+    const one = (value) => (value === 1 || value === 2 ? 'inherit' : value);
+    if (typeof setting === 'string') return one(setting);
+    if (Array.isArray(setting)) {
+      const names = setting.map(one);
+      const all = names.every((name) => name === names[0]);
+      return all ? names[0] : 'pipe';
+    }
+    return 'pipe';
+  }
+
   function spawn(command, args, options) {
     let arguments_ = args;
     let settings = options;
@@ -118,7 +132,7 @@
     child.spawnargs = throughShell ? [line] : [String(command)].concat(arguments_.map(String));
 
     try {
-      __cp_spawn(id, line, throughShell ? '[]' : encodeArguments(arguments_), cwd, env, throughShell);
+      __cp_spawn(id, line, throughShell ? '[]' : encodeArguments(arguments_), cwd, env, throughShell, stdioMode(settings.stdio));
     } catch (error) {
       // Node reports a failed spawn as an 'error' event on the returned object, not as a throw, and
       // the object still has its three streams (empty ones), which callers attach listeners to.
@@ -143,8 +157,16 @@
       return child;
     }
 
-    child.stdout = reader(id, 'stdout');
-    child.stderr = reader(id, 'stderr');
+    const inherited = stdioMode(settings.stdio) === 'inherit';
+    if (inherited) {
+      // The child writes to this process's own descriptors; reading them back is not possible.
+      const empty = () => new Readable({ read() { this.push(null); } });
+      child.stdout = empty();
+      child.stderr = empty();
+    } else {
+      child.stdout = reader(id, 'stdout');
+      child.stderr = reader(id, 'stderr');
+    }
     child.stdin = writer(id);
     child.pid = -1;
 
@@ -161,9 +183,15 @@
         child.emit('exit', status.code, status.signal);
         // 'close' comes after the pipes are done, which is what lets a caller read the last bytes
         // out of stdout without racing the exit.
+        // An inherited stream was never a pipe of ours: nothing was written into it, so waiting
+        // for it to end would be waiting for an event that has no reason to come.
         const pending = [];
-        if (!child.stdout.readableEnded) pending.push(ended(child.stdout));
-        if (!child.stderr.readableEnded) pending.push(ended(child.stderr));
+        if (inherited) {
+          // nothing to drain
+        } else {
+          if (child.stdout && !child.stdout.readableEnded) pending.push(ended(child.stdout));
+          if (child.stderr && !child.stderr.readableEnded) pending.push(ended(child.stderr));
+        }
         Promise.all(pending).then(() => {
           __cp_close(id);
           child.emit('close', status.code, status.signal);

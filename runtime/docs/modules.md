@@ -3,6 +3,20 @@
 A served app is a module graph, not a single file. This is the whole of the rule that turns the
 string in an `import` into a file, and what it does not do.
 
+
+## createRequire
+
+`createRequire(from)` returns a function that serves the modules this runtime ships — `require('fs')`
+and `require('node:path')` hand back the same objects `import` does — and, for anything else, asks
+the module resolver for a file next to `from` and hands the path back. `require.resolve` returns
+that path. There is still no synchronous loader for a file that has to be compiled, so that last
+step answers only where the file is.
+
+    import { createRequire } from 'node:module';
+    const require = createRequire(import.meta.url);
+    const { readFileSync } = require('fs');
+    const where = require.resolve('some-package/package.json');
+
 ## What the engine asks for
 
 Two questions per import, both answered by `runtime/src/host/modules.rs`:

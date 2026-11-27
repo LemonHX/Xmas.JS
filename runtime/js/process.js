@@ -135,6 +135,22 @@
   process.uptime = () => __process_uptime();
   process.memoryUsage = () => JSON.parse(__process_memory());
   process.memoryUsage.rss = () => JSON.parse(__process_memory()).rss;
+  const stdin = new EE();
+  stdin.fd = 0;
+  stdin.isTTY = __process_isatty(0);
+  // A read is what the runtime can do; this has no pipe to block on, so it reports end of input
+  // instead of pretending a line arrived.
+  stdin.read = () => null;
+  stdin.pause = () => stdin;
+  stdin.resume = () => stdin;
+  stdin.setEncoding = () => stdin;
+  stdin.setRawMode = () => stdin;
+  stdin.ref = () => stdin;
+  stdin.unref = () => stdin;
+  stdin.destroy = () => stdin;
+  stdin.on = stdin.on.bind(stdin);
+
+  process.stdin = stdin;
   process.stdout = stdio(1, 'stdout');
   process.stderr = stdio(2, 'stderr');
   process.exit = exit;

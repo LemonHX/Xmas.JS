@@ -110,6 +110,44 @@ fn events_timers_module_and_fs_descriptors() {
 }
 
 #[test]
+fn create_require_serves_the_shipped_modules() {
+    let r = run(&[("a.test.ts", "
+        import { createRequire } from 'node:module';
+        test('builtin', () => {
+          const require = createRequire(import.meta.url);
+          expect(typeof require('fs').readFileSync).toBe('function');
+          expect(typeof require('node:path').join).toBe('function');
+          expect(require.resolve('node:path')).toBe('path');
+        });
+        test('missing', () => {
+          const require = createRequire(import.meta.url);
+          let code = null;
+          try { require('nope-not-a-module'); } catch (error) { code = error.code; }
+          expect(code).toBe('MODULE_NOT_FOUND');
+        });
+    ")], "a.test.ts");
+    assert_eq!((r.pass, r.fail), (2, 0), "{:?}", r.error);
+}
+
+#[test]
+fn process_has_all_three_standard_streams() {
+    let r = run(&[("a.test.ts", "
+        test('stdin', () => {
+          expect(typeof process.stdin).toBe('object');
+          expect(typeof process.stdin.isTTY).toBe('boolean');
+          expect(typeof process.stdin.read).toBe('function');
+          expect(typeof process.stdin.setRawMode).toBe('function');
+        });
+        test('stdout and stderr', () => {
+          expect(typeof process.stdout.isTTY).toBe('boolean');
+          expect(typeof process.stderr.isTTY).toBe('boolean');
+          expect(typeof process.stdout.write).toBe('function');
+        });
+    ")], "a.test.ts");
+    assert_eq!((r.pass, r.fail), (2, 0), "{:?}", r.error);
+}
+
+#[test]
 fn wildcard_exports_and_commonjs_reexports() {
     let r = run(&[
         ("a.test.ts", "

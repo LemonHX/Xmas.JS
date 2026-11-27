@@ -88,14 +88,15 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             .define_function(
                 &global,
                 "__cp_spawn",
-                6,
+                7,
                 move |scope: &mut Scope<'_>,
                       id: f64,
                       program: String,
                       arguments: String,
                       cwd: String,
                       env: String,
-                      through_shell: bool|
+                      through_shell: bool,
+                      stdio: String|
                       -> Result<Value, RuntimeError> {
                     let arguments = match parse_arguments(&arguments) {
                         Ok(arguments) => arguments,
@@ -111,7 +112,18 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
                     } else {
                         Recipe::Argv(&program, &arguments)
                     };
-                    match exec::spawn(recipe, cwd, &env, Stdin::Pipe) {
+                    // "inherit" sends the child's output to this process's own, which is what
+                    // a program that talks to the terminal needs; anything else is captured.
+                    let stdout = if stdio == "inherit" {
+                        exec::Stdout::Inherit
+                    } else {
+                        exec::Stdout::Pipe
+                    };
+                    let stdin = match stdio.as_str() {
+                        "inherit" | "ignore" => Stdin::Null,
+                        _ => Stdin::Pipe,
+                    };
+                    match exec::spawn_with_stdout(recipe, cwd, &env, stdin, stdout) {
                         Ok(running) => {
                             state.children.borrow_mut().insert(id as u64, running);
                             Ok(Value::Undefined)
