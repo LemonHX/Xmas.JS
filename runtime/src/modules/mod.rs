@@ -23,6 +23,7 @@ pub mod os;
 pub mod path;
 pub mod perf_hooks;
 pub mod process;
+pub mod realm;
 pub mod server;
 pub mod sockets;
 #[cfg(feature = "sqlite")]
@@ -81,6 +82,8 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     // the server builds a Request out of a parsed head, so it needs Headers and Response
     server::install(driver)?;
     websocket::install(driver)?;
+    // realm evaluates a source string as a module; it needs the module table and nothing above it
+    realm::install(driver)?;
     #[cfg(feature = "sqlite")]
     sqlite::install(driver)?;
     // $ runs a command through the platform shell, and needs nothing above it.
