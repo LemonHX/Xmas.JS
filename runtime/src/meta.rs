@@ -249,6 +249,25 @@ pub fn url_of(path: &str) -> String {
     }
 }
 
+/// How to read a module's own source.
+///
+/// It must be a module and not a script: `import.meta` is module syntax, and top-level `await`
+/// -- which eta's scripts use everywhere -- is a syntax error in a script. Parsing as a script
+/// left the tree unusable, so the rewrite was skipped and `import.meta.url` stayed undefined in
+/// exactly the modules that awaited anything.
+fn source_type(path: &str) -> SourceType {
+    let lower = path.to_ascii_lowercase();
+    if lower.ends_with(".tsx") {
+        SourceType::tsx()
+    } else if lower.ends_with(".ts") || lower.ends_with(".mts") || lower.ends_with(".cts") {
+        SourceType::ts()
+    } else if lower.ends_with(".jsx") {
+        SourceType::jsx()
+    } else {
+        SourceType::mjs()
+    }
+}
+
 /// Rewrite the `import.meta` uses in `source` that this layer can answer. `None` when there is
 /// nothing to do, which is every module that does not mention `import.meta` at all.
 pub fn rewrite(source: &str, path: &str, context: &Context) -> Result<Option<String>, String> {
@@ -256,7 +275,7 @@ pub fn rewrite(source: &str, path: &str, context: &Context) -> Result<Option<Str
         return Ok(None);
     }
     let allocator = Allocator::default();
-    let parsed = Parser::new(&allocator, source, SourceType::unambiguous())
+    let parsed = Parser::new(&allocator, source, source_type(path))
         .with_options(ParseOptions {
             parse_regular_expression: false,
             allow_return_outside_function: true,

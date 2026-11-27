@@ -29,6 +29,19 @@ fn app(expression: &str) -> String {
     format!("export default {{ fetch() {{ return new Response(String({expression})); }} }};\n")
 }
 
+/// Top-level await used to cost a module its import.meta: the source was parsed as a script,
+/// where await is a syntax error, so the tree was unusable and the rewrite was skipped. Every
+/// script in eta awaits at the top level, which made this the common case rather than an edge.
+#[test]
+fn a_module_with_top_level_await_still_knows_its_url() {
+    let body = answered(
+        "const name = await Promise.resolve('a');\n\
+         export default { fetch() { return new Response(import.meta.url + ':' + name); } };\n",
+    );
+    assert!(body.starts_with("file://"), "{body}");
+    assert!(body.ends_with("app.ts:a"), "{body}");
+}
+
 #[test]
 fn a_module_knows_whether_it_is_the_entry() {
     let source = format!(
