@@ -60,6 +60,13 @@ pub struct Realms {
     killed: Rc<RefCell<Vec<Arc<AtomicBool>>>>,
     /// The realm whose source the engine is currently evaluating, if any.
     running: Rc<Cell<Option<usize>>>,
+    /// Modules `provide` handed over while the engine was entered.
+    ///
+    /// Defining one is `Context::define_module`, which needs the runtime free, and a host function
+    /// runs inside it. So a provide is held here and defined by the driver between jobs. Defining is
+    /// what makes a replacement work: it also drops the name from the map of already-evaluated
+    /// modules, so an import after a second provide answers with the second one.
+    staged: Rc<RefCell<Vec<(String, Vec<(String, Value)>)>>>,
 }
 
 /// A realm's kill switch, in a form another thread can hold.
@@ -126,12 +133,45 @@ impl Realms {
         self.running.set(Some(id));
     }
 
+    /// Holds a module for `provide` until the engine is free to define it.
+    fn stage(&self, name: String, exports: Vec<(String, Value)>) {
+        self.staged.borrow_mut().push((name, exports));
+    }
+
+    /// The stage, emptied.
+    fn take_staged(&self) -> Vec<(String, Vec<(String, Value)>)> {
+        std::mem::take(&mut *self.staged.borrow_mut())
+    }
+
     /// Nothing is being evaluated any more. Called when the evaluation settles, and by `abandon`
     /// when it was stopped instead: the interrupt has to stop answering once the run is over, or
     /// the driver would refuse every loop after it.
     pub fn end(&self) {
         self.running.set(None);
     }
+}
+
+/// An object's own string keys and their values, as a module definition takes them.
+fn entries(scope: &mut Scope<'_>, object: &Value) -> Result<Vec<(String, Value)>, String> {
+    let Value::Object(object) = object else {
+        return Err("provide: exports must be an object".into());
+    };
+    let keys = scope
+        .own_property_keys(object)
+        .map_err(|error| format!("provide: {error}"))?;
+    let mut exports = Vec::with_capacity(keys.len());
+    for key in keys {
+        // A symbol cannot name an export; a module's names are strings.
+        let Some(name) = key.to_js_string() else {
+            continue;
+        };
+        let name = name.to_string();
+        let value = scope
+            .get_property(object, &key)
+            .map_err(|error| format!("provide: {name}: {error}"))?;
+        exports.push((name, value));
+    }
+    Ok(exports)
 }
 
 /// Rejects whatever was waiting on an evaluation the interrupt stopped.
@@ -145,6 +185,23 @@ pub fn abandon(driver: &mut Driver, reason: &str) -> bool {
         super::quote(reason)
     );
     matches!(driver.context().eval(&call), Ok(Value::Bool(true)))
+}
+
+/// Defines the modules `provide` held while the engine was entered.
+///
+/// The driver calls this between jobs, which is the one place the engine is free. `define_module`
+/// rather than a loader-level table, because defining also empties the name from the map of
+/// evaluated modules: a second provide for a name has to be seen by an import that comes after it,
+/// and only this gets that.
+pub fn apply_staged(driver: &mut Driver) -> Result<(), String> {
+    let staged = driver.host.realms.take_staged();
+    for (name, exports) in staged {
+        driver
+            .context()
+            .define_module(&name, exports)
+            .map_err(|error| format!("provide {name}: {error}"))?;
+    }
+    Ok(())
 }
 
 pub fn install(driver: &mut Driver) -> Result<(), String> {
@@ -166,6 +223,34 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
                 move |_: &mut Scope<'_>| Ok::<Value, RuntimeError>(Value::Float(realms.add() as f64)),
             )
             .map_err(|error| format!("__realm_add: {error}"))?;
+    }
+
+    {
+        let realms = realms.clone();
+        let modules = driver.host.modules.clone();
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__realm_provide",
+                2,
+                move |scope: &mut Scope<'_>, name: String, exports: Value| {
+                    if name.is_empty() {
+                        return Err(super::throw(scope, "provide: a module needs a name"));
+                    }
+                    match entries(scope, &exports) {
+                        Ok(list) => {
+                            // Both: the table answers an entry load in this turn, and defining
+                            // what is staged makes the name visible to an import that came before.
+                            modules.provide(&name, list.clone());
+                            realms.stage(name, list);
+                            Ok(Value::Undefined)
+                        }
+                        Err(reason) => Err(super::throw(scope, &reason)),
+                    }
+                },
+            )
+            .map_err(|error| format!("__realm_provide: {error}"))?;
     }
 
     {

@@ -254,3 +254,66 @@ fn kill_stops_a_running_loop() {
     );
     assert!(out.contains("was killed"), "{out}");
 }
+
+
+#[test]
+fn provide_makes_a_name_importable() {
+    let mut h = Harness::with_modules();
+    let out = run(
+        &mut h,
+        "const r = createRealm({ name: 'a' });
+         r.provide('host:thing', { answer: 41, default: function () { return 'd'; } });
+         r.evaluate(\"import thing, { answer } from 'host:thing'; globalThis.__got = [answer, thing()];\").then(
+           () => { globalThis.__settled = true; },
+           (e) => { globalThis.__error = String(e); globalThis.__settled = true; },
+         );
+         return 'started';",
+    );
+    assert_eq!(out, "started");
+    settle(&mut h);
+    assert_eq!(
+        run(&mut h, "return String(globalThis.__error);"),
+        "undefined",
+        "the import failed"
+    );
+    assert_eq!(run(&mut h, "return String(globalThis.__got);"), "41,d");
+}
+
+#[test]
+fn provide_replaces_a_name_it_was_given_before() {
+    let mut h = Harness::with_modules();
+    run(
+        &mut h,
+        "const r = createRealm({ name: 'a' });
+         r.provide('host:n', { v: 1 });
+         r.evaluate(\"import { v } from 'host:n'; globalThis.__first = v;\").then(
+           () => { globalThis.__settled = true; }, () => { globalThis.__settled = true; });
+         return 'started';",
+    );
+    settle(&mut h);
+    assert_eq!(run(&mut h, "return String(globalThis.__first);"), "1");
+
+    run(
+        &mut h,
+        "globalThis.__settled = undefined;
+         globalThis.__r2 = createRealm({ name: 'b' });
+         globalThis.__r2.provide('host:n', { v: 2 });
+         globalThis.__r2.evaluate(\"import { v } from 'host:n'; globalThis.__second = v;\").then(
+           () => { globalThis.__settled = true; }, () => { globalThis.__settled = true; });
+         return 'started';",
+    );
+    settle(&mut h);
+    assert_eq!(run(&mut h, "return String(globalThis.__second);"), "2");
+}
+
+#[test]
+fn provide_rejects_a_name_that_is_not_a_module() {
+    let mut h = Harness::with_modules();
+    let out = run(
+        &mut h,
+        "const r = createRealm({ name: 'a' });
+         try { r.provide('', {}); } catch (e) { return e.message; }
+         return 'no throw';",
+    );
+    assert!(out.contains("needs a name"), "{out}");
+}

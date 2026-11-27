@@ -29,6 +29,13 @@ pub struct Modules {
     /// The names the engine itself knows: registered as module definitions rather than as source
     /// (every `node:` module this runtime ships). The loader must leave those alone.
     native: Rc<RefCell<BTreeSet<String>>>,
+    /// Modules an embedder handed over as values (a realm's `provide`), in the loader's terms.
+    ///
+    /// The same values are also defined in the engine, which is what makes a replacement visible to
+    /// an import that came earlier. This table exists for the window before that happens: a
+    /// `provide` followed by an `evaluate` in one turn loads the entry module while the engine is
+    /// still entered, and this is what answers it.
+    provided: Rc<RefCell<BTreeMap<String, Vec<(String, Value)>>>>,
     /// What `import.meta` needs beyond a module's own path: the entry, and the environment.
     /// Shared, so the answer does not change between the first module and the last one compiled.
     context: Rc<RefCell<crate::meta::Context>>,
@@ -45,6 +52,7 @@ impl Modules {
         Modules {
             sources: Rc::new(RefCell::new(BTreeMap::new())),
             native: Rc::new(RefCell::new(BTreeSet::new())),
+            provided: Rc::new(RefCell::new(BTreeMap::new())),
             context: Rc::new(RefCell::new(crate::meta::Context::default())),
         }
     }
@@ -58,6 +66,25 @@ impl Modules {
 
     pub fn is_native(&self, name: &str) -> bool {
         self.native.borrow().contains(name)
+    }
+
+    /// Makes `exports` importable as `name` before the engine is free to define it.
+    ///
+    /// From here on the name means these values for this driver: a package of the same name on disk
+    /// is not looked for. That is the point -- an embedder providing "eta" means it -- but it also
+    /// means a name cannot be given back.
+    pub fn provide(&self, name: &str, exports: Vec<(String, Value)>) {
+        self.provided.borrow_mut().insert(name.to_owned(), exports);
+    }
+
+    /// Whether `name` was handed over rather than found on disk or in the engine.
+    fn is_provided(&self, name: &str) -> bool {
+        self.provided.borrow().contains_key(name)
+    }
+
+    /// The exports provided for `name`, if any.
+    fn provided(&self, name: &str) -> Option<Vec<(String, Value)>> {
+        self.provided.borrow().get(name).cloned()
     }
 
     /// The module the program started at, which is what `import.meta.main` compares against.
@@ -187,7 +214,10 @@ impl ModuleLoader for Loader {
         specifier: &str,
         _attributes: &ModuleImportAttributes,
     ) -> Result<String, Value> {
-        if self.modules.is_native(specifier) || self.modules.get(specifier).is_some() {
+        if self.modules.is_native(specifier)
+            || self.modules.is_provided(specifier)
+            || self.modules.get(specifier).is_some()
+        {
             return Ok(specifier.to_owned());
         }
         match crate::resolve::resolve(referrer, specifier) {
@@ -225,6 +255,10 @@ impl ModuleLoader for Loader {
         name: &str,
         _attributes: &ModuleImportAttributes,
     ) -> Result<ModuleSource, Value> {
+        // Values, not source: handed over as they stand, so nothing is read or compiled.
+        if let Some(exports) = self.modules.provided(name) {
+            return Ok(ModuleSource::Synthetic { exports });
+        }
         match self.modules.load_file(name) {
             Ok(module) => Ok(ModuleSource::source(module.code.clone().into_bytes())),
             Err(reason) => Err(native(scope, &reason)),

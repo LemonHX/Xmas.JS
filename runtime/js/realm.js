@@ -89,6 +89,32 @@
     }
 
     /**
+     * Makes `exports` the module `specifier`: an import of that name inside this realm sees each
+     * value under its own name, and `default` as the default export.
+     *
+     * The table belongs to the driver, so the name belongs to every evaluation in it. One driver is
+     * one agent, and a name two agents both want ("eta") is two drivers rather than one name with a
+     * suffix.
+     *
+     * An import in this same turn already sees it. An import of a name provided before, which the
+     * engine holds a namespace for, sees this one too: the definition that replaces it is applied
+     * before the next job runs.
+     */
+    provide(specifier, exports) {
+      const id = ID.get(this);
+      if (!__realm_alive(id)) {
+        throw new Error('realm "' + NAME.get(this) + '" was killed');
+      }
+      if (typeof specifier !== 'string' || specifier === '') {
+        throw new TypeError('provide: a module needs a name');
+      }
+      if (exports === null || typeof exports !== 'object') {
+        throw new TypeError('provide: exports must be an object');
+      }
+      __realm_provide(specifier, exports);
+    }
+
+    /**
      * Stops the realm: code running now is interrupted on its next statement, later calls throw,
      * and an evaluation waiting on it is rejected rather than left hanging.
      */

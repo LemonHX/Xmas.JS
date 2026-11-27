@@ -266,6 +266,9 @@ impl Driver {
 
     pub fn slice(&mut self) -> Result<Slice, String> {
         self.refresh_heap();
+        // A module `provide` was given is defined here: it needs the engine free, and a host
+        // function runs inside it. Before any job, so an `evaluate` in this turn imports it.
+        crate::modules::realm::apply_staged(self)?;
         let started = Instant::now();
         let mut jobs = 0u64;
         while started.elapsed() < SLICE {
