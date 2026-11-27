@@ -262,10 +262,19 @@
       return Number(__fs_write_fd_sync(fd, view.slice(offset, offset + length), position));
     },
     chmodSync(path, mode) { __fs_chmod_sync(pathOf(path), (typeof mode === 'number' ? mode : parseInt(mode, 8)).toString(8)); },
-    readFileSync(path) {
-      // Text only: the synchronous read is the one text needs, and a Buffer is a promise the
-      // caller can build from it.
-      return __fs_read_file_sync(pathOf(path));
+    readFileSync(path, options) {
+      // Node's two answers: no encoding gives a Buffer, an encoding gives text. The text read is
+      // only taken when an encoding was asked for, so a binary file never has to survive UTF-8.
+      const encoding = typeof options === 'string'
+        ? options
+        : (options && typeof options === 'object' ? options.encoding : undefined);
+      if (encoding === undefined || encoding === null) {
+        return Buffer.from(__fs_read_bytes_sync(pathOf(path)));
+      }
+      const text = __fs_read_file_sync(pathOf(path));
+      return String(encoding).replace(/-/g, '').toLowerCase() === 'utf8'
+        ? text
+        : Buffer.from(text).toString(encoding);
     },
   };
 

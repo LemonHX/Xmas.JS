@@ -24,7 +24,9 @@ fn fs_has_named_sync_exports_and_streams() {
           out.write('hello ');
           await new Promise((resolve) => out.end('world', resolve));
           expect(existsSync(file)).toBe(true);
-          expect(readFileSync(file)).toBe('hello world');
+          expect(readFileSync(file, 'utf8')).toBe('hello world');
+          expect(Buffer.isBuffer(readFileSync(file))).toBe(true);
+          expect(String(readFileSync(file))).toBe('hello world');
           let text = '';
           for await (const chunk of createReadStream(file)) text += chunk;
           expect(text).toBe('hello world');
@@ -107,6 +109,36 @@ fn events_timers_module_and_fs_descriptors() {
         });
     ")], "a.test.ts");
     assert_eq!((r.pass, r.fail), (4, 0), "{:?}", r.error);
+}
+
+#[test]
+fn read_file_sync_hands_back_bytes_a_text_read_would_refuse() {
+    let r = run(&[("a.test.ts", "
+        import { readFileSync, writeFileSync, rmSync } from 'node:fs';
+        import { gunzipSync, gzipSync } from 'node:zlib';
+        import { tmpdir } from 'node:os';
+        test('bytes', () => {
+          const file = tmpdir() + '/xmas-bytes-' + Date.now();
+          // 0xFF is not UTF-8: a text read fails on it, a byte read must not.
+          writeFileSync(file, new Uint8Array([0xff, 0x00, 0x7f]));
+          const read = readFileSync(file);
+          expect(Buffer.isBuffer(read)).toBe(true);
+          expect(Array.from(read)).toEqual([0xff, 0x00, 0x7f]);
+          rmSync(file);
+        });
+        test('encoding', () => {
+          const file = tmpdir() + '/xmas-text-' + Date.now();
+          writeFileSync(file, 'héllo');
+          expect(readFileSync(file, 'utf8')).toBe('héllo');
+          expect(readFileSync(file, { encoding: 'utf8' })).toBe('héllo');
+          rmSync(file);
+        });
+        test('gzip round trip', () => {
+          const packed = gzipSync(Buffer.from('a tar header or any binary'));
+          expect(gunzipSync(packed).toString()).toBe('a tar header or any binary');
+        });
+    ")], "a.test.ts");
+    assert_eq!((r.pass, r.fail), (3, 0), "{:?}", r.error);
 }
 
 #[test]
@@ -213,7 +245,7 @@ fn fs_descriptors_stats_and_links_are_real() {
           const file = dir + '/ap';
           writeFileSync(file, 'abc');
           const a = openSync(file, 'a'); writeSync(a, 'def'); closeSync(a);
-          expect(readFileSync(file)).toBe('abcdef');
+          expect(readFileSync(file, 'utf8')).toBe('abcdef');
           const w = openSync(file, 'w'); closeSync(w);
           expect(statSync(file).size).toBe(0);
           expect(() => openSync(dir + '/nope', 'r')).toThrow();

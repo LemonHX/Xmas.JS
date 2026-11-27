@@ -522,6 +522,26 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     }
 
     {
+        // The same read as a byte array. A text read is a convenience on top of this one: a file
+        // that is not UTF-8 has no other way through, and a compressed or executable file is
+        // exactly that.
+        driver
+            .context()
+            .define_function(
+                &global,
+                "__fs_read_bytes_sync",
+                1,
+                move |scope: &mut Scope<'_>, path: String| -> Result<Value, RuntimeError> {
+                    match std::fs::read(&path) {
+                        Ok(bytes) => bytes::give(scope, &bytes),
+                        Err(error) => Err(throw(scope, &describe(&error))),
+                    }
+                },
+            )
+            .map_err(|error| format!("__fs_read_bytes_sync: {error}"))?;
+    }
+
+    {
         driver
             .context()
             .define_function(
