@@ -127,9 +127,26 @@ pub struct State {
     ws_keys: RefCell<BTreeMap<String, u64>>,
     ws_pipes: RefCell<BTreeMap<u64, Pipes>>,
     next_ws: Cell<u64>,
+    /// How this worker's accept loop is told to stop, so a realm can ask for it from the inside
+    /// (xmas:server's own stop()). Unset for a realm nobody is serving on, such as a test.
+    stop_signal: RefCell<Option<smol::channel::Sender<()>>>,
 }
 
 impl State {
+    /// Record how to stop the accept loop this realm is served by. Called once, before the first
+    /// request, by the worker that built the realm.
+    pub fn set_stop_signal(&self, stop: smol::channel::Sender<()>) {
+        *self.stop_signal.borrow_mut() = Some(stop);
+    }
+
+    /// Ask this realm's accept loop to stop taking new connections. Connections already accepted
+    /// finish on their own; this only closes the door. A no-op when nothing is serving this realm.
+    pub fn stop_serving(&self) {
+        if let Some(stop) = self.stop_signal.borrow().as_ref() {
+            let _ = stop.try_send(());
+        }
+    }
+
     /// Reserve a slot for one request. The id is what JS hands back to __serve_respond.
     pub fn open(&self) -> (u64, smol::channel::Receiver<Result<Answer, String>>) {
         let id = self.next.get();
@@ -269,7 +286,11 @@ pub fn no_upgrade() -> Upgraded {
 /// they just do not share the load as evenly; one worker is the safe choice there.
 pub fn serve<F, H, Fut>(addr: &str, workers: usize, make: F) -> io::Result<Server>
 where
-    F: Fn(usize, &'static LocalExecutor) -> (H, Upgraded) + Send + Sync + Clone + 'static,
+    F: Fn(usize, &'static LocalExecutor, smol::channel::Sender<()>) -> (H, Upgraded)
+        + Send
+        + Sync
+        + Clone
+        + 'static,
     H: Fn(Conn) -> Fut + 'static,
     Fut: Future<Output = Conn> + 'static,
 {
@@ -292,6 +313,7 @@ where
         let (stop, stopped) = smol::channel::unbounded::<()>();
         let make = make.clone();
         let name = format!("xmas-http-{index}");
+        let in_worker = stop.clone();
         let thread = std::thread::Builder::new().name(name).spawn(move || {
             let listener = match own {
                 Some(listener) => listener,
@@ -303,7 +325,7 @@ where
                     }
                 },
             };
-            work(listener, make, index, stopped);
+            work(listener, make, index, in_worker, stopped);
         })?;
         stop_channels.push(stop);
         threads.push(thread);
@@ -317,9 +339,15 @@ where
 }
 
 /// One worker: accept on this thread, run the connections on this thread.
-fn work<F, H, Fut>(listener: TcpListener, make: F, index: usize, stopped: smol::channel::Receiver<()>)
+fn work<F, H, Fut>(
+    listener: TcpListener,
+    make: F,
+    index: usize,
+    stop: smol::channel::Sender<()>,
+    stopped: smol::channel::Receiver<()>,
+)
 where
-    F: Fn(usize, &'static LocalExecutor) -> (H, Upgraded),
+    F: Fn(usize, &'static LocalExecutor, smol::channel::Sender<()>) -> (H, Upgraded),
     H: Fn(Conn) -> Fut + 'static,
     Fut: Future<Output = Conn> + 'static,
 {
@@ -327,9 +355,9 @@ where
     // futures are spawned here and are never required to be Send.
     let executor: &'static LocalExecutor = Box::leak(Box::new(LocalExecutor::new()));
     let context = Arc::new(HttpContext::new());
-    // The handler is built here, on this thread, and gets the executor so it can spawn the pump
-    // that keeps its realm turning between requests.
-    let (handler, upgraded) = make(index, executor);
+    // The handler is built here, on this thread, and gets the executor and this worker's own stop
+    // sender, so the realm can ask to stop being served without reaching outside itself.
+    let (handler, upgraded) = make(index, executor, stop);
     let handler = Rc::new(handler);
     let upgraded = Rc::new(upgraded);
 
@@ -349,12 +377,14 @@ where
             };
 
             match accepted {
-                Ok((stream, _peer)) => {
+                Ok((stream, peer)) => {
                     let context = Arc::clone(&context);
                     let handler = Rc::clone(&handler);
                     let upgraded = Rc::clone(&upgraded);
                     executor
-                        .spawn(async move { connection(stream, context, handler, upgraded).await })
+                        .spawn(async move {
+                            connection(stream, peer.ip(), context, handler, upgraded).await
+                        })
                         .detach();
                 }
                 // A connection that dies during the handshake is the peer's business, not ours.
@@ -372,6 +402,7 @@ where
 /// One connection, from the first byte to whatever ends it.
 async fn connection<H, Fut>(
     stream: TcpStream,
+    peer_ip: std::net::IpAddr,
     context: Arc<HttpContext>,
     handler: Rc<H>,
     upgraded: Rc<Upgraded>,
@@ -382,7 +413,8 @@ async fn connection<H, Fut>(
     let transport = SmolTransport::from(stream);
     let served = context
         .run(transport, move |http| {
-            let conn = Conn::from(http);
+            let mut conn = Conn::from(http);
+            conn.set_peer_ip(Some(peer_ip));
             let answered = handler.as_ref()(conn);
             async move { answered.await.into_inner() }
         })

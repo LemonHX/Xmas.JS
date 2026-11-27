@@ -28,7 +28,7 @@ fn echo() -> impl Fn(Conn) -> Answer {
 }
 
 fn start(workers: usize) -> Server {
-    serve("127.0.0.1:0", workers, |_, _| (echo(), no_upgrade())).expect("server starts")
+    serve("127.0.0.1:0", workers, |_, _, _| (echo(), no_upgrade())).expect("server starts")
 }
 
 struct Client {
@@ -179,7 +179,7 @@ fn a_malformed_head_is_answered_and_not_fatal() {
 
 #[test]
 fn a_large_body_streams_back_out() {
-    let server = serve("127.0.0.1:0", 1, |_, _| {
+    let server = serve("127.0.0.1:0", 1, |_, _, _| {
         let handler = |conn: Conn| -> Answer {
             let payload = "x".repeat(512 * 1024);
             Box::pin(async move { conn.ok(payload) })

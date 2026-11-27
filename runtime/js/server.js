@@ -21,6 +21,10 @@
   // the client goes away, which is how a streaming handler learns to stop its own timers.
   const controls = new Map();
 
+  // The TCP peer address a request came in on, by the Request object itself (a Bun-style
+  // server.requestIP(request) reads this, and so does xmas:server's own peerAddressOf).
+  const peers = new WeakMap();
+
   // Anything the handler asked to finish after the answer went out.
   const flights = new Set();
 
@@ -78,7 +82,7 @@
 
   const context = { waitUntil };
 
-  globalThis.__serve_dispatch = function (id, method, target, headersText, body) {
+  globalThis.__serve_dispatch = function (id, method, target, headersText, body, peerIp) {
     if (handler === null) {
       __serve_fail(id, 'no handler: the entry never called serve() from xmas:server');
       return;
@@ -110,6 +114,7 @@
       const init = { method, headers, signal: control.signal };
       if (hasBody && method !== 'GET' && method !== 'HEAD') init.body = body;
       request = new Request(url, init);
+      if (peerIp !== undefined && peerIp !== '') peers.set(request, peerIp);
     } catch (error) {
       giveUp(id, 'the request could not be built');
       __serve_fail(id, describe(error));
@@ -118,7 +123,7 @@
 
     let result;
     try {
-      result = handler(request, env, context);
+      result = handler(request, bunServer, context);
     } catch (error) {
       giveUp(id, 'the handler threw');
       __serve_fail(id, describe(error));
@@ -127,7 +132,10 @@
 
     Promise.resolve(result).then(
       (response) => {
-        answer(id, method, response);
+        // Bun's shape: a handler that called bunServer.upgrade() returns undefined, and the 101
+        // response bunServer.upgrade() built is what actually answers the connection.
+        const upgraded = request._upgradeResponse;
+        answer(id, method, upgraded !== undefined ? upgraded : response);
       },
       (error) => {
         giveUp(id, 'the handler rejected');
@@ -266,6 +274,84 @@
     step();
   }
 
+  // Bun's `websocket` object: open/message/close/drain, called with the raw socket the realm
+  // tracks for this connection. Absent unless serve() was given one.
+  let websocketHandlers = null;
+
+  // The data a caller attached when it called bunServer.upgrade(request, { data }); kept by socket
+  // id so the websocket handlers can read and write raw.data the way Bun's shape expects.
+  const socketData = new Map();
+
+  function makeRawSocket(socket, id) {
+    const raw = {
+      get data() {
+        return socketData.get(id);
+      },
+      set data(value) {
+        socketData.set(id, value);
+      },
+      send(message) {
+        socket.send(message);
+        return 0;
+      },
+      close(code, reason) {
+        socket.close(code, reason);
+      },
+    };
+    socket.addEventListener('message', (event) => {
+      if (websocketHandlers === null || typeof websocketHandlers.message !== 'function') return;
+      websocketHandlers.message(raw, event.data);
+    });
+    socket.addEventListener('close', () => {
+      if (websocketHandlers !== null && typeof websocketHandlers.close === 'function') {
+        websocketHandlers.close(raw);
+      }
+      socketData.delete(id);
+    });
+    // Bun fires open only once the handshake is actually done on the wire, which is what the
+    // socket's own 'open' event means (OP_OPEN, from Rust) -- not the moment upgrade() is called.
+    socket.addEventListener('open', () => {
+      if (websocketHandlers !== null && typeof websocketHandlers.open === 'function') {
+        websocketHandlers.open(raw);
+      }
+    });
+    return raw;
+  }
+
+  let nextSocketId = 1;
+
+  // Bun's second fetch() argument: upgrade() plus requestIP(), the two things xmas:server needs to
+  // add on top of plain fetch to behave like Bun.serve.
+  const bunServer = {
+    upgrade(request, options) {
+      let upgraded;
+      try {
+        upgraded = __ws_module.upgradeWebSocket(request);
+      } catch (error) {
+        return false;
+      }
+      const id = nextSocketId++;
+      if (options !== undefined && options !== null && options.data !== undefined) {
+        socketData.set(id, options.data);
+      }
+      makeRawSocket(upgraded.socket, id);
+      request._upgradeResponse = upgraded.response;
+      return true;
+    },
+    requestIP(request) {
+      const address = peers.get(request);
+      return address === undefined ? null : { address, family: address.indexOf(':') >= 0 ? 'IPv6' : 'IPv4', port: 0 };
+    },
+    stop(closeActiveConnections) {
+      __serve_stop();
+    },
+    get port() {
+      const addr = globalThis.__serve_addr;
+      if (addr === undefined || addr === null) return undefined;
+      return Number(addr.slice(addr.lastIndexOf(':') + 1));
+    },
+  };
+
   function serve(target) {
     let fn = target;
     if (target !== null && typeof target === 'object') {
@@ -273,6 +359,7 @@
       // The environment is the caller's, not the platform's: whatever serve was given is handed to
       // the handler unchanged, and an empty frozen object when it was given nothing.
       if (target.env !== undefined) env = target.env;
+      if (target.websocket !== undefined) websocketHandlers = target.websocket;
       // The listener is already up by the time the entry runs, so a port asked for here can only be
       // compared with the one it has. A silent mismatch would look like the app is on the wrong port.
       checkAddress(target.port, target.hostname);
@@ -281,7 +368,7 @@
       throw new TypeError('serve needs a function or an object with a fetch method');
     }
     handler = fn;
-    return { fetch: fn };
+    return bunServer;
   }
 
   // The address this realm's server is listening on, put there before the entry ran. Absent when the

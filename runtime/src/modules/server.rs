@@ -176,6 +176,22 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
             .context()
             .define_function(
                 &global,
+                "__serve_stop",
+                0,
+                move |_scope: &mut Scope<'_>| -> Result<Value, RuntimeError> {
+                    state.stop_serving();
+                    Ok(Value::Undefined)
+                },
+            )
+            .map_err(|error| format!("__serve_stop: {error}"))?;
+    }
+
+    {
+        let state = Rc::clone(&driver.server);
+        driver
+            .context()
+            .define_function(
+                &global,
                 "__serve_end",
                 1,
                 move |_scope: &mut Scope<'_>, id: f64| -> Result<Value, RuntimeError> {
@@ -239,12 +255,13 @@ where
     // would bind, answer 500 to everything and look healthy in a terminal.
     let (report, reports) = smol::channel::bounded::<Result<(), String>>(count);
 
-    let server = server::serve(addr, count, move |index, executor| {
+    let server = server::serve(addr, count, move |index, executor, stop| {
         // A panic while booting must not leave the caller waiting for a report that never comes.
         let booted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| boot(index)))
             .unwrap_or_else(|_| Err(String::from("the realm panicked while it booted")));
         let realm = match booted {
             Ok(realm) => {
+                realm.borrow().server.set_stop_signal(stop);
                 let _ = report.send_blocking(Ok(()));
                 realm
             }
@@ -331,6 +348,7 @@ async fn answer(realm: Rc<RefCell<Driver>>, mut conn: Conn) -> Conn {
     let method = conn.method().to_string();
     let target = conn.path_and_query().to_string();
     let headers = request_headers(&conn);
+    let peer_ip = conn.peer_ip().map(|ip| ip.to_string()).unwrap_or_default();
 
     // A body is read into memory before the handler sees it. Streaming it would hold the realm's
     // thread inside the handler, and a request body that big is the rare case.
@@ -358,7 +376,7 @@ async fn answer(realm: Rc<RefCell<Driver>>, mut conn: Conn) -> Conn {
 
     let thrown = {
         let mut driver = realm.borrow_mut();
-        hand_over(&mut driver, &state, id, &method, &target, &headers, &body)
+        hand_over(&mut driver, &state, id, &method, &target, &headers, &body, &peer_ip)
     };
     if let Some(message) = thrown {
         state.close(id);
@@ -415,6 +433,7 @@ fn hand_over(
     target: &str,
     headers: &str,
     body: &[u8],
+    peer_ip: &str,
 ) -> Option<String> {
     let Some(dispatch) = state.dispatch.borrow().clone() else {
         return Some("the server module is not installed in this realm".to_string());
@@ -422,7 +441,7 @@ fn hand_over(
 
     let outcome = {
         let context = driver.context();
-        match arguments(context, id, method, target, headers, body) {
+        match arguments(context, id, method, target, headers, body, peer_ip) {
             Ok(args) => context.call(&dispatch, Value::Undefined, &args),
             Err(error) => Err(error),
         }
@@ -430,7 +449,7 @@ fn hand_over(
     outcome.err().map(|error| driver.render(error))
 }
 
-/// The five things the dispatcher needs, in order.
+/// The six things the dispatcher needs, in order.
 fn arguments(
     context: &mut Context,
     id: u64,
@@ -438,6 +457,7 @@ fn arguments(
     target: &str,
     headers: &str,
     body: &[u8],
+    peer_ip: &str,
 ) -> Result<Vec<Value>, RuntimeError> {
     Ok(vec![
         (id as f64).into_js(context)?,
@@ -445,6 +465,7 @@ fn arguments(
         target.into_js(context)?,
         headers.into_js(context)?,
         bytes::give(context, body)?,
+        peer_ip.into_js(context)?,
     ])
 }
 
