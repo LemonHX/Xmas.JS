@@ -8,7 +8,7 @@ description = "JavaScript engine embedding layer: realm driver, host services an
 
 [features]
 default = ["sqlite"]
-# xmas:sqlite, the interface of bun:sqlite on FrankenSQLite (pure Rust).
+# xmas:sqlite, a synchronous SQLite interface on FrankenSQLite (pure Rust).
 sqlite = ["dep:fsqlite"]
 
 [dependencies]

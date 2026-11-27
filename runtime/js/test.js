@@ -1,5 +1,5 @@
 (function () {
-  // xmas:test, shaped like bun:test. Collection (describe/test/hooks) builds a tree while the file
+  // xmas:test. Collection (describe/test/hooks) builds a tree while the file
   // loads; __xmas_test_start then runs it and leaves a JSON summary in __xmas_test_result.
   const HAS = Object.prototype.hasOwnProperty;
   const now = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());

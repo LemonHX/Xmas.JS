@@ -1,5 +1,5 @@
 (function () {
-  // bun:sqlite's interface under the name xmas:sqlite. The engine is native (src/modules/sqlite.rs);
+  // xmas:sqlite, a synchronous SQLite interface. The engine is native (src/modules/sqlite.rs);
   // what is here is the shape scripts touch: Database, Statement, transactions, parameter binding.
 
   class SQLiteError extends Error {

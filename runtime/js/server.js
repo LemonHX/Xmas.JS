@@ -21,7 +21,8 @@
   // the client goes away, which is how a streaming handler learns to stop its own timers.
   const controls = new Map();
 
-  // The TCP peer address a request came in on, by the Request object itself (a Bun-style
+  // The TCP peer address a request came in on, keyed by the Request object itself (the
+  // fetch handler reaches it through the server object's requestIP()).
   // server.requestIP(request) reads this, and so does xmas:server's own peerAddressOf).
   const peers = new WeakMap();
 
@@ -132,7 +133,7 @@
 
     Promise.resolve(result).then(
       (response) => {
-        // Bun's shape: a handler that called bunServer.upgrade() returns undefined, and the 101
+        // The upgrade shape: a handler that called bunServer.upgrade() returns undefined, and the 101
         // response bunServer.upgrade() built is what actually answers the connection.
         const upgraded = request._upgradeResponse;
         answer(id, method, upgraded !== undefined ? upgraded : response);
@@ -274,12 +275,12 @@
     step();
   }
 
-  // Bun's `websocket` object: open/message/close/drain, called with the raw socket the realm
+  // The `websocket` object: open/message/close/drain, called with the raw socket the realm
   // tracks for this connection. Absent unless serve() was given one.
   let websocketHandlers = null;
 
   // The data a caller attached when it called bunServer.upgrade(request, { data }); kept by socket
-  // id so the websocket handlers can read and write raw.data the way Bun's shape expects.
+  // id so the websocket handlers can read and write raw.data where the handlers expect it.
   const socketData = new Map();
 
   function makeRawSocket(socket, id) {
@@ -308,7 +309,7 @@
       }
       socketData.delete(id);
     });
-    // Bun fires open only once the handshake is actually done on the wire, which is what the
+    // open fires only once the handshake is actually done on the wire, which is what the
     // socket's own 'open' event means (OP_OPEN, from Rust) -- not the moment upgrade() is called.
     socket.addEventListener('open', () => {
       if (websocketHandlers !== null && typeof websocketHandlers.open === 'function') {
@@ -320,8 +321,8 @@
 
   let nextSocketId = 1;
 
-  // Bun's second fetch() argument: upgrade() plus requestIP(), the two things xmas:server needs to
-  // add on top of plain fetch to behave like Bun.serve.
+  // The second fetch() argument: upgrade() plus requestIP(), the two things xmas:server adds on
+  // top of plain fetch to serve more than one request per port.
   const bunServer = {
     upgrade(request, options) {
       let upgraded;

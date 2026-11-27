@@ -1,4 +1,4 @@
-//! `xmas test`: file discovery and the bun:test interface, end to end.
+//! `xmas test`: file discovery and the test interface, end to end.
 mod common;
 
 use common::tree;

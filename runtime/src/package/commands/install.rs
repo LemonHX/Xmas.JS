@@ -103,7 +103,7 @@ fn exec_install_scripts_in(stack: &[CompactString]) -> Result<()> {
 
     let package_json: PackageMetadata = serde_json::from_str(&package_json)?;
 
-    // Like Bun, a dependency's lifecycle scripts run only when the project lists it in
+    // A dependency's lifecycle scripts run only when the project lists it in
     // `trustedDependencies`. Anything else is skipped with a warning.
     let scripts: Vec<&str> = ["preinstall", "install", "postinstall"]
         .into_iter()

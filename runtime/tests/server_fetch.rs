@@ -1,5 +1,5 @@
-//! The Bun-shaped surface xmas:server adds on top of plain fetch: requestIP, stop, and
-//! bunServer.upgrade() feeding the websocket object's open/message/close callbacks.
+//! The surface xmas:server adds on top of plain fetch: requestIP, stop, and
+//! the server's upgrade() feeding the websocket object's open/message/close callbacks.
 //!
 //! These go through a real realm and a real socket, the same way server_entry.rs and server_ws.rs
 //! do, so a failure here points at the JS/Rust boundary (server.js, host/server.rs) and not at
@@ -16,8 +16,8 @@ fn request_ip_reports_the_real_peer_address() {
     let server = start(
         "import { serve } from 'xmas:server';
          serve({
-           fetch(request, bunServer) {
-             const ip = bunServer.requestIP(request);
+           fetch(request, server) {
+             const ip = server.requestIP(request);
              return new Response(JSON.stringify(ip));
            },
          });
@@ -36,9 +36,9 @@ fn stop_closes_the_listener_so_a_new_connection_is_refused() {
     let server = start(
         "import { serve } from 'xmas:server';
          serve({
-           fetch(request, bunServer) {
+           fetch(request, server) {
              if (new URL(request.url).pathname === '/stop') {
-               bunServer.stop();
+               server.stop();
                return new Response('stopping');
              }
              return new Response('ok');
@@ -65,13 +65,13 @@ fn stop_closes_the_listener_so_a_new_connection_is_refused() {
 }
 
 #[test]
-fn bun_server_upgrade_drives_the_websocket_handlers() {
+fn an_upgrade_drives_the_websocket_handlers() {
     let server = start(
         "import { serve } from 'xmas:server';
          serve({
-           fetch(request, bunServer) {
+           fetch(request, server) {
              if (new URL(request.url).pathname !== '/ws') return new Response('not ws', { status: 404 });
-             const ok = bunServer.upgrade(request, { data: { tag: 'hi' } });
+             const ok = server.upgrade(request, { data: { tag: 'hi' } });
              if (!ok) return new Response('upgrade failed', { status: 400 });
              return undefined;
            },

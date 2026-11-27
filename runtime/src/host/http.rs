@@ -147,7 +147,7 @@ pub async fn send(
     follow: bool,
     cancel: Arc<AtomicBool>,
 ) -> Result<Response, String> {
-    // A `file:` URL is not a request: there is no server to send it to. Bun and Deno answer it
+    // A `file:` URL is not a request: there is no server to send it to. A refusal
     // by reading the file, and a package built for the browser reaches for one when it keeps its
     // wasm beside itself (`new URL('x.wasm', import.meta.url)` then `fetch`). Node refuses it,
     // which is the one place this deviates: a runtime that can host those packages is worth more

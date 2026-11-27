@@ -1,4 +1,4 @@
-//! xmas:sqlite: the bun:sqlite interface on FrankenSQLite.
+//! xmas:sqlite: a synchronous SQLite interface on FrankenSQLite.
 #![cfg(feature = "sqlite")]
 
 use xmas_runtime::testkit::{Harness, text_of};

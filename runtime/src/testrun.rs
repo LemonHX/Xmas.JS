@@ -126,7 +126,7 @@ fn try_run(path: &Path, options: &Options, host: Host) -> Result<FileResult, Str
     })
 }
 
-/// Find and run the tests under root, printing a bun-style report. True when nothing failed.
+/// Find and run the tests under root, printing a report. True when nothing failed.
 pub fn run(root: &Path, filters: &[String], options: &Options) -> bool {
     let files = find_tests(root, filters);
     if files.is_empty() {

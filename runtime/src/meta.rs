@@ -11,7 +11,7 @@
 //! - The rewrite is textual (by span, not by re-printing the tree), so a module that uses
 //!   `import.meta` pays one extra parse even when it is plain JavaScript.
 //!
-//! The properties are the ones Bun documents. The path group is answered from the file's own path,
+//! The properties are the documented set. The path group is answered from the file's own path,
 //! so a module read from disk says where it is on disk and a module defined in memory says so.
 //! `main` is a comparison against the entry, and `env` is the environment snapshot the realm was
 //! built with -- both of which the module table knows and a path does not.
@@ -105,12 +105,12 @@ impl<'a> Visit<'a> for Scan<'a> {
     }
 }
 
-/// The properties this layer answers, spelled as Bun does.
+/// The properties this layer answers.
 ///
 /// A remote module answers the same group from its URL: there is no path on disk for it, and the
 /// URL is the identity the program wrote and the one its relative imports resolve against.
 fn value(name: &str, url: &str) -> Option<String> {
-    // 'dir' and 'dirname' are the same thing here; Bun spells both and so does this.
+    // 'dir' and 'dirname' are the same thing here; both are answered.
     if name != "url" && name != "path" && name != "filename" && name != "dir" && name != "dirname"
         && name != "file"
     {
@@ -178,7 +178,7 @@ fn value_in(name: &str, url: &str, module: &str, context: &Context) -> Option<St
             Some(vars) => env_object(vars),
             None => "undefined".to_owned(),
         }),
-        // Bun also answers MODE / DEV / PROD on the same object. They are three names over one
+        // MODE / DEV / PROD are answered on the same object too. They are three names over one
         // value, and reading NODE_ENV once is cheaper than three properties the program may never
         // touch -- so they are hung on the object, not looked up separately here.
         _ => value(name, url),
@@ -191,7 +191,7 @@ fn value_in(name: &str, url: &str, module: &str, context: &Context) -> Option<St
 /// legal name in a shell and not a legal identifier in JavaScript. A shallow object with no
 /// prototype, so `env.toString` is undefined rather than a function nobody put there.
 ///
-/// Bun's three release flags are derived from NODE_ENV here rather than being separate reads:
+/// The three release flags are derived from NODE_ENV here rather than being separate reads:
 /// PROD when NODE_ENV is exactly "production", DEV when it is anything else, MODE its value.
 fn env_object(vars: &BTreeMap<String, String>) -> String {
     let mode = vars.get("NODE_ENV").map(String::as_str).unwrap_or("development");

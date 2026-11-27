@@ -1,7 +1,7 @@
 # Remote imports
 
 An import written as a URL — `import { rollup } from 'https://unpkg.com/@rollup/browser'` — is
-how browsers and Bun and Deno spell "this code is over there". Today it does not work here: the
+how other runtimes spell "this code is over there". Today it does not work here: the
 specifier falls into `resolve`'s bare branch, and the error says the runtime looked for a package
 named `https:/unpkg.com/...` under node_modules. That message is honest and useless.
 
@@ -112,7 +112,7 @@ relative resolution against the *local* file that wrote the import.
 ## Deviations from Node
 
 Node does not load from URLs at all, so there is nothing to deviate from: a URL specifier there is
-an `ERR_UNSUPPORTED_ESM_URL_SCHEME`. This runtime follows Bun and the browser instead. Worth
+an `ERR_UNSUPPORTED_ESM_URL_SCHEME`. This runtime follows the browser instead. Worth
 writing down because "we match Node" is the standing rule for the module work, and this is an
 exception someone will otherwise file as a bug.
 

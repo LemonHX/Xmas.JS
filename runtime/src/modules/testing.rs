@@ -1,4 +1,4 @@
-//! xmas:test, the interface of bun:test. The framework is js/test.js; this installs it as a module.
+//! xmas:test. The framework is js/test.js; this installs it as a module.
 //!
 //! It is not part of `modules::install`: only a realm that runs tests (see crate::testrun) or a
 //! test of this module pays for it, and an app being served never sees it.

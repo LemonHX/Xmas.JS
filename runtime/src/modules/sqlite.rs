@@ -1,6 +1,6 @@
-//! xmas:sqlite: the interface of bun:sqlite, on FrankenSQLite (the `fsqlite` crate, pure Rust).
+//! xmas:sqlite: a synchronous SQLite interface on FrankenSQLite (the `fsqlite` crate, pure Rust).
 //!
-//! The engine's synchronous API (`fsqlite::blocking`) is what Bun's is shaped like, so each call
+//! The engine's synchronous API (`fsqlite::blocking`) matches the shape each call needs, so it
 //! is a host call that runs on the realm's thread. Rust keeps the connections in a table by id;
 //! JS (js/sqlite.js) keeps Database and Statement, and talks to the table with JSON:
 //!

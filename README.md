@@ -26,7 +26,7 @@ One binary that runs TypeScript, serves HTTP, installs packages, and executes We
 - **Sockets.** WinterTC `connect()` for TCP, plus a `UDPSocket`.
 - **Node-flavored modules.** buffer, crypto, fs, path, stream, zlib, child_process, util, assert, os, process and more, listed below.
 - **CommonJS.** `require`, `module.exports`, `__dirname`, and `.cjs` files work next to ES modules.
-- **A FAST package manager.** `xmas install`, `add`, `why`, `x`. It also runs your `package.json` scripts with nearly `bun`'s speed.
+- **A FAST package manager.** `xmas install`, `add`, `why`, `x`. It also runs your `package.json` scripts quickly.
 
 Measured on one machine (Apple silicon macOS, release build, fat LTO, one codegen unit, symbols stripped):
 
