@@ -102,3 +102,23 @@ fn an_upgrade_drives_the_websocket_handlers() {
     let after_open = client.read_until("open:", Duration::from_secs(5));
     assert!(after_open.contains("open:{\"tag\":\"hi\"}"), "{after_open}");
 }
+
+// A handler that never settles keeps the connection open and answers nothing. This is what a test
+// needs when it wants a port that accepts and then goes quiet: a git client pointed at it waits
+// for bytes that never come, which is the condition a timeout is supposed to end.
+#[test]
+fn a_handler_that_never_settles_keeps_the_connection_silent() {
+    let server = start(
+        "import { serve } from 'xmas:server';
+         serve({
+           fetch() {
+             return new Promise(() => {});
+           },
+         });
+",
+    );
+    let mut client = Client::to(&server);
+    client.send("GET / HTTP/1.1\r\nHost: t\r\n\r\n");
+    let silence = client.read_for(Duration::from_millis(300));
+    assert_eq!(silence, "", "the server answered: {silence:?}");
+}
