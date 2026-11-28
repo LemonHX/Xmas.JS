@@ -35,14 +35,34 @@ pub fn prepare_plan(args: &Options, package: &PackageMetadata) -> Result<Plan> {
 
     let mut graph = load_graph_from_lockfile();
 
+    // A workspace is one installation: every package it lists is installed where the root is, so
+    // the root's own requirements are only part of it. A package of the workspace that names
+    // another package of the workspace with a range like `*` asks for the copy that is already
+    // here, and that copy is the link -- the registry has no such version to fetch.
+    let workspace = workspace_packages(Path::new("."))?;
+    let members: Vec<CompactString> = workspace.iter().map(|p| p.name.clone()).collect();
+    let mut all: Vec<PackageSpecifier> = package.iter_all().collect();
+    for member in &workspace {
+        let Ok(text) = read_to_string(member.dir.join("package.json")) else {
+            continue;
+        };
+        let Ok(json) = serde_json::from_str::<PackageMetadata>(&text) else {
+            continue;
+        };
+        all.extend(
+            json.iter_all()
+                .filter(|specifier| !members.iter().any(|name| *name == specifier.name)),
+        );
+    }
+
     if !args.immutable {
-        smol::block_on(graph.append(package.iter_all(), true))?;
+        smol::block_on(graph.append(all.clone().into_iter(), true))?;
         write_json("xmas.lock", Lockfile::new(graph.clone()))?;
     }
 
     log_progress("Retrieved dependency graph");
 
-    let trees = graph.build_trees(&package.iter_all().collect_vec())?;
+    let trees = graph.build_trees(&all)?;
     log_progress(&format!("Fetched {} root deps", trees.len().yellow()));
 
     let plan = Plan::new(
