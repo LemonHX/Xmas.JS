@@ -8,11 +8,13 @@ description = "JavaScript engine embedding layer: realm driver, host services an
 
 [features]
 default = ["sqlite"]
-# xmas:sqlite, a synchronous SQLite interface on FrankenSQLite (pure Rust).
-sqlite = ["dep:fsqlite"]
+# xmas:sqlite, a synchronous SQLite interface on rusqlite with SQLite compiled in from its C
+# amalgamation (`bundled`): needs a C compiler at build time, no system library at run time.
+# Build with --no-default-features to leave it, and its C compile, out.
+sqlite = ["dep:rusqlite"]
 
 [dependencies]
-fsqlite = { version = "=0.5.1", optional = true, default-features = false, features = ["native", "json", "fts5"] }
+rusqlite = { version = "0.37", optional = true, default-features = false, features = ["bundled"] }
 # The package manager is a module here (src/package), not a crate: an import that names a package
 # nobody installed asks it for one (src/deps.rs) with a plain function call.
 # The engine is a git dependency, pinned to a rev: the embedder-owned ArrayBuffer entry this

@@ -7,6 +7,8 @@ use std::process::Command;
 
 /// Crates that link or build something from the host: openssl and its bindings,
 /// the platform TLS shims, the aws-lc build (needs cmake), and the C zlib/zstd.
+/// (`libsqlite3-sys` is not here: with rusqlite's `bundled` feature it compiles SQLite's own
+/// source and links nothing from the host.)
 const FORBIDDEN: &[&str] = &[
     "openssl",
     "openssl-sys",
@@ -19,7 +21,6 @@ const FORBIDDEN: &[&str] = &[
     "libz-sys",
     "libz-ng-sys",
     "zstd-sys",
-    "libsqlite3-sys",
 ];
 
 /// The package name at the front of a cargo tree line, past its tree glyphs.

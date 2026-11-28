@@ -1,7 +1,6 @@
-//! xmas:sqlite: a synchronous SQLite interface on FrankenSQLite (the `fsqlite` crate, pure Rust).
+//! xmas:sqlite: a synchronous SQLite interface on rusqlite (SQLite's own C amalgamation, compiled in with the `bundled` feature, no system library).
 //!
-//! The engine's synchronous API (`fsqlite::blocking`) matches the shape each call needs, so it
-//! is a host call that runs on the realm's thread. Rust keeps the connections in a table by id;
+//! rusqlite's API is synchronous, so each call is a host call that runs on the realm's thread. Rust keeps the connections in a table by id;
 //! JS (js/sqlite.js) keeps Database and Statement, and talks to the table with JSON:
 //!
 //! - parameters go in as a JSON array (positional) or object (named). A blob is {"$b": base64},
@@ -9,8 +8,9 @@
 //! - a statement's answer comes back as {columns, rows, changes, lastInsertRowid}, rows as arrays,
 //!   with the same two tags for blobs and large integers.
 //!
-//! A statement is prepared on each call. The engine's Statement borrows its connection, and a
-//! table of ids cannot hold a borrow.
+//! A statement is prepared through the connection's statement cache (`prepare_cached`), so a
+//! repeated SQL text is compiled once. The Statement borrows its connection, and a table of ids
+//! cannot hold a borrow, so the cache is the connection's own.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -18,7 +18,7 @@ use std::rc::Rc;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use fsqlite::blocking::{
+use rusqlite::{
     Connection, OpenFlags, params_from_iter,
     types::{Value as Sql, ValueRef},
 };
@@ -85,7 +85,7 @@ fn out_value(value: ValueRef<'_>) -> Json {
 }
 
 fn run(conn: &Connection, sql: &str, params: &Json) -> Result<Json, String> {
-    let mut stmt = conn.prepare(sql).map_err(|error| error.to_string())?;
+    let mut stmt = conn.prepare_cached(sql).map_err(|error| error.to_string())?;
     let bound: Vec<Sql> = match params {
         Json::Array(items) => items.iter().map(bind_value).collect::<Result<_, _>>()?,
         Json::Object(named) => {
@@ -106,7 +106,7 @@ fn run(conn: &Connection, sql: &str, params: &Json) -> Result<Json, String> {
         }
         _ => Vec::new(),
     };
-    let columns: Vec<String> = stmt.column_names().map(str::to_string).collect();
+    let columns: Vec<String> = stmt.column_names().into_iter().map(str::to_string).collect();
     let mut rows = Vec::new();
     if columns.is_empty() {
         stmt.execute(params_from_iter(bound))
@@ -154,9 +154,9 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
                 2,
                 move |scope: &mut Scope<'_>, path: String, mode: String| {
                     let flags = match mode.as_str() {
-                        "readonly" => OpenFlags::SQLITE_OPEN_READ_ONLY,
-                        "readwrite" => OpenFlags::SQLITE_OPEN_READ_WRITE,
-                        _ => OpenFlags::default(),
+                        "readonly" => OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+                        "readwrite" => OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+                        _ => OpenFlags::default() | OpenFlags::SQLITE_OPEN_NO_MUTEX,
                     };
                     let opened = if path == ":memory:" || path.is_empty() {
                         Connection::open_in_memory()
@@ -255,7 +255,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
                     match conn.prepare(&sql) {
                         Ok(stmt) => {
                             let names: Vec<String> =
-                                stmt.column_names().map(str::to_string).collect();
+                                stmt.column_names().into_iter().map(str::to_string).collect();
                             text(&Json::from(names).to_string())
                         }
                         Err(error) => Err(super::throw(scope, &error.to_string())),
