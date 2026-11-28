@@ -89,6 +89,48 @@
     }
 
     /**
+     * `expression`, evaluated in this realm, answering with its value.
+     *
+     * This is the one call a host embedding reaches for when it has a string that is not a
+     * module: a factory (`(fn) => (...args) => fn(...args)`), an object literal (`({})`), a
+     * function the agent wrote down. The expression is wrapped as the default export of a
+     * module and evaluated through {@link evaluate}, so it runs inside this realm with this
+     * realm's prototypes -- which is the whole point: a host object handed to a script would
+     * carry the host's prototype, and `x.constructor` would be a way back out.
+     *
+     * Only an expression, not a statement list: `export default` takes one expression, and a
+     * caller with statements has `evaluate` to make them a module. The wrapper is why
+     * `"function () {}"` has to be written `"(function () {})"` -- as a bare statement it
+     * would be a declaration, not a value.
+     *
+     * Answers with the value itself, not an {@link Evaluation}: an expression has nowhere to
+     * carry an identifier. `options.identifier` only names the evaluation for an error's stack,
+     * and it repeats safely -- each call gets its own run number, so evaluating twice under one
+     * name evaluates twice rather than answering with the first run.
+     */
+    eval(expression, options) {
+      const id = ID.get(this);
+      if (!__realm_alive(id)) {
+        throw new Error('realm "' + NAME.get(this) + '" was killed');
+      }
+      if (typeof expression !== 'string') {
+        throw new TypeError('eval: expression must be a string');
+      }
+      const name = (options && options.identifier) || 'eval.js';
+      // The newlines keep a trailing line comment in the expression from swallowing the paren,
+      // and a leading `(` keeps an object literal an expression rather than a block.
+      //
+      // The value, not the evaluation: a caller with an expression has nowhere to put an
+      // identifier, and that is the whole difference from `evaluate`. A closing bracket left
+      // out of the expression is a compile error the same way, so nothing is lost by it.
+      return this.evaluate('export default (\n' + expression + '\n);', {
+        identifier: name,
+      }).then(function (evaluation) {
+        return evaluation.value;
+      });
+    }
+
+    /**
      * Makes `exports` the module `specifier`: an import of that name inside this realm sees each
      * value under its own name, and `default` as the default export.
      *

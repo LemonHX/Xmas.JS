@@ -12,6 +12,9 @@ default = ["sqlite"]
 # amalgamation (`bundled`): needs a C compiler at build time, no system library at run time.
 # Build with --no-default-features to leave it, and its C compile, out.
 sqlite = ["dep:rusqlite"]
+# xmas compile: bundle via rolldown (needs tokio runtime at build time, not runtime).
+compile = ["dep:rolldown", "dep:tokio"]
+rolldown = ["dep:rolldown"]
 
 [dependencies]
 rusqlite = { version = "0.37", optional = true, default-features = false, features = ["bundled"] }
@@ -87,6 +90,8 @@ toml = "0.9.0"
 rand = "0.8.5"
 which = "8.0.0"
 owo-colors = "4.2.3"
+tokio = { version = "1", optional = true, features = ["rt-multi-thread"] }
+rolldown = { version = "1.3.2", optional = true }
 
 # Cloning a package directory into node_modules in one call. See `package::plan::place_dir`.
 [target.'cfg(unix)'.dependencies]

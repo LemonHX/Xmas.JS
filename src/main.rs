@@ -6,7 +6,7 @@
 //! the runtime itself, and the command functions take plain values.
 
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{CommandFactory, Parser, Subcommand};
 use compact_str::CompactString;
@@ -136,6 +136,20 @@ enum Commands {
         test_name_pattern: Option<String>,
     },
 
+/// Compile a module into a standalone executable
+    Compile {
+        /// Entry module (.ts, .tsx or .js)
+        entry: PathBuf,
+
+        /// Output file (default: ./xmas-compiled)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Assets directory to include (e.g. public/)
+        #[arg(long)]
+        assets: Option<PathBuf>,
+    },
+
     /// `xmas <file> [args]`: run a module as a program
     #[command(external_subcommand)]
     Script(Vec<OsString>),
@@ -161,6 +175,12 @@ enum Commands {
 }
 
 fn main() -> anyhow::Result<()> {
+    // If this binary carries an embedded app, extract and run it immediately
+    if let Some(result) = xmas_runtime::pack::try_run_embedded() {
+        return result.map_err(|e| anyhow::anyhow!(e));
+    }
+
+
     let cli = Cli::parse();
 
     if let Some(cwd) = &cli.working_dir {
@@ -181,6 +201,15 @@ fn main() -> anyhow::Result<()> {
             host,
             workers,
         } => serve(&entry, &host, port, workers),
+
+#[cfg(feature = "compile")]
+        Commands::Compile { entry, output, assets } => cmd_compile(&entry, output.as_deref(), assets.as_deref()),
+
+        #[cfg(not(feature = "compile"))]
+        Commands::Compile { .. } => {
+            eprintln!("error: xmas was built without compile support. Rebuild with --features compile");
+            std::process::exit(2)
+        }
 
         Commands::Script(words) => {
             let file = PathBuf::from(&words[0]);
@@ -223,6 +252,9 @@ fn package_command(command: Commands, options: Options) -> anyhow::Result<()> {
     xmas_runtime::package::progress::set_verbose(options.verbose);
 
     let done = match command {
+        Commands::Compile { .. } => {
+            unreachable!("Compile is handled before package_command")
+        }
         Commands::Install => commands::cmd_install(&options),
         Commands::Update => commands::cmd_update(&options),
         Commands::Add { names, dev, pin } => commands::cmd_add(&names, dev, pin, &options),
@@ -242,6 +274,80 @@ fn package_command(command: Commands, options: Options) -> anyhow::Result<()> {
     package::finish();
 
     done.map_err(|error| anyhow::anyhow!("{error:#}"))
+}
+
+
+#[cfg(feature = "compile")]
+fn cmd_compile(entry: &PathBuf, output: Option<&Path>, assets: Option<&Path>) -> anyhow::Result<()> {
+    use std::env::consts::EXE_SUFFIX;
+    use xmas_runtime::{bundle, pack};
+
+    let out_path = output.unwrap_or_else(|| {
+        Path::new(if EXE_SUFFIX.is_empty() { "xmas-compiled" } else { "xmas-compiled.exe" })
+    });
+
+    if !entry.exists() {
+        anyhow::bail!("entry file not found: {}", entry.display());
+    }
+
+    println!("Bundling {}...", entry.display());
+    let temp_dir = std::env::temp_dir().join(format!("xmas-compile-{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir)?;
+    let (bundle_path, bundle_bytes) = bundle::bundle(entry, &temp_dir).map_err(|e| anyhow::anyhow!(e))?;
+    println!("  → {} ({} bytes)", bundle_path.display(), bundle_bytes.len());
+
+    let mut asset_files = Vec::new();
+    if let Some(assets_dir) = assets {
+        if assets_dir.is_dir() {
+            println!("Collecting assets from {}...", assets_dir.display());
+            collect_assets_recursive(assets_dir, assets_dir, &mut asset_files)?;
+            println!("  → {} files", asset_files.len());
+        }
+    }
+
+    println!("Creating payload...");
+    let payload = pack::make_payload(&bundle_bytes, &asset_files).map_err(|e| anyhow::anyhow!(e))?;
+    println!("  → {} bytes compressed", payload.len());
+
+    let exe_src = std::env::current_exe()?;
+    println!("Copying runtime from {}...", exe_src.display());
+    std::fs::copy(&exe_src, out_path)?;
+
+    println!("Appending payload to {}...", out_path.display());
+    pack::append_payload_to_exe(out_path, &payload).map_err(|e| anyhow::anyhow!(e))?;
+
+    // Make executable on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(out_path)?.permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(out_path, perms)?;
+    }
+
+    std::fs::remove_dir_all(&temp_dir).ok();
+    println!("✓ Created {}", out_path.display());
+    Ok(())
+}
+
+#[cfg(feature = "compile")]
+fn collect_assets_recursive(
+    root: &Path,
+    dir: &Path,
+    out: &mut Vec<(String, Vec<u8>)>,
+) -> anyhow::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_assets_recursive(root, &path, out)?;
+        } else if path.is_file() {
+            let rel = path.strip_prefix(root)?.to_string_lossy().into_owned();
+            let data = std::fs::read(&path)?;
+            out.push((rel, data));
+        }
+    }
+    Ok(())
 }
 
 /// Serve an app until the process is stopped.

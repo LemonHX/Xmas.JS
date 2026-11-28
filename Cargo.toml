@@ -33,6 +33,7 @@ tracing-subscriber = "0.3"
 
 [features]
 default = []
+compile = ["xmas-runtime/compile"]
 
 # Two speeds in one binary.
 #
