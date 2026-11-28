@@ -110,10 +110,45 @@
     'brotliDecompress',
   ];
 
+  // zstd takes no level here: this runtime writes stored blocks, so there is nothing a level
+  // could ask for. The argument is accepted and ignored so Bun's signatures keep working.
+  const zstdSync = (compress) => (data, options) => {
+    try {
+      return Buffer.from(__zstd_run(compress, data, limitOf(options)));
+    } catch (thrown) {
+      throw convert(thrown);
+    }
+  };
+
+  const zstd = (compress) => (data, options, callback) => {
+    if (typeof options === 'function') {
+      callback = options;
+      options = undefined;
+    }
+    if (typeof callback !== 'function') {
+      throw new TypeError('The "callback" argument must be of type function');
+    }
+    try {
+      const output = __zstd_run(compress, data, limitOf(options));
+      // The callback is called off the stack, as Node does, so a throw inside it is not
+      // swallowed by this try.
+      Promise.resolve().then(() => callback(null, Buffer.from(output)));
+    } catch (thrown) {
+      Promise.resolve().then(() => callback(convert(thrown)));
+    }
+  };
+
   const module = { constants, crc32: (data, value) => __crc32(data, value === undefined ? 0 : Number(value)) };
   for (const kind of pairs) {
     module[kind] = whenDone(kind);
     module[kind + 'Sync'] = sync(kind);
+  }
+  for (const [name, compress] of [
+    ['zstdCompress', true],
+    ['zstdDecompress', false],
+  ]) {
+    module[name] = zstd(compress);
+    module[name + 'Sync'] = zstdSync(compress);
   }
   module.default = module;
 

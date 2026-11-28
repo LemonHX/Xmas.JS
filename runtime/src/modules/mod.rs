@@ -41,6 +41,7 @@ pub mod util;
 pub mod wasm;
 pub mod websocket;
 pub mod zlib;
+pub mod zstd;
 
 use crate::driver::Driver;
 use quickjs_oxide::engine::api::core::Value;
@@ -73,6 +74,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     crypto::install(driver)?;
     string_decoder::install(driver)?;
     zlib::install(driver)?;
+    zstd::install(driver)?;
     stream::install(driver)?;
     stream_web::install(driver)?;
     // wasm needs nothing: it is the WebAssembly namespace and the engine behind it.
