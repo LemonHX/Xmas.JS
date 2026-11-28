@@ -19,7 +19,7 @@ use std::sync::Mutex;
 use color_eyre::eyre::{eyre, Result};
 use compact_str::ToCompactString;
 
-use crate::package::commands::{exec_install_scripts, init_storage};
+use crate::package::commands::{exec_install_scripts, init_storage, link_workspaces};
 use crate::package::npm::fetch_package;
 use crate::package::metadata::PackageSpecifier;
 use crate::package::plan::{execute_plan, setup_bins, Plan};
@@ -66,6 +66,10 @@ fn install_here(name: &str) -> Result<()> {
     );
 
     smol::block_on(execute_plan(plan.clone()))?;
+    // A package of the workspace is not in the registry, so an import of one never reaches here;
+    // the links are re-checked anyway, because the install that just ran into a project whose
+    // node_modules was missing is the moment they are missing too.
+    link_workspaces()?;
     setup_bins(&plan)?;
     for tree in plan.trees.values() {
         let stack = vec![tree.root.name.to_compact_string()];

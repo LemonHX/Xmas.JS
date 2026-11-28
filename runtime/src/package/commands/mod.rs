@@ -16,7 +16,7 @@ pub use clean::cmd_clean;
 pub use create::cmd_create;
 pub use exec::cmd_exec;
 pub use install::{
-    cmd_install, exec_install_scripts, init_storage, install, new_path,
+    cmd_install, exec_install_scripts, init_storage, install, link_workspaces, new_path,
 };
 pub use remove::cmd_remove;
 pub use run::cmd_run;

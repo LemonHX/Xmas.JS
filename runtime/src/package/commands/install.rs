@@ -8,8 +8,9 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
-use std::fs::{create_dir_all, read_dir, read_to_string, remove_dir_all};
+use std::fs::{create_dir_all, read_dir, read_to_string, remove_dir_all, remove_file};
 use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crate::package::commands::exec::shell;
@@ -223,8 +224,9 @@ pub fn install(args: &Options) -> Result<()> {
     // package rewrites package.json and nothing else, so the directory it left behind stays
     // until someone sweeps. The sweep runs either way.
     prune(&plan)?;
+    let workspaces = link_workspaces()?;
 
-    if matches!(verify_installation(&package, &plan), Ok(true)) {
+    if workspaces.is_empty() && matches!(verify_installation(&package, &plan), Ok(true)) {
         log_verbose("Packages already installed")
     } else {
         smol::block_on(execute_plan(plan.clone()))?;
@@ -254,6 +256,150 @@ pub fn install(args: &Options) -> Result<()> {
     PROGRESS_BAR.finish_and_clear();
 
     Ok(())
+}
+
+/// A package of this project's workspace: its name and the directory it is written in.
+struct WorkspacePackage {
+    name: CompactString,
+    dir: PathBuf,
+}
+
+/// The packages this project's workspace declares, in the order the patterns name them.
+///
+/// The workspace root is the directory install runs in: its package.json holds `workspaces`, an
+/// array of patterns or an object with `packages`. A pattern is a directory, or `dir/*`, or
+/// `dir/**` taken as `dir/*`. A directory listed twice is one package.
+fn workspace_packages(root: &Path) -> Result<Vec<WorkspacePackage>> {
+    let Ok(text) = read_to_string(root.join("package.json")) else {
+        return Ok(Vec::new());
+    };
+    let Ok(json) = serde_json::from_str::<Value>(&text) else {
+        return Ok(Vec::new());
+    };
+    let patterns: Vec<String> = match json.get("workspaces") {
+        Some(Value::Array(list)) => list
+            .iter()
+            .filter_map(|p| p.as_str())
+            .map(str::to_owned)
+            .collect(),
+        Some(Value::Object(map)) => map
+            .get("packages")
+            .and_then(|p| p.as_array())
+            .map(|list| {
+                list.iter()
+                    .filter_map(|p| p.as_str())
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        _ => return Ok(Vec::new()),
+    };
+
+    let mut found: Vec<WorkspacePackage> = Vec::new();
+    for pattern in patterns {
+        let pattern = pattern.trim_start_matches("./").trim_end_matches('/');
+        let star = pattern
+            .strip_suffix("/**")
+            .or_else(|| pattern.strip_suffix("/*"))
+            .map(str::to_owned)
+            .unwrap_or_else(|| pattern.to_owned());
+        let mut candidates = vec![root.join(&star)];
+        if let Some(rest) = pattern.strip_prefix("**/") {
+            // '**/x' is 'x' and one directory below it, the depth the workspace globs of a
+            // project this size actually use.
+            candidates = vec![root.join(rest), root.join("packages").join(rest)];
+        }
+        if pattern.contains('/') && (pattern.ends_with("/**") || pattern.ends_with("/*")) {
+            candidates = read_dir(root.join(&star))
+                .map(|it| it.flatten().map(|e| e.path()).collect())
+                .unwrap_or_default();
+        }
+        for candidate in candidates {
+            let Ok(text) = read_to_string(candidate.join("package.json")) else {
+                continue;
+            };
+            let Ok(json) = serde_json::from_str::<Value>(&text) else {
+                continue;
+            };
+            let Some(Value::String(name)) = json.get("name") else {
+                continue;
+            };
+            if found.iter().any(|p| p.name == name.as_str()) {
+                continue;
+            }
+            found.push(WorkspacePackage {
+                name: name.as_str().into(),
+                dir: candidate,
+            });
+        }
+    }
+    Ok(found)
+}
+
+/// Link every workspace package into `node_modules` under its name, the way bun and pnpm do.
+///
+/// Without the link a package of the workspace is only reachable where it sits: the resolver reads
+/// a bare specifier as a package of node_modules, and the fallback that finds it in the workspace
+/// is a guess -- it takes the subpath as a path. A link puts `exports` back in charge of a subpath
+/// like `nsh/test`, which is what every workspace package here is reached through.
+///
+/// A link that is already right is left alone. A directory or a foreign link at that name is a
+/// real package node_modules holds, and the plan owns it, so it is left alone too.
+pub fn link_workspaces() -> Result<Vec<CompactString>> {
+    let packages = workspace_packages(Path::new("."))?;
+    if packages.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut linked = Vec::with_capacity(packages.len());
+    for package in packages {
+        let scope = match package.name.split_once('/') {
+            Some((scope, _)) => {
+                create_dir_all(Path::new("node_modules").join(scope))?;
+                Some(scope.to_owned())
+            }
+            None => None,
+        };
+        let link = match &scope {
+            Some(scope) => Path::new("node_modules").join(scope).join(
+                package
+                    .name
+                    .split_once('/')
+                    .map(|(_, rest)| rest)
+                    .unwrap_or(&package.name),
+            ),
+            None => Path::new("node_modules").join(package.name.as_str()),
+        };
+        let target = std::fs::canonicalize(&package.dir)?;
+
+        if let Ok(existing) = std::fs::read_link(&link) {
+            if std::fs::canonicalize(&link).ok().as_ref() == Some(&target) {
+                linked.push(package.name);
+                continue;
+            }
+            // A link of ours from an earlier run that now points elsewhere: relink it.
+            if existing.is_relative() || existing.starts_with("..") {
+                remove_file(&link)?;
+            } else {
+                continue;
+            }
+        } else if link.exists() {
+            continue;
+        }
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&target, &link)?;
+        #[cfg(not(unix))]
+        {
+            return Err(eyre!(
+                "workspace packages are linked with a symlink, which this platform does not have"
+            ));
+        }
+        log_verbose(&format!("Linked workspace package {}", package.name));
+        linked.push(package.name);
+    }
+
+    Ok(linked)
 }
 
 /// Create a new PATH with node_modules/.bin prepended.
