@@ -268,6 +268,10 @@
       const time = value.getTime();
       return Number.isNaN(time) ? null : time;
     }
+    // A string is not coerced: Number("2024") would silently mean 2024 milliseconds. The
+    // specification takes a number or a Date, and a host handing over a value it built itself
+    // expects a string to be rejected rather than turned into a date in 1970.
+    if (typeof value !== 'object') return null;
     const number = Number(value);
     return Number.isFinite(number) ? number : null;
   }
