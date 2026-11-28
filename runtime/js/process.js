@@ -164,4 +164,7 @@
   };
 
   globalThis.process = process;
+  // Node and Bun both put `global` on the global object, and packages from before `globalThis`
+  // reach for it. It is the same object; a package that writes `global.x` means this.
+  globalThis.global = globalThis;
 })();
