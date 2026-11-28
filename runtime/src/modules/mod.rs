@@ -18,6 +18,7 @@ pub mod exception;
 pub mod exec;
 pub mod fetch;
 pub mod fs;
+pub mod intl;
 pub mod module;
 pub mod os;
 pub mod path;
@@ -67,6 +68,7 @@ pub fn install(driver: &mut Driver) -> Result<(), String> {
     os::install(driver)?;
     module::install(driver)?;
     temporal::install(driver)?;
+    intl::install(driver)?;
     fs::install(driver)?;
     crypto::install(driver)?;
     string_decoder::install(driver)?;

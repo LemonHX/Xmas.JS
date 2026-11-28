@@ -37,6 +37,12 @@ serde_json = "1"
 # Temporal is the language's own date API; the crate is the one V8, Boa and Kiesel use. No default
 # features: sys-local would read the host's zone, and the compiled tzdb is what this runtime wants.
 temporal_rs = { version = "0.2.6", default-features = false, features = ["compiled_data"] }
+# The tzdb temporal_rs already carries: the same compiled table, reached directly so a zone
+# identifier can be listed and normalized without going through Temporal. The singleton macro
+# names zerovec and zerotrie by crate, so they have to be in scope too.
+timezone_provider = "0.2.6"
+zerovec = "0.11"
+zerotrie = "0.2"
 trillium = "1.4"
 trillium-http = "1.8"
 trillium-client = "0.9.21"
