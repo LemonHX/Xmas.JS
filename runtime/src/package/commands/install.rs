@@ -16,7 +16,7 @@ use std::time::Instant;
 use crate::package::commands::exec::shell;
 use crate::package::config::read_config;
 use crate::package::npm::DependencyTree;
-use crate::package::metadata::PackageMetadata;
+use crate::package::metadata::{PackageMetadata, PackageSpecifier};
 use crate::package::plan::{execute_plan, setup_bins, tree_size, unique_count, Plan};
 use crate::package::progress::{finish_progress, log_progress, log_verbose, set_total, PROGRESS_BAR};
 use crate::package::resolve::Lockfile;
